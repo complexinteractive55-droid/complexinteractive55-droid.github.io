@@ -1,0 +1,47 @@
+name: Circulares - REA estructura
+on:
+  push:
+    branches: [feature/circulares-institucionales]
+    paths: [.github/workflows/circulares-rea.yml]
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  analizar:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+      - name: Preparar codigo publico del generador
+        run: |
+          mkdir -p "$RUNNER_TEMP/circulares" "$RUNNER_TEMP/rea-resultados"
+          unzip -q circulares-fuentes.zip -d "$RUNNER_TEMP/circulares"
+      - name: Instalar REA oficial en entorno aislado
+        run: |
+          npm install --prefix "$RUNNER_TEMP/rea-cli" --ignore-scripts --omit=optional --no-audit --no-fund rea-agents@6.5.0
+          npm view rea-agents@6.5.0 version dist.integrity --json
+          node "$RUNNER_TEMP/rea-cli/node_modules/rea-agents/scripts/rea.mjs" --version
+          node "$RUNNER_TEMP/rea-cli/node_modules/rea-agents/scripts/rea.mjs" analyze-javascript-application --help
+      - name: Analizar generador de circulares con REA
+        run: |
+          node "$RUNNER_TEMP/rea-cli/node_modules/rea-agents/scripts/rea.mjs" analyze-javascript-application "$RUNNER_TEMP/circulares/backend" --json > "$RUNNER_TEMP/rea-resultados/generador-evidencia.json"
+      - name: Retener evidencia verificable
+        run: |
+          node --input-type=module <<'JS'
+          import fs from 'node:fs';
+          import crypto from 'node:crypto';
+          const path=process.env.RUNNER_TEMP+'/rea-resultados/generador-evidencia.json';
+          const bytes=fs.readFileSync(path),e=JSON.parse(bytes);
+          console.log('REA_EVIDENCE_SHA256',crypto.createHash('sha256').update(bytes).digest('hex'));
+          console.log('REA_EVIDENCE_START');console.log(JSON.stringify(e));console.log('REA_EVIDENCE_END');
+          JS
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: rea-circulares-evidencia
+          path: ${{ runner.temp }}/rea-resultados
+          if-no-files-found: error
+          retention-days: 7
