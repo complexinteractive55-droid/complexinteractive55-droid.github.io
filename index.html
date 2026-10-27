@@ -1,0 +1,37 @@
+<!doctype html>
+<html lang="es-CO">
+<head>
+<meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover"><meta name="theme-color" content="#174cc8">
+<meta name="description" content="Complex_: acceso y cuentas de tu comunidad escolar."><meta name="apple-mobile-web-app-capable" content="yes"><meta name="apple-mobile-web-app-title" content="Complex_">
+<meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self'; style-src 'self'; img-src 'self' data:; connect-src 'self' https://auyfjqprhspncctnufzi.supabase.co wss://auyfjqprhspncctnufzi.supabase.co; object-src 'none'; base-uri 'self'; form-action 'self'">
+<title>Cuentas · Complex_</title><link rel="icon" href="icono.svg" type="image/svg+xml"><link rel="apple-touch-icon" href="icono-192.png"><link rel="manifest" href="manifest.webmanifest"><link rel="stylesheet" href="esqueleto.css?v=20261027021906"><script src="pwa-update.js?v=20261027021906" defer></script><script src="supabase-2.117.3.js?v=20261027021906" defer></script><script src="cloud.js?v=20261027021906" defer></script><script src="esqueleto.js?v=20261027021906" defer></script>
+</head>
+<body>
+<a class="skip" href="#contenido">Ir al contenido</a>
+<button id="menu-backdrop" class="backdrop" aria-label="Cerrar menú" hidden></button>
+<aside class="sidebar" id="sidebar" aria-label="Navegación principal">
+<a class="brand" href="#/inicio" aria-label="Complex_, inicio"><img src="logo-complex.svg" alt="Complex_"><span>GESTIÓN ESCOLAR</span></a>
+<div class="workspace"><span class="workspace-icon" data-icon="school"></span><div><strong>Tu colegio</strong><small>Espacio por configurar</small></div><span class="workspace-dot" aria-hidden="true"></span></div>
+<p class="nav-label">TU ESPACIO</p><nav id="nav"></nav>
+<div class="sidebar-bottom"><div class="skeleton-label"><span></span>Estructura inicial</div><p>Todo empieza con una<br>comunidad bien conectada.</p><button class="help-button" data-action="help"><span data-icon="help"></span>Guía para empezar<span>↗</span></button></div>
+</aside>
+<div class="workspace-main">
+<header class="topbar"><button class="icon-button mobile-menu" id="menu-button" aria-label="Abrir menú" aria-controls="sidebar" aria-expanded="false"><span data-icon="menu"></span></button><div class="breadcrumb"><span>Administración</span><span class="crumb-slash">/</span><strong id="breadcrumb-current">Cuentas</strong></div><div class="topbar-actions"><button class="top-help" data-action="help"><span data-icon="help"></span><span>Ayuda</span></button><span class="top-divider"></span><span class="profile-avatar" aria-hidden="true">C</span><span class="profile-label">Administración<small>Acceso al colegio</small></span></div></header>
+<main id="contenido" tabindex="-1"></main>
+<footer class="footer"><span>Complex_ <span class="footer-dot">·</span> Tu comunidad, en un solo lugar.</span><span>Conectado a tu colegio</span></footer>
+</div>
+<dialog id="account-dialog" aria-labelledby="account-title"><form id="account-form">
+<div class="dialog-heading"><div><span class="eyebrow">GESTIÓN DE CUENTAS</span><h2 id="account-title">Añadir cuenta</h2></div><button class="icon-button" type="button" data-action="close-dialog" aria-label="Cerrar formulario"><span data-icon="close"></span></button></div>
+<p class="dialog-intro">Crea el acceso de la persona y asígnale un rol en el colegio.</p>
+<div class="draft-notice"><span data-icon="info"></span><span>Se creará una <strong>cuenta real en el colegio</strong>. Al terminar recibirás la contraseña temporal para entregarla a la persona.</span></div>
+<input id="account-id" type="hidden">
+<div class="form-grid"><label>Nombres <span>*</span><input id="first-name" name="firstName" autocomplete="given-name" maxlength="80" required placeholder="Nombres de la persona"></label><label>Apellidos <span>*</span><input id="last-name" name="lastName" autocomplete="family-name" maxlength="80" required placeholder="Apellidos"></label></div>
+<label>Correo electrónico <span>*</span><input id="account-email" name="email" type="email" autocomplete="email" maxlength="180" required placeholder="nombre@ejemplo.com"></label>
+<label>Rol en el colegio <span>*</span><select id="account-role" name="role" required></select><small id="role-hint"></small></label>
+
+<p class="form-error" id="form-error" role="alert" hidden></p>
+<div class="dialog-actions"><button class="btn secondary" type="button" data-action="close-dialog">Cancelar</button><button class="btn primary" type="submit"><span data-icon="save"></span>Crear cuenta</button></div>
+</form></dialog>
+<dialog id="info-dialog" aria-labelledby="info-title"><div class="dialog-heading"><h2 id="info-title"></h2><button class="icon-button" data-action="close-info" aria-label="Cerrar"><span data-icon="close"></span></button></div><div id="info-body"></div><div class="dialog-actions" id="info-actions"></div></dialog>
+<div class="toast" id="toast" role="status" hidden></div>
+</body></html>

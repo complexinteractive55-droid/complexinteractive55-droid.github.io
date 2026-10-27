@@ -1,0 +1,34 @@
+{
+  "name": "Complex_ — Gestión escolar",
+  "short_name": "Complex_",
+  "description": "Acceso y cuentas de tu comunidad escolar conectados a Supabase.",
+  "lang": "es-CO",
+  "start_url": "./index.html#/cuentas",
+  "scope": "./",
+  "display": "standalone",
+  "background_color": "#f7f9fc",
+  "theme_color": "#174cc8",
+  "icons": [
+    {
+      "src": "icono-192.png",
+      "sizes": "192x192",
+      "type": "image/png"
+    },
+    {
+      "src": "icono-512.png",
+      "sizes": "512x512",
+      "type": "image/png"
+    },
+    {
+      "src": "icono-512-mask.png",
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "maskable"
+    },
+    {
+      "src": "icono.svg",
+      "sizes": "any",
+      "type": "image/svg+xml"
+    }
+  ]
+}
