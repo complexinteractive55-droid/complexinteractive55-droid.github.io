@@ -70,6 +70,20 @@ if(error){let message=error.message;try{message=(await error.context.json()).err
 if(data?.error)throw Error(data.error);
 const result=data?.resultados?.[0];if(!result?.ok)throw Error(result?.error||"No se pudo crear la cuenta.");return result;
 }
+
+async function circularSetup(){
+ if(!ctx.roles.includes('admin'))throw Error('Solo Administración puede gestionar circulares.');
+ const [templates,documents]=await Promise.all([sb.from('circular_plantillas').select('id,nombre,revision').eq('colegio_id',ctx.school.id).eq('estado','aprobada').order('revision',{ascending:false}).limit(1).maybeSingle(),sb.rpc('listar_circular_documentos',{p_colegio:ctx.school.id})]);
+ fail(templates.error);fail(documents.error);return{template:templates.data,documents:documents.data||[]};
+}
+async function circularDocument(id){const {data,error}=await sb.rpc('obtener_circular_documento',{p_id:id});fail(error);return data;}
+async function circularAction(accion,body){
+ if(!ctx.roles.includes('admin'))throw Object.assign(Error('Solo Administración puede gestionar circulares.'),{guardada:false});
+ const {data,error}=await sb.functions.invoke('circular-documentos',{body:{accion,...body}});
+ if(error){let status={};try{status=await error.context.json();}catch{}throw Object.assign(Error(status.error||'No se pudo confirmar la operación. Reintenta la misma solicitud.'),{guardada:status.guardada??null,reintentar_operacion:status.reintentar_operacion??true});}
+ if(data?.error)throw Object.assign(Error(data.error),{guardada:data.guardada??null});return data;
+}
+
 async function signOut(){await sb.auth.signOut({scope:"local"});location.reload();}
 function chooseSchool(id){if(!ctx.schools?.some(s=>s?.id===id))return;localStorage.setItem("complex_selected_school_v1",id);location.reload();}
 async function install(){
@@ -81,6 +95,6 @@ let d=document.querySelector("#cloud-password-dialog");
 if(!d){d=document.createElement("dialog");d.id="cloud-password-dialog";d.innerHTML='<h2>Cambiar contraseña</h2><form><label>Nueva contraseña<input name="password" type="password" minlength="8" autocomplete="new-password" required></label><label>Repite la contraseña<input name="confirm" type="password" minlength="8" autocomplete="new-password" required></label><p class="form-error" role="alert" hidden></p><div class="dialog-actions"><button class="btn secondary" type="button">Cancelar</button><button class="btn primary" type="submit">Guardar contraseña</button></div></form>';document.body.append(d);d.querySelector('[type="button"]').onclick=()=>d.close();d.querySelector("form").onsubmit=async e=>{e.preventDefault();if(!e.currentTarget.reportValidity())return;const f=new FormData(e.currentTarget),err=d.querySelector(".form-error"),btn=d.querySelector('[type="submit"]');err.hidden=true;if(f.get("password")!==f.get("confirm")){err.textContent="Las contraseñas no coinciden.";err.hidden=false;return;}btn.disabled=true;try{const {error}=await sb.auth.updateUser({password:String(f.get("password"))});if(error){err.textContent=translate(error);err.hidden=false;}else{e.currentTarget.reset();d.close();}}catch(e){err.textContent=translate(e);err.hidden=false;}finally{btn.disabled=false;}};}d.showModal();
 }
 window.addEventListener("beforeinstallprompt",e=>{e.preventDefault();pendingInstall=e;});
-sb.auth.onAuthStateChange((event)=>{if(event==="SIGNED_OUT")setTimeout(()=>{ctx={user:null,school:null,roles:[],members:[],students:0,courses:0};document.querySelectorAll("dialog[open]").forEach(d=>d.close());gate("login");},0);if(event==="PASSWORD_RECOVERY")setTimeout(()=>gate("recovery"),0);});
-window.ComplexCloud={initialize,refresh,createUser,signOut,chooseSchool,install,changePassword,get context(){return ctx;},translate};
+sb.auth.onAuthStateChange((event)=>{if(event==="SIGNED_OUT")setTimeout(()=>{ctx={user:null,school:null,roles:[],members:[],students:0,courses:0};window.ComplexCirculares?.clear();document.querySelectorAll("dialog[open]").forEach(d=>d.close());gate("login");},0);if(event==="PASSWORD_RECOVERY")setTimeout(()=>gate("recovery"),0);});
+window.ComplexCloud={initialize,refresh,createUser,circularSetup,circularDocument,circularAction,signOut,chooseSchool,install,changePassword,get context(){return ctx;},translate};
 })();

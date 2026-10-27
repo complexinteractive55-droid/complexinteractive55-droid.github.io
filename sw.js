@@ -1,5 +1,6 @@
-const CACHE='complex-connected-20261027021906';
-const FILES=["./","./index.html","./esqueleto.css","./esqueleto.js","./pwa-update.js","./cloud.js","./supabase-2.117.3.js","./manifest.webmanifest","./logo-complex.svg","./icono.svg","./icono-192.png","./icono-512.png","./icono-512-mask.png"];
+const CACHE='complex-connected-20261027183746';
+const FILES=["./circular-model.js","./circulares.js","./circulares.css","./","./index.html","./esqueleto.css","./esqueleto.js","./pwa-update.js","./cloud.js","./supabase-2.117.3.js","./manifest.webmanifest","./logo-complex.svg","./icono.svg","./icono-192.png","./icono-512.png","./icono-512-mask.png"];
 self.addEventListener('install',e=>e.waitUntil(caches.open(CACHE).then(c=>c.addAll(FILES)).then(()=>self.skipWaiting())));
 self.addEventListener('activate',e=>e.waitUntil(caches.keys().then(keys=>Promise.all(keys.filter(k=>(k.startsWith('complex-connected-')||k.startsWith('complex-esqueleto-'))&&k!==CACHE).map(k=>caches.delete(k)))).then(()=>self.clients.claim())));
 self.addEventListener('fetch',e=>{const req=e.request,url=new URL(req.url);if(req.method!=='GET'||url.origin!==self.location.origin)return;if(url.pathname.endsWith('/version.txt'))return;e.respondWith((async()=>{try{const response=await Promise.race([fetch(req,{cache:'no-cache'}),new Promise((_,reject)=>setTimeout(()=>reject(Error('timeout')),6000))]);if(response.ok){const c=await caches.open(CACHE);await c.put(req,response.clone());return response;}}catch{}const c=await caches.open(CACHE);return await c.match(req,{ignoreSearch:true})||(req.mode==='navigate'?await c.match('./index.html'):null)||Response.error();})());});
+

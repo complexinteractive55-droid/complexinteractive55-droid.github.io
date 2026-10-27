@@ -86,7 +86,7 @@ tesoreria:{title:"Tesorería",description:"El espacio para organizar los cobros 
 function moduleView(route){
 const data=moduleData[route];
 return heading("ESPACIOS DEL COLEGIO",esc(data.title),esc(data.description))+
-`<section class="module-grid">${data.items.map(([title,description,i])=>`<article class="module-card"><span class="metric-icon">${icon(i)}</span><h3>${esc(title)}</h3><p>${esc(description)}</p><button class="btn secondary" data-module="${esc(title)}">Ver espacio ${icon("arrow")}</button></article>`).join("")}</section>`+
+`<section class="module-grid">${data.items.map(([title,description,i])=>`<article class="module-card"><span class="metric-icon">${icon(i)}</span><h3>${esc(title)}</h3><p>${esc(description)}</p>${title==="Circulares"?'<a class="btn secondary" href="#/circulares">Abrir Circulares</a>':`<button class="btn secondary" data-module="${esc(title)}">Ver espacio ${icon("arrow")}</button>`}</article>`).join("")}</section>`+
 note("Una estructura lista para completar","Estas secciones muestran la estructura inicial. La gestión de cuentas ya está conectada; los formularios de los demás módulos se completarán después.");
 }
 function dashboard(){
@@ -101,19 +101,23 @@ return heading("PREFERENCIAS DE TU ESPACIO","Ajustes","El acceso al colegio ya e
 note("Vista de preparación","La app se conecta al nuevo Supabase. Los módulos académicos y las preferencias avanzadas conservan su espacio para la siguiente etapa.");
 }
 function render(){
+window.ComplexCirculares?.cleanup();
 const [raw,params]=location.hash.replace(/^#\/?/,"").split("?");
 const route=raw||"cuentas";
-const title=nav.find(n=>n[0]===route)?.[2]||"Página no encontrada";
+const section=route==="circulares"?"comunicacion":route;
+const title=route==="circulares"?"Circulares":nav.find(n=>n[0]===route)?.[2]||"Página no encontrada";
 document.title=`${title} · Complex_`;
 $("#breadcrumb-current").textContent=title;
-$("#nav").innerHTML=nav.map(([id,i,label])=>`<a href="#/${id}" class="${route===id?"active":""}"${route===id?' aria-current="page"':""}>${icon(i)}${label}</a>`).join("");
+$("#nav").innerHTML=nav.map(([id,i,label])=>`<a href="#/${id}" class="${section===id?"active":""}"${section===id?' aria-current="page"':""}>${icon(i)}${label}</a>`).join("");
 let html;
 if(route==="cuentas"){const t=new URLSearchParams(params||"").get("tab");const tab=["roles","invitaciones"].includes(t)?t:"usuarios";html=accountsView(tab);}
+else if(route==="circulares")html='<div id="circulares-root"><p role="status">Cargando Circulares…</p></div>';
 else if(route==="inicio")html=dashboard();
 else if(route==="ajustes")html=settings();
 else if(moduleData[route])html=moduleView(route);
 else html=heading("COMPLEX_","Este espacio no existe","Puedes volver al tablero para continuar.",'<a class="btn primary" href="#/inicio">Ir al tablero</a>');
 $("#contenido").innerHTML=html;
+if(route==="circulares")window.ComplexCirculares?.mount($("#circulares-root"),cloud).catch(e=>{$("#circulares-root").textContent=e.message;});
 accountRows();
 $("#account-search")?.addEventListener("input",e=>{query=e.target.value;accountRows();});
 $("#role-filter")?.addEventListener("change",e=>{roleFilter=e.target.value;accountRows();});

@@ -1,6 +1,6 @@
 (function(){
 "use strict";
-const APP_VERSION='20261027021906';
+const APP_VERSION='20261027183746';
 let registration=null,checking=false;
 function safe(){return !document.querySelector('dialog[open]')&&!Array.from(document.querySelectorAll('input:not([type="hidden"]),textarea')).some(el=>el.value)&&!['INPUT','TEXTAREA','SELECT'].includes(document.activeElement?.tagName);}
 async function checkAppUpdate(){
@@ -10,3 +10,4 @@ try{const r=await fetch('./version.txt?t='+Date.now(),{cache:'no-store'});if(!r.
 window.addEventListener('load',async()=>{if('serviceWorker'in navigator&&(location.protocol==='https:'||/^(localhost|127\.0\.0\.1)$/.test(location.hostname))){try{registration=await navigator.serviceWorker.register('./sw.js',{updateViaCache:'none'});await registration.update();}catch{}}setTimeout(checkAppUpdate,3000);});
 document.addEventListener('visibilitychange',()=>{if(!document.hidden)checkAppUpdate();});
 })();
+
