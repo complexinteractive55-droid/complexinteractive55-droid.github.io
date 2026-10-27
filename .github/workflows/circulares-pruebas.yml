@@ -1,0 +1,59 @@
+name: Circulares - pruebas aisladas
+on:
+  push:
+    branches: [feature/circulares-institucionales]
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  verificar:
+    runs-on: ubuntu-latest
+    timeout-minutes: 12
+    services:
+      postgres:
+        image: postgres:17-alpine
+        env:
+          POSTGRES_PASSWORD: pruebas_locales
+          POSTGRES_USER: postgres
+          POSTGRES_DB: circular_tests
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U postgres -d circular_tests"
+          --health-interval 5s
+          --health-timeout 3s
+          --health-retries 12
+    env:
+      CIRCULAR_TEST_DATABASE_URL: postgresql://postgres:pruebas_locales@localhost:5432/circular_tests
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+      - name: Extraer la copia de desarrollo
+        run: unzip -q circulares-fuentes.zip -d "$RUNNER_TEMP/circulares"
+      - name: Dependencias de composición de PDF
+        run: |
+          npm install --prefix "$RUNNER_TEMP/circulares/deps" --no-audit --no-fund pdf-lib@1.17.1 @pdf-lib/fontkit@1.1.1
+          echo "CIRC_PDF_LIB=$RUNNER_TEMP/circulares/deps/node_modules/pdf-lib" >> "$GITHUB_ENV"
+      - name: Modelo, servicio, PDF y regresión de cuentas
+        working-directory: ${{ runner.temp }}/circulares
+        run: |
+          node tests/model-handler.mjs
+          node tests/pdf-render.mjs
+          node tests/cloud-regression.cjs
+          node tests/accounts-regression.cjs
+      - name: PostgreSQL real - concurrencia y RLS en base desechable
+        working-directory: ${{ runner.temp }}/circulares
+        run: python3 tests/postgres.py
+      - name: Conservar resultados y versiones resueltas
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: circulares-pruebas-y-dependencias
+          path: |
+            ${{ runner.temp }}/circulares/tests/fixtures/*.pdf
+            ${{ runner.temp }}/circulares/tests/fixtures/*.json
+            ${{ runner.temp }}/circulares/deps/package-lock.json
+          retention-days: 7
+
