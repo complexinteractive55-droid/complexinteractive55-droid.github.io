@@ -19,6 +19,7 @@ const pant = {
   familia: () => import('./pantallas/familia.js'),
   circulares: () => import('./pantallas/circulares.js'),
   circularInst: () => import('./pantallas/circular_institucional.js'),
+  espacios: () => import('./pantallas/espacios.js'),
   planeaciones: () => import('./pantallas/planeaciones.js'),
   mensajeria: () => import('./pantallas/mensajeria.js'),
   aula: () => import('./pantallas/aula.js'),
@@ -139,6 +140,8 @@ const RUTAS = [
   ['proceso/:id/respuestas', async (p) => (await pant.procesos()).respuestas(main(), p)],
   ['certificado/:tipo/:est', async (p) => (await pant.certificados()).certificado(main(), p)],
   ['horario', async (p) => (await pant.horario()).horario(main(), p)],
+  ['espacios', async (p) => (await pant.espacios()).solicitud(main(), p)],
+  ['espacios-solicitudes', async (p) => (await pant.espacios()).solicitudesAdmin(main(), p)],
   ['reportes', async (p) => (await pant.reportes()).reportes(main(), p)],
   ['examen/:id', async (p) => (await pant.examenesP()).examen(main(), p)],
   ['ayuda', async () => (await pant.ayudaP()).ayuda(main())],
@@ -218,13 +221,13 @@ function menuBase() {
   const perfilG = (extra = []) => ({ t: 'Perfil', ic: '👤', items: [['info-personal', 'Información personal'], ...(E.rol === 'acudiente' || E.rol === 'estudiante' ? [['edocs', 'E-docs']] : []), ['perfil', 'Mi cuenta y ajustes'], ...extra, ['ayuda', 'Ayuda']] });
   if (E.rol === 'admin') return [tablero, COMUNICACION,
     { t: 'Comunidad', ic: '👥', items: [['calendario', 'Calendario'], ['personas', 'Personas'], ['seguimientos', 'Seguimientos'], ['compromisos', 'Compromisos'], ['ausencias', 'Ausencias reportadas'], ['procesos', 'Procesos en línea'], ['archivos', 'Archivos']] },
-    { t: 'Académico', ic: '🎓', items: [['estructura', 'Estructura del colegio'], ['horario', 'Horarios'], ['planeaciones', 'Planeaciones'], ['reportes', 'Reportes']] },
+    { t: 'Académico', ic: '🎓', items: [['estructura', 'Estructura del colegio'], ['horario', 'Horarios'], ['planeaciones', 'Planeaciones'], ['reportes', 'Reportes'], ['espacios-solicitudes', 'Solicitudes de espacios']] },
     { t: 'Tesorería', ic: '💰', items: [['tesoreria?tab=cartera', 'Cartera'], ['tesoreria?tab=facturar', 'Facturar'], ['tesoreria?tab=pagos', 'Pagos'], ['tesoreria?tab=conceptos', 'Conceptos']] },
     perfilG([['ajustes-colegio', 'Ajustes del colegio']])];
   if (E.rol === 'profesor') return [tablero, COMUNICACION,
     { t: 'Comunidad', ic: '👥', items: [['calendario', 'Calendario'], ['seguimientos', 'Seguimientos'], ['compromisos', 'Compromisos'], ['salidas', 'Permisos de salida'], ['procesos', 'Procesos en línea'], ['archivos', 'Archivos globales']] },
     { t: 'Docencia', ic: '🧑‍🏫', items: [['direccion', 'Dirección de grupo'], ['clases', 'Clases'], ['reportes', 'Reportes']] },
-    { t: 'Academia', ic: '🎓', items: [['aula', 'Aula'], ['horario', 'Mi horario'], ['planeaciones', 'Planeaciones']] },
+    { t: 'Academia', ic: '🎓', items: [['aula', 'Aula'], ['horario', 'Mi horario'], ['planeaciones', 'Planeaciones'], ['espacios', 'Solicitud de espacios']] },
     perfilG()];
   if (E.rol === 'estudiante') return [tablero, COMUNICACION,
     { t: 'Comunidad', ic: '👥', items: [['calendario', 'Calendario'], [`estudiante/${E.yo.id}?tab=observador`, 'Seguimientos'], [`estudiante/${E.yo.id}?tab=compromisos`, 'Compromisos'], ['procesos', 'Procesos en línea'], ['archivos', 'Archivos']] },

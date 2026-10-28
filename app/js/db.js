@@ -361,6 +361,54 @@ export function crearDbDemo() {
   // Valores por defecto (los mismos que pone la base de datos real)
   const hoyLocal = () => { const d = new Date(); return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`; };
   const siguiente = (n) => 1000 + tabla(n).reduce((s, x) => Math.max(s, (x.numero || 1000) - 1000), 0) + 1;
+  // Consecutivo de las circulares institucionales, como en la base (20261028120000_circular_consecutivo_automatico):
+  // una serie vigente por colegio, el número se toma al crear y no cambia; el de un borrador eliminado queda anulado.
+  // En el demo la serie es provisional, como la que la base da a un colegio sin serie configurada: PROV-001-<año>.
+  const consecutivoCircular = (colegio) => {
+    let s = tabla('circular_series').find((x) => x.colegio_id === colegio && x.vigente);
+    if (!s) tabla('circular_series').push((s = { id: crypto.randomUUID(), colegio_id: colegio, prefijo: 'PROV-', periodo: String(new Date().getFullYear()), ancho: 3, ultimo: 0, vigente: true, provisional: true, creado_en: ahora() }));
+    s.ultimo += 1;
+    const n = String(s.ultimo);
+    return { serie_id: s.id, numero: s.ultimo, consecutivo: s.prefijo + (n.length >= s.ancho ? n : n.padStart(s.ancho, '0')) + '-' + s.periodo };
+  };
+  const numerarBorrador = (r) => {
+    Object.assign(r, { solicitud_id: r.solicitud_id || crypto.randomUUID() }, consecutivoCircular(r.colegio_id));
+    r.datos = { ...(r.datos || {}), consecutivo: r.consecutivo };
+  };
+  // Borradores guardados en este equipo antes del consecutivo automático: reciben número en orden de creación
+  const sinNumero = tabla('circular_borradores').filter((b) => !b.numero).sort((a, b) => String(a.creado_en).localeCompare(String(b.creado_en)));
+  if (sinNumero.length) { sinNumero.forEach(numerarBorrador); guardar(); }
+
+  // Espacios académicos, como la base (20261028150000_solicitudes_espacios): los seis espacios del colegio; franjas = bloques
+  // del Horario de ese día (lunes a viernes); solicitud con aprobación; solo las aprobadas ocupan; sin cruces; el mismo envío
+  // devuelve la misma solicitud. Hora de Colombia.
+  const ESPACIOS_DEMO = ['Sala de consulta', 'Sala de sistemas', 'Laboratorio', 'Sala 1 del Majuy', 'Sala 2 del Majuy', 'Salón STEAM'];
+  let espaciosNuevos = false;
+  for (const c of tabla('colegios')) if (!tabla('espacios').some((e) => e.colegio_id === c.id)) {
+    ESPACIOS_DEMO.forEach((nombre, i) => tabla('espacios').push({ id: crypto.randomUUID(), colegio_id: c.id, nombre, orden: i + 1, activo: true, creado_en: ahora() }));
+    espaciosNuevos = true;
+  }
+  if (espaciosNuevos) guardar();
+  const hm = (x) => String(x || '').slice(0, 5);
+  const hoyBog = () => new Intl.DateTimeFormat('en-CA', { timeZone: 'America/Bogota', year: 'numeric', month: '2-digit', day: '2-digit' }).format(new Date());
+  const horaBog = () => new Intl.DateTimeFormat('en-GB', { timeZone: 'America/Bogota', hour: '2-digit', minute: '2-digit', hourCycle: 'h23' }).format(new Date());
+  const diaIso = (iso) => ((new Date(iso + 'T12:00:00Z').getUTCDay() + 6) % 7) + 1;
+  const instante = (fecha, h) => new Date(fecha + 'T' + hm(h) + ':00-05:00').getTime();
+  const tieneRol = (colegio, roles) => tabla('miembros').some((m) => m.colegio_id === colegio && m.perfil_id === usuario() && m.activo !== false && roles.includes(m.rol));
+  const franjasDia = (colegio, fecha) => {
+    if (diaIso(fecha) > 5) return [];
+    const u = new Map();
+    for (const b of tabla('horario_bloques')) if (b.colegio_id === colegio && b.dia === diaIso(fecha)) u.set(hm(b.hora_inicio) + '-' + hm(b.hora_fin), [hm(b.hora_inicio), hm(b.hora_fin)]);
+    return [...u.values()].sort((a, b) => a[0].localeCompare(b[0]) || a[1].localeCompare(b[1]));
+  };
+  const enFranjas = (colegio, fecha, a, b) => {
+    const fr = franjasDia(colegio, fecha); const vistos = new Set(); let frente = [a];
+    while (frente.length) { const sig = []; for (const t0 of frente) for (const [x, y] of fr) if (x === t0 && y <= b && !vistos.has(y)) { vistos.add(y); sig.push(y); } frente = sig; }
+    return vistos.has(b);
+  };
+  const cruzaAprobada = (esp, fecha, a, b, id) => tabla('solicitudes_espacio').some((x) => x.estado === 'aprobada' && x.espacio_id === esp && x.fecha === fecha && x.id !== id && hm(x.hora_inicio) < b && a < hm(x.hora_fin));
+  const bloqueado = (colegio, esp, fecha, a, b) => tabla('espacio_bloqueos').some((x) => x.colegio_id === colegio && (!x.espacio_id || x.espacio_id === esp) && new Date(x.inicio).getTime() < instante(fecha, b) && instante(fecha, a) < new Date(x.fin).getTime());
+  const yaPaso = (fecha, a) => fecha < hoyBog() || (fecha === hoyBog() && a <= horaBog());
   const DEF = {
     colegios: () => ({ nota_min: 1, nota_max: 5, nota_aprobacion: 3, decimales: 1, escala_tipo: 'numerica', escala: [{ sigla: 'S', nombre: 'Superior', valor: 5, desde: 4.6 }, { sigla: 'A', nombre: 'Alto', valor: 4.3, desde: 4 }, { sigla: 'BS', nombre: 'Básico', valor: 3.5, desde: 3 }, { sigla: 'BJ', nombre: 'Bajo', valor: 2, desde: 1 }] }),
     perfiles: () => ({ nombres: '', apellidos: '' }),
@@ -631,6 +679,10 @@ export function crearDbDemo() {
         const r = completar(n, f);
         const k = LLAVES[n];
         if (k && tabla(n).some((x) => k.every((c) => x[c] === r[c]))) err('Ese dato ya existe.');
+        if (n === 'circular_borradores') {
+          if (r.solicitud_id && tabla(n).some((x) => x.colegio_id === r.colegio_id && x.solicitud_id === r.solicitud_id)) err('Ese dato ya existe.');
+          numerarBorrador(r);
+        }
         tabla(n).push(r);
         aPlanilla(n, r, true);
         out.push(copia(r));
@@ -657,7 +709,7 @@ export function crearDbDemo() {
       const out = [];
       tabla(n).forEach((f, i) => {
         // Como el trigger circular_borrador_fijo: la versión sube sola y lo de origen no cambia
-        if (coincide(f, { eq })) { tabla(n)[i] = completar(n, { ...f, ...cambios, ...(n === 'circular_borradores' ? { id: f.id, colegio_id: f.colegio_id, autor_id: f.autor_id, creado_en: f.creado_en, version: f.version + 1, actualizado_en: ahora(), actualizado_por: usuario() } : {}) }); if ('nota' in cambios || 'pendiente_revision' in cambios) aPlanilla(n, tabla(n)[i]);
+        if (coincide(f, { eq })) { tabla(n)[i] = completar(n, { ...f, ...cambios, ...(n === 'circular_borradores' ? { id: f.id, colegio_id: f.colegio_id, autor_id: f.autor_id, creado_en: f.creado_en, version: f.version + 1, actualizado_en: ahora(), actualizado_por: usuario(), solicitud_id: f.solicitud_id, serie_id: f.serie_id, numero: f.numero, consecutivo: f.consecutivo, datos: { ...(cambios.datos ?? f.datos), consecutivo: f.consecutivo } } : {}) }); if ('nota' in cambios || 'pendiente_revision' in cambios) aPlanilla(n, tabla(n)[i]);
           if (n === 'examenes' && ('resultados_publicados' in cambios || 'mostrar_resultado' in cambios)) for (const it of tabla('examen_intentos').filter((x) => x.examen_id === f.id && x.nota != null)) aPlanilla('examen_intentos', it); out.push(copia(tabla(n)[i])); }
       });
       guardar();
@@ -665,6 +717,9 @@ export function crearDbDemo() {
     },
     async remove(n, eq) {
       await lento();
+      if (n === 'circular_borradores') for (const b of tabla(n).filter((f) => coincide(f, { eq }) && f.numero)) {
+        tabla('circular_numeros_anulados').push({ serie_id: b.serie_id, numero: b.numero, colegio_id: b.colegio_id, consecutivo: b.consecutivo, borrador_id: b.id, solicitud_id: b.solicitud_id, titulo: b.datos?.titulo || null, anulado_por: usuario(), anulado_en: ahora() });
+      }
       t[n] = tabla(n).filter((f) => !coincide(f, { eq }));
       if (n === 'colegios') {
         for (const k of Object.keys(t)) if (k !== 'perfiles' && k !== 'colegios') t[k] = t[k].filter((f) => f.colegio_id !== eq.id);
@@ -681,6 +736,70 @@ export function crearDbDemo() {
         if (!familia) err('Solo el estudiante o su familia firman el compromiso.');
         if (!c.firmado_en) await db.update('compromisos', { firmado_en: ahora(), firmado_por: yo, _firmando: true }, { id: c.id });
         return tabla('compromisos').find((x) => x.id === a.p_id).firmado_en;
+      }
+      if (nombre === 'disponibilidad_espacios') {
+        if (!tieneRol(a.p_colegio, ['admin', 'profesor'])) err('Solo Administración y los profesores del colegio consultan los espacios.');
+        const out = [];
+        const esps = tabla('espacios').filter((x) => x.colegio_id === a.p_colegio && x.activo).sort((x, y) => x.orden - y.orden);
+        for (let i = 0; i < Math.min(Math.max(a.p_dias || 1, 1), 14); i++) {
+          const fecha = new Date(Date.parse(a.p_desde + 'T12:00:00Z') + i * 86400000).toISOString().slice(0, 10);
+          for (const e of esps) for (const [ini, fin] of franjasDia(a.p_colegio, fecha)) {
+            const motivo = yaPaso(fecha, ini) ? 'pasado' : cruzaAprobada(e.id, fecha, ini, fin) ? 'reservado' : bloqueado(a.p_colegio, e.id, fecha, ini, fin) ? 'bloqueado' : null;
+            out.push({ espacio_id: e.id, fecha, hora_inicio: ini + ':00', hora_fin: fin + ':00', disponible: !motivo, motivo });
+          }
+        }
+        return out;
+      }
+      if (nombre === 'solicitar_espacio') {
+        if (!tieneRol(a.p_colegio, ['profesor'])) err('Solo los profesores del colegio pueden solicitar espacios.');
+        if (!a.p_solicitud) err('Falta la identificación del envío.');
+        const ya = tabla('solicitudes_espacio').find((x) => x.colegio_id === a.p_colegio && x.solicitud_id === a.p_solicitud);
+        if (ya) { if (ya.solicitante_id !== yo) err('Ese envío es de otra persona.'); return copia(ya); }
+        const ini = hm(a.p_inicio), fin = hm(a.p_fin), req = !!a.p_requiere_recursos, txt = (v) => String(v ?? '').trim();
+        if (!tabla('espacios').some((e) => e.id === a.p_espacio && e.colegio_id === a.p_colegio && e.activo)) err('Elige un espacio académico del colegio.');
+        if (!a.p_fecha) err('Elige la fecha.');
+        if (a.p_fecha < hoyBog()) err('La fecha ya pasó: elige hoy o un día siguiente.');
+        if (diaIso(a.p_fecha) > 5) err('Los espacios se piden de lunes a viernes, en las franjas del horario de clases.');
+        if (!franjasDia(a.p_colegio, a.p_fecha).length) err('El colegio aún no tiene horario de clases para ese día: no hay franjas para pedir.');
+        if (!ini || !fin) err('Elige la hora de inicio y la de finalización.');
+        if (fin <= ini) err('La hora de finalización debe ser después de la de inicio.');
+        if (!enFranjas(a.p_colegio, a.p_fecha, ini, fin)) err('El horario debe coincidir con franjas seguidas del horario de clases.');
+        if (yaPaso(a.p_fecha, ini)) err('Esa hora ya pasó: elige una franja que no haya empezado.');
+        if (txt(a.p_actividad).length < 3) err('Describe la actividad que se realizará.');
+        if (txt(a.p_objetivo).length < 3) err('Describe el objetivo de la actividad.');
+        if (req && !txt(a.p_recursos)) err('Escribe los recursos que necesitas y cuántos.');
+        if (bloqueado(a.p_colegio, a.p_espacio, a.p_fecha, ini, fin)) err('Ese horario ya no está disponible: el espacio está bloqueado.');
+        if (cruzaAprobada(a.p_espacio, a.p_fecha, ini, fin)) err('Ese horario ya no está disponible: el espacio tiene una reserva confirmada que se cruza.');
+        if (tabla('solicitudes_espacio').some((x) => x.solicitante_id === yo && x.espacio_id === a.p_espacio && x.fecha === a.p_fecha && hm(x.hora_inicio) === ini && hm(x.hora_fin) === fin && x.estado !== 'rechazada')) err('Ya tienes una solicitud para ese espacio en ese horario.');
+        const r = { id: crypto.randomUUID(), colegio_id: a.p_colegio, espacio_id: a.p_espacio, solicitante_id: yo, solicitud_id: a.p_solicitud, fecha: a.p_fecha,
+          hora_inicio: ini + ':00', hora_fin: fin + ':00', inicio: new Date(instante(a.p_fecha, ini)).toISOString(), fin: new Date(instante(a.p_fecha, fin)).toISOString(),
+          actividad: txt(a.p_actividad), objetivo: txt(a.p_objetivo), requiere_recursos: req, recursos: req ? txt(a.p_recursos) : null,
+          estado: 'pendiente', nota_decision: null, decidido_por: null, decidido_en: null, creado_en: ahora() };
+        tabla('solicitudes_espacio').push(r); guardar();
+        return copia(r);
+      }
+      if (nombre === 'decidir_solicitud_espacio') {
+        const r = tabla('solicitudes_espacio').find((x) => x.id === a.p_id);
+        if (!r || !esAdmin(r.colegio_id)) err('Solo Administración del colegio decide las solicitudes de espacios.');
+        const estado = a.p_aprobar ? 'aprobada' : 'rechazada';
+        if (r.estado !== 'pendiente') { if (r.estado === estado) return copia(r); err('Esta solicitud ya fue decidida.'); }
+        if (a.p_aprobar) {
+          if (yaPaso(r.fecha, hm(r.hora_inicio))) err('Esa hora ya pasó: no se puede aprobar.');
+          if (bloqueado(r.colegio_id, r.espacio_id, r.fecha, hm(r.hora_inicio), hm(r.hora_fin))) err('El espacio está bloqueado en ese horario.');
+          if (cruzaAprobada(r.espacio_id, r.fecha, hm(r.hora_inicio), hm(r.hora_fin), r.id)) err('Ese espacio ya tiene una reserva confirmada que se cruza con este horario.');
+        }
+        Object.assign(r, { estado, nota_decision: String(a.p_nota ?? '').trim() || null, decidido_por: yo, decidido_en: ahora() });
+        guardar();
+        return copia(r);
+      }
+      if (nombre === 'crear_circular_borrador') {
+        if (!esAdmin(a.p_colegio)) err('Solo Administración prepara las circulares institucionales.');
+        if (!a.p_solicitud) err('Falta la identificación de la operación.');
+        if (tabla('circular_numeros_anulados').some((x) => x.colegio_id === a.p_colegio && x.solicitud_id === a.p_solicitud)) err('Esa circular se eliminó: su consecutivo quedó anulado.');
+        const existente = () => tabla('circular_borradores').find((x) => x.colegio_id === a.p_colegio && x.solicitud_id === a.p_solicitud);
+        try {
+          return (await db.insert('circular_borradores', [{ colegio_id: a.p_colegio, autor_id: yo, datos: a.p_datos || {}, solicitud_id: a.p_solicitud }]))[0];
+        } catch (e) { if (existente()) return copia(existente()); throw e; }
       }
       if (nombre === 'crear_colegio') {
         const [c] = await db.insert('colegios', [{ nombre: a.p_nombre, ciudad: a.p_ciudad ?? null, nota_min: 1, nota_max: 5, nota_aprobacion: 3, decimales: 1 }]);

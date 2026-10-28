@@ -1,16 +1,21 @@
 // Circular institucional (formato del colegio en PDF), solo Administración.
 // Se escribe aquí, se guarda como borrador (tabla circular_borradores, con versión para no pisar el trabajo de otro)
 // y se pide el PDF de REVISIÓN al servidor (Edge Function circular-documentos, acción "previsualizar"), con la misma
-// estructura del memo del colegio (Fabio, 27-oct). El consecutivo lo escribe Administración: todavía no se reserva ni se
-// garantiza que no se repita (eso llega con la emisión oficial, cuando se defina la convención). No publica ni envía nada.
+// estructura del memo del colegio (Fabio, 27-oct). El consecutivo lo asigna la base al guardar por PRIMERA vez (Fabio, 28-oct):
+// se crea con crear_circular_borrador y una solicitud_id propia de este documento, así un doble clic, un reintento o
+// recargar la página traen el mismo borrador y el mismo número. Después no cambia. No publica ni envía nada.
 // Lo escrito también se guarda en el equipo mientras tanto (no se pierde por red o al salir).
 import { E, perfiles, logoHTML } from '../estado.js';
 import { esc, aviso, ventana, confirmar, leerForm, nombre, vacio, fechaHora } from '../ui.js';
 import { cabecera } from './comun.js';
-import { AREAS, CARGO_DE_AREA, CATEGORIAS, LIMITES, hoyBogota, fechaLarga, textoDestinatarios, saludoSugerido, textoPlano, contenidoHTML, leerEditor, datosParaServidor, numeracion, siguienteConsecutivo, mismoConsecutivo } from '../circular_contenido.js';
+import { AREAS, CARGO_DE_AREA, CATEGORIAS, LIMITES, hoyBogota, fechaLarga, textoDestinatarios, saludoSugerido, textoPlano, contenidoHTML, leerEditor, datosParaServidor, numeracion } from '../circular_contenido.js';
 
 const VOLVER = '#/circulares-institucionales';
 const SIN_NUMERO = 'Sin número definitivo'; // lo mismo que pone el servidor cuando no hay consecutivo
+// Identificador de la creación de un documento (el mismo en cada reintento)
+const nuevoId = () => crypto.randomUUID?.() || '10000000-1000-4000-8000-100000000000'.replace(/[018]/g, (c) => (c ^ (crypto.getRandomValues(new Uint8Array(1))[0] & (15 >> (c / 4)))).toString(16));
+// El consecutivo de un borrador guardado es el de la base (columna), no lo que diga el formulario
+const deFila = (f) => normal({ ...f.datos, consecutivo: f.consecutivo ?? f.datos?.consecutivo });
 
 // Copia en el equipo de lo que aún no se guarda en el servidor (una por borrador; "nueva" = el que aún no existe)
 const clave = (id) => `complex_circular_${E.colegio.id}_${id}`;
@@ -53,10 +58,10 @@ export async function lista(m) {
     </a>`;
   m.innerHTML = cabecera('Circulares institucionales', { volver: '#/circulares', acciones: '<a class="btn btn-primario" href="#/circular-institucional/nueva">＋ Nueva</a>' }) + `
     <div class="aviso-caja"><p><b>Formato institucional en PDF.</b> Aquí se preparan, se guardan y se revisan en PDF.</p>
-      <p class="ayuda">Nada se publica ni se envía. El consecutivo lo escribe Administración; la reserva oficial del número llega cuando se defina la convención.</p></div>
+      <p class="ayuda">Nada se publica ni se envía. Complex asigna el consecutivo al guardar cada circular por primera vez y no lo vuelve a cambiar.</p></div>
     ${sinGuardar || filas.length ? `<div class="lista">
-      ${sinGuardar ? fila('#/circular-institucional/nueva', normal(sinGuardar.datos), 'Sin guardar · solo en este equipo') : ''}
-      ${filas.map((f) => fila(`#/circular-institucional/${f.id}`, normal(f.datos),
+      ${sinGuardar ? fila('#/circular-institucional/nueva', normal({ ...sinGuardar.datos, consecutivo: '' }), 'Sin guardar · solo en este equipo · aún sin consecutivo') : ''}
+      ${filas.map((f) => fila(`#/circular-institucional/${f.id}`, deFila(f),
         `Borrador · guardado ${esc(fechaHora(f.actualizado_en))} por ${esc(nombre(E.perfiles.get(f.actualizado_por || f.autor_id)))}`,
         leerLocal(f.id) ? ' · <b>con cambios sin guardar en este equipo</b>' : '')).join('')}
     </div>` : vacio('Aún no hay circulares institucionales en borrador.')}`;
@@ -83,20 +88,23 @@ export async function editor(m, p) {
       return;
     }
   }
-  // Los demás borradores (para sugerir el consecutivo y avisar si se repite) y la plantilla vigente (firma y revisión)
-  const [otros, plantillas] = await Promise.all([
-    E.db.select('circular_borradores', { eq: { colegio_id: E.colegio.id } }),
+  // La serie de consecutivos vigente (para decir si es provisional) y la plantilla vigente (firma y revisión)
+  const [series, plantillas] = await Promise.all([
+    E.db.select('circular_series', { eq: { colegio_id: E.colegio.id, vigente: true } }).catch(() => []),
     E.db.modo === 'demo' ? [] : E.db.select('circular_plantillas', { eq: { colegio_id: E.colegio.id, estado: 'aprobada' }, order: 'revision desc', limit: 1 }).catch(() => []),
   ]);
   let plantilla = plantillas[0] || null;
-  // Estado del borrador en el servidor: id, versión con la que se abrió y lo último guardado
-  const srv = { id: fila?.id || null, version: fila?.version || 0, datos: fila ? normal(fila.datos) : null, en: fila?.actualizado_en || null };
+  const provisional = series[0]?.provisional !== false;
+  // Estado del borrador en el servidor: id, versión con la que se abrió, lo último guardado y su consecutivo (fijo).
+  // Uno nuevo lleva su identificador de creación, guardado con la copia del equipo: el reintento tras recargar es el mismo.
+  const srv = { id: fila?.id || null, version: fila?.version || 0, datos: fila ? deFila(fila) : null, en: fila?.actualizado_en || null, consecutivo: fila?.consecutivo || fila?.datos?.consecutivo || '' };
   let llave = srv.id || 'nueva';
   let d = srv.datos || nuevaCircular();
   const local = leerLocal(llave);
-  const recuperado = !!local && !igual(normal(local.datos), d);
-  if (recuperado) { d = normal(local.datos); srv.version = local.version ?? srv.version; } // se guarda sobre la versión que tenía este equipo
-  else if (local) borrarLocal(llave);
+  srv.solicitud = srv.id ? null : local?.solicitud || nuevoId();
+  const recuperado = !!local && !igual(normal({ ...local.datos, consecutivo: srv.consecutivo }), d);
+  if (recuperado) { d = normal({ ...local.datos, consecutivo: srv.consecutivo }); srv.version = local.version ?? srv.version; } // se guarda sobre la versión que tenía este equipo
+  else if (local && srv.id) borrarLocal(llave);
 
   m.innerHTML = cabecera(nueva ? 'Nueva circular institucional' : 'Circular institucional', { volver: VOLVER }) + `
     <div data-circ data-id="${esc(p.id)}">
@@ -108,8 +116,8 @@ export async function editor(m, p) {
         <div class="circ-datos">
           <div><span>Fecha</span><b data-fecha-txt></b><small class="ayuda">Hora de Colombia. Queda fija en el borrador. <button type="button" class="btn-link" data-hoy hidden>Usar la de hoy</button></small></div>
         </div>
-        <label>Consecutivo<input name="consecutivo" maxlength="${LIMITES.consecutivo}" placeholder="Ej.: memo E2-002-2026-2027"></label>
-        <div class="circ-consec"><small class="ayuda" data-consec-ayuda></small><button type="button" class="btn btn-chico" data-sugerido hidden></button></div>
+        <label>Consecutivo<input data-consec readonly aria-readonly="true" placeholder="Se asigna al guardar"></label>
+        <div class="circ-consec"><small class="ayuda" data-consec-ayuda></small></div>
         <small class="ayuda">Referencia interna del borrador: <span data-ref>${esc(referencia(srv.id))}</span></small>
         <label>Área que emite<input name="dependencia" list="circ-areas" maxlength="${LIMITES.dependencia}" placeholder="Ej.: Rectoría"><datalist id="circ-areas">${AREAS.map((a) => `<option value="${esc(a)}">`).join('')}</datalist></label>
       </section>
@@ -145,7 +153,7 @@ export async function editor(m, p) {
     <section class="tarjeta">
       <h2>Emitir</h2>
       <button class="btn" disabled>Emitir con número oficial</button>
-      <p class="ayuda">Se habilita cuando se defina la convención del consecutivo: al emitir, el número quedará reservado para que no se repita ni se reutilice. Mientras tanto nada se publica ni se envía.</p>
+      <p class="ayuda">El consecutivo ya queda reservado al guardar el borrador. Emitir (dejarla oficial y definitiva) se habilita cuando se confirme la convención de numeración. Mientras tanto nada se publica ni se envía.</p>
       <button class="btn btn-peligro btn-chico" data-eliminar ${srv.id ? '' : 'hidden'}>Eliminar borrador</button>
     </section>
     <div class="pie-fijo circ-pie">
@@ -166,7 +174,7 @@ export async function editor(m, p) {
 
   // ----- Pintar los datos en el formulario
   const poner = (x) => {
-    for (const k of ['consecutivo', 'dependencia', 'destinatarios_otros', 'titulo', 'responsable', 'cargo']) form.elements[k].value = x[k];
+    for (const k of ['dependencia', 'destinatarios_otros', 'titulo', 'responsable', 'cargo']) form.elements[k].value = x[k];
     for (const cb of form.querySelectorAll('[name=destinatarios]')) cb.checked = x.destinatarios.includes(cb.value);
     ed.innerHTML = contenidoHTML(x.contenido);
   };
@@ -175,7 +183,7 @@ export async function editor(m, p) {
   // ----- Leer el formulario
   const actual = () => {
     const f = leerForm(form);
-    return normal({ ...f, fecha_emision: d.fecha_emision, contenido: leerEditor(ed) });
+    return normal({ ...f, consecutivo: srv.consecutivo, fecha_emision: d.fecha_emision, contenido: leerEditor(ed) });
   };
 
   let guardando = false, localT = null;
@@ -184,18 +192,12 @@ export async function editor(m, p) {
     $c('[data-fecha-txt]').textContent = fechaLarga(x.fecha_emision);
     $c('[data-hoy]').hidden = x.fecha_emision === hoyBogota();
     $c('[data-para-txt]').textContent = textoDestinatarios(x.destinatarios, x.destinatarios_otros) || '—';
-    // Consecutivo: sugerencia (el que sigue al último usado) y aviso si otro borrador ya tiene el mismo
-    const demas = otros.filter((o) => o.id !== srv.id).map((o) => normal(o.datos));
-    const repetido = demas.find((o) => mismoConsecutivo(o.consecutivo, x.consecutivo));
-    const ayudaC = $c('[data-consec-ayuda]');
-    ayudaC.classList.toggle('circ-alerta', !!repetido);
-    ayudaC.textContent = repetido ? `Ojo: el borrador «${repetido.titulo || 'sin asunto'}» ya usa este consecutivo.`
-      : 'Lo escribe Administración. Todavía no se reserva: la emisión oficial (que evita repetidos) llega cuando se defina la convención.';
-    const sug = siguienteConsecutivo(demas.map((o) => o.consecutivo));
-    const btnSug = $c('[data-sugerido]');
-    btnSug.hidden = !!x.consecutivo.trim() || !sug;
-    btnSug.dataset.valor = sug;
-    btnSug.textContent = `Usar «${sug}»`;
+    // Consecutivo: solo lectura; lo pone la base al guardar por primera vez
+    $c('[data-consec]').value = srv.consecutivo;
+    $c('[data-consec-ayuda]').textContent = (srv.consecutivo
+      ? 'Lo asignó Complex al guardar por primera vez. No cambia al editar, previsualizar ni descargar.'
+      : 'Complex lo asigna al guardar por primera vez. Abrir el formulario o previsualizar no gasta números.')
+      + (provisional ? ' Numeración provisional: la convención oficial está pendiente.' : '');
     // La lista numerada que sigue a un párrafo con sangría continúa la cuenta (1, 2, 3, párrafo, 4), como en el PDF
     const ini = numeracion(x.contenido.bloques);
     x.contenido.bloques.forEach((b, i) => { if (b.nodo && b.ordenada) { if (ini[i] > 1) b.nodo.start = ini[i]; else b.nodo.removeAttribute('start'); } });
@@ -224,7 +226,7 @@ export async function editor(m, p) {
     clearTimeout(localT);
     localT = setTimeout(() => {
       if (srv.datos && igual(x, srv.datos)) borrarLocal(llave);
-      else if (!guardarLocal(llave, { datos: x, version: srv.version, en: Date.now() })) $c('[data-estado]').textContent = 'Este equipo no tiene espacio para la copia de seguridad: guarda en el servidor.';
+      else if (!guardarLocal(llave, { datos: x, version: srv.version, en: Date.now(), ...(srv.id ? {} : { solicitud: srv.solicitud }) })) $c('[data-estado]').textContent = 'Este equipo no tiene espacio para la copia de seguridad: guarda en el servidor.';
     }, 300);
   };
   pintar();
@@ -240,7 +242,6 @@ export async function editor(m, p) {
     areaAntes = area;
   });
   $c('[data-hoy]').addEventListener('click', () => { d = { ...d, fecha_emision: hoyBogota() }; cambio(); });
-  $c('[data-sugerido]').addEventListener('click', (e) => { form.elements.consecutivo.value = e.currentTarget.dataset.valor; cambio(); });
 
   // ----- Editor de contenido: párrafos, negrita y listas (lo que acepta el formato del servidor)
   ed.addEventListener('focus', () => { try { document.execCommand('defaultParagraphSeparator', false, 'p'); } catch {} });
@@ -293,8 +294,12 @@ export async function editor(m, p) {
     guardando = true; btnGuardar.disabled = true; pintar();
     try {
       let r;
-      if (!srv.id) {
-        [r] = await E.db.insert('circular_borradores', [{ colegio_id: E.colegio.id, autor_id: E.yo.id, datos: x }]);
+      const primera = !srv.id;
+      if (primera) {
+        // La copia del equipo lleva el identificador de esta creación: si la red falla y se recarga, el reintento es el mismo
+        guardarLocal('nueva', { datos: x, version: 0, en: Date.now(), solicitud: srv.solicitud });
+        r = await E.db.rpc('crear_circular_borrador', { p_colegio: E.colegio.id, p_solicitud: srv.solicitud, p_datos: x });
+        E.db.refrescar('circular_borradores');
         borrarLocal('nueva');
         llave = r.id;
         caja.dataset.id = r.id;
@@ -304,11 +309,13 @@ export async function editor(m, p) {
         [r] = await E.db.update('circular_borradores', { datos: x }, { id: srv.id, version: srv.version });
         if (!r) { guardando = false; btnGuardar.disabled = false; pintar(); await conflicto(x); return false; }
       }
-      Object.assign(srv, { id: r.id, version: r.version, datos: normal(r.datos), en: r.actualizado_en });
-      if (igual(actual(), srv.datos)) borrarLocal(llave); // si siguió escribiendo mientras se guardaba, la copia se queda
+      Object.assign(srv, { id: r.id, version: r.version, datos: deFila(r), en: r.actualizado_en, consecutivo: r.consecutivo || r.datos?.consecutivo || '' });
+      // si siguió escribiendo mientras se guardaba (o era un reintento de algo ya creado), lo nuevo se queda en el equipo
+      if (igual(actual(), srv.datos)) borrarLocal(llave);
+      else guardarLocal(llave, { datos: actual(), version: srv.version, en: Date.now() });
       $c('[data-eliminar]').hidden = false;
       $c('[data-recuperado]')?.remove();
-      aviso('Borrador guardado');
+      aviso(primera ? `Borrador guardado con el consecutivo ${srv.consecutivo}` : 'Borrador guardado');
       return true;
     } catch (e) {
       aviso(e.message, 'error');
@@ -326,14 +333,15 @@ export async function editor(m, p) {
     const r = await ventana({
       titulo: otro ? 'Otra persona guardó este borrador' : 'Este borrador ya no existe',
       html: `<p>${otro ? `Se guardó ${esc(fechaHora(otro.actualizado_en))} por ${esc(nombre(E.perfiles.get(otro.actualizado_por)))}, después de que lo abriste aquí. Para no borrar su trabajo, tus cambios <b>no</b> se guardaron encima.` : 'Lo eliminaron desde otro equipo.'}</p>
-        <p>Tus cambios siguen en este equipo. Puedes <b>guardarlos aparte</b> como otro borrador${otro ? ' o <b>ver la guardada</b> (se descartan los cambios de este equipo)' : ''}.</p>`,
+        <p>Tus cambios siguen en este equipo. Puedes <b>guardarlos aparte</b> como otro borrador (con su propio consecutivo)${otro ? ' o <b>ver la guardada</b> (se descartan los cambios de este equipo)' : ''}.</p>`,
       botones: [...(otro ? [{ texto: 'Ver la guardada', valor: 'recargar' }] : []), { texto: 'Guardar aparte', valor: 'nuevo' }],
     });
     if (r === 'nuevo') {
       try {
-        const [n] = await E.db.insert('circular_borradores', [{ colegio_id: E.colegio.id, autor_id: E.yo.id, datos: mios }]);
+        const n = await E.db.rpc('crear_circular_borrador', { p_colegio: E.colegio.id, p_solicitud: nuevoId(), p_datos: { ...mios, consecutivo: '' } });
+        E.db.refrescar('circular_borradores');
         borrarLocal(llave);
-        aviso('Guardado como borrador nuevo');
+        aviso(`Guardado como borrador nuevo con el consecutivo ${n.consecutivo || ''}`);
         location.hash = '#/circular-institucional/' + n.id;
       } catch (e) { aviso(e.message, 'error'); }
     } else if (r === 'recargar') {
@@ -378,7 +386,7 @@ export async function editor(m, p) {
       const archivo = `Circular_revision_${v.datos.fecha_emision}.pdf`;
       await ventana({
         titulo: 'PDF de revisión listo',
-        html: `<p>Es una <b>vista previa</b> con el formato del colegio: no queda emitida, el consecutivo no se reserva y no se envía a nadie.</p>
+        html: `<p>Es una <b>vista previa</b> con el formato del colegio: no queda emitida y no se envía a nadie. ${srv.consecutivo ? `Lleva el consecutivo del borrador guardado (${esc(srv.consecutivo)}).` : 'Aún sin consecutivo: se asigna al guardar.'}</p>
           <p class="ayuda">${Math.max(1, Math.round(pdf.size / 1024))} KB · generado en ${seg} s · plantilla rev. ${esc(plantilla.revision)}</p>
           <div class="circ-acciones"><a class="btn btn-primario" href="${url}" target="_blank" rel="noopener">Abrir</a><a class="btn" href="${url}" download="${esc(archivo)}">Descargar</a></div>`,
         botones: [{ texto: 'Cerrar' }],
@@ -400,7 +408,7 @@ export async function editor(m, p) {
 
   // ----- Eliminar el borrador (no hay otra copia: se pide confirmación)
   $c('[data-eliminar]').addEventListener('click', async () => {
-    if (!(await confirmar('¿Eliminar el borrador?', 'Se borra para todo el equipo de Administración. No se puede deshacer.', 'Eliminar'))) return;
+    if (!(await confirmar('¿Eliminar el borrador?', `Se borra para todo el equipo de Administración. Su consecutivo${srv.consecutivo ? ` «${srv.consecutivo}»` : ''} queda anulado: no se vuelve a usar. No se puede deshacer.`, 'Eliminar'))) return;
     try {
       await E.db.remove('circular_borradores', { id: srv.id });
       borrarLocal(llave);
