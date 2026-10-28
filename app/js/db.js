@@ -402,6 +402,7 @@ export function crearDbDemo() {
     cobros: () => ({ anulado: false, numero: siguiente('cobros') }),
     pagos: () => ({ anulado: false, medio: 'efectivo', fecha: hoyLocal(), numero: siguiente('pagos') }),
     acudientes: () => ({ principal: false, responsable_pagos: false }),
+    circular_borradores: () => ({ datos: {}, version: 1, creado_en: ahora(), actualizado_en: ahora(), actualizado_por: usuario() }),
   };
 
   // (insertar = true: la fila es nueva; una entrega nueva llega sin nota y NO debe borrar la nota de la planilla)
@@ -655,7 +656,8 @@ export function crearDbDemo() {
       await lento();
       const out = [];
       tabla(n).forEach((f, i) => {
-        if (coincide(f, { eq })) { tabla(n)[i] = completar(n, { ...f, ...cambios }); if ('nota' in cambios || 'pendiente_revision' in cambios) aPlanilla(n, tabla(n)[i]);
+        // Como el trigger circular_borrador_fijo: la versión sube sola y lo de origen no cambia
+        if (coincide(f, { eq })) { tabla(n)[i] = completar(n, { ...f, ...cambios, ...(n === 'circular_borradores' ? { id: f.id, colegio_id: f.colegio_id, autor_id: f.autor_id, creado_en: f.creado_en, version: f.version + 1, actualizado_en: ahora(), actualizado_por: usuario() } : {}) }); if ('nota' in cambios || 'pendiente_revision' in cambios) aPlanilla(n, tabla(n)[i]);
           if (n === 'examenes' && ('resultados_publicados' in cambios || 'mostrar_resultado' in cambios)) for (const it of tabla('examen_intentos').filter((x) => x.examen_id === f.id && x.nota != null)) aPlanilla('examen_intentos', it); out.push(copia(tabla(n)[i])); }
       });
       guardar();

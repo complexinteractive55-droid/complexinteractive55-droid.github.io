@@ -20,7 +20,8 @@ export async function lista(m) {
   let circ = await E.db.select('circulares', { eq: { colegio_id: E.colegio.id }, order: 'creado_en desc' });
   if (!admin) circ = await visiblesParaMi(b, circ);
   const leidas = new Set((await E.db.select('circular_lecturas', { eq: { perfil_id: E.yo.id } })).map((l) => l.circular_id));
-  m.innerHTML = cabecera('Circulares', { acciones: admin ? '<button class="btn btn-primario" data-nueva>＋ Nueva</button>' : '' }) + (circ.length ? `
+  m.innerHTML = cabecera('Circulares', { acciones: admin ? '<button class="btn btn-primario" data-nueva>＋ Nueva</button>' : '' }) + (admin ? `
+    <a class="tarjeta fila fila-boton circ-entrada" href="#/circulares-institucionales"><span class="avatar">📄</span><span class="crece"><b>Circulares institucionales (PDF)</b><small>Formato oficial del colegio: borradores y PDF de revisión</small></span><span aria-hidden="true">›</span></a>` : '') + (circ.length ? `
     <div class="lista">${circ.map((c) => `
       <a class="fila fila-boton ${!admin && !leidas.has(c.id) ? 'sin-leer' : ''}" href="#/circular/${c.id}">
         <span class="avatar">${c.publicada_en ? '📣' : '📝'}</span>

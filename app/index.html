@@ -6,7 +6,8 @@
        huella de integridad); los datos solo van a nuestro Supabase. Si alguien lograra meter HTML en un
        mensaje, el navegador no ejecutaría scripts. -->
   <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' https://cdn.jsdelivr.net; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob: https://auyfjqprhspncctnufzi.supabase.co; connect-src 'self' https://auyfjqprhspncctnufzi.supabase.co wss://auyfjqprhspncctnufzi.supabase.co; font-src 'self' data:; worker-src 'self' blob:; manifest-src 'self'; object-src 'none'; base-uri 'self'; form-action 'self'">
-  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <!-- Sin zoom (Fabio, 27-oct): ni con dos dedos ni al tocar un campo de texto en el iPhone -->
+  <meta name="viewport" content="width=device-width, initial-scale=1, minimum-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover">
   <title>Complex_</title>
   <meta name="description" content="Complex_: notas, asistencia, observador y circulares de tu colegio.">
   <meta name="theme-color" content="#1f4fd1">

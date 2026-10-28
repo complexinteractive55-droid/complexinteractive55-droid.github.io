@@ -38,6 +38,9 @@
 
 * { box-sizing: border-box; }
 html, body { margin: 0; height: 100%; }
+/* Sin zoom con dos dedos ni con doble toque: se desplaza con un dedo, pero la página no se agranda ni se achica.
+   (Las tablas y pestañas que se mueven de lado siguen funcionando: pan-x.) */
+html { touch-action: pan-x pan-y; }
 body {
   background: var(--fondo); color: var(--texto);
   font: 16px/1.45 system-ui, -apple-system, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
@@ -239,6 +242,50 @@ input.nota:disabled { background: transparent; border-color: transparent; color:
 .obs-positiva { border-left-color: var(--ok); } .obs-negativa { border-left-color: var(--peligro); } .obs-compromiso { border-left-color: var(--alerta); } .obs-seguimiento { border-left-color: var(--alto); }
 
 .circular-cuerpo { white-space: normal; font-size: 16px; line-height: 1.6; margin-top: 12px; }
+
+/* ---------- Circular institucional (formato PDF del colegio) ---------- */
+.circ-entrada { padding: 10px 12px; margin-bottom: 12px; }
+.circ-form { gap: 0; }
+.circ-form .tarjeta { display: flex; flex-direction: column; gap: 14px; }
+.circ-form .tarjeta h2 { margin: 0; }
+.circ-datos { display: grid; gap: 10px; }
+.circ-datos > div { display: flex; flex-direction: column; gap: 2px; }
+.circ-datos > div > span { font-size: 14px; color: var(--texto-2); font-weight: 600; }
+.circ-datos .ayuda { margin: 0; }
+.circ-para { flex-direction: row !important; flex-wrap: wrap; gap: 10px 20px !important; }
+.circ-para > label:not(.check) { flex-basis: 100%; }
+.circ-herr { display: flex; flex-wrap: wrap; gap: 6px; margin-bottom: -6px; }
+.circ-editor { position: relative; min-height: 220px; max-height: 60vh; overflow: auto; padding: 10px 12px; border: 1px solid var(--borde); border-radius: 10px; background: var(--superficie); line-height: 1.55; font-size: 16px; overflow-wrap: break-word; -webkit-user-select: text; user-select: text; }
+.circ-editor:focus { outline: none; border-color: var(--primario); box-shadow: 0 0 0 3px var(--primario-suave); }
+.circ-editor.vacio::before { content: attr(data-ph); color: var(--texto-2); pointer-events: none; position: absolute; left: 12px; top: 10px; right: 12px; }
+.circ-editor p { margin: 0 0 10px; }
+.circ-editor ol, .circ-editor ul { margin: 0 0 10px; padding-left: 26px; }
+/* sub-puntos a., b., c. (en el PDF siempre van con letra) y párrafos con sangría alineados con el texto de los puntos */
+.circ-editor :is(ol, ul) :is(ol, ul), .circ-cuerpo :is(ol, ul) :is(ol, ul) { list-style-type: lower-alpha; margin: 0; }
+.circ-editor li > p, .circ-cuerpo li > p { margin: 10px 0 0; }
+.circ-editor blockquote, .circ-cuerpo blockquote { margin: 0 0 10px 26px; }
+.circ-editor blockquote p, .circ-cuerpo blockquote p { margin: 0; }
+.circ-consec { display: flex; flex-wrap: wrap; align-items: center; gap: 6px 10px; margin-top: -8px; }
+.circ-consec .ayuda { margin: 0; flex: 1 1 220px; }
+.circ-alerta { color: var(--alerta) !important; font-weight: 600; }
+.circ-pie { background: var(--superficie); border: 1px solid var(--borde); border-radius: var(--radio); padding: 8px 10px; box-shadow: var(--sombra); }
+.circ-estado { margin: 0 0 6px; font-size: 13px; color: var(--texto-2); }
+.circ-acciones { display: flex; gap: 8px; flex-wrap: wrap; }
+.circ-acciones .btn { flex: 1 1 0; min-width: 0; padding-inline: 6px; white-space: normal; text-align: center; line-height: 1.15; }
+/* La hoja simula el papel: blanca también en modo oscuro */
+.circ-hoja { --papel: #fff; --tinta: #1b1b1b; --linea: #9aa3b2; background: var(--papel); color: var(--tinta); border-radius: 6px; padding: 22px 20px; box-shadow: var(--sombra); font-family: Arial, Helvetica, sans-serif; font-size: 14px; line-height: 1.5; }
+.circ-membrete { display: flex; align-items: center; gap: 10px; border-bottom: 2px solid var(--linea); padding-bottom: 10px; margin-bottom: 14px; }
+.circ-logo { width: 40px; height: 40px; object-fit: contain; }
+.circ-cuadro { width: 100%; border-collapse: collapse; margin-bottom: 14px; }
+.circ-cuadro td { border: 1px solid var(--tinta); padding: 2px 6px; text-align: left; vertical-align: top; line-height: 1.3; }
+.circ-cuadro td:first-child { width: 42%; }
+.circ-asunto { text-align: right; margin: 0 0 14px; }
+.circ-cuerpo p { margin: 0 0 10px; }
+.circ-cuerpo ol, .circ-cuerpo ul { margin: 0 0 10px; padding-left: 24px; }
+.circ-firma { display: flex; flex-direction: column; margin-top: 30px; }
+.circ-firma p { margin: 0 0 40px; }
+.circ-hoja .ayuda { color: var(--tinta); font-size: 13px; }
+.circ-marca { margin: 18px 0 0; text-align: center; font-size: 11px; color: #6b7280; }
 .tarjeta-hijo:hover { border-color: var(--primario); }
 
 /* ---------- Entrar ---------- */

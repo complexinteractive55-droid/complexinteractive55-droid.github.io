@@ -18,6 +18,7 @@ const pant = {
   enfermeria: () => import('./pantallas/enfermeria.js'),
   familia: () => import('./pantallas/familia.js'),
   circulares: () => import('./pantallas/circulares.js'),
+  circularInst: () => import('./pantallas/circular_institucional.js'),
   planeaciones: () => import('./pantallas/planeaciones.js'),
   mensajeria: () => import('./pantallas/mensajeria.js'),
   aula: () => import('./pantallas/aula.js'),
@@ -68,6 +69,10 @@ export async function instalarApp() {
   });
 }
 document.addEventListener('click', (e) => { if (e.target.closest('[data-instalar]')) instalarApp(); });
+// Sin zoom con dos dedos en el celular (Fabio, 27-oct: "se convierte en algo molesto"). El viewport y el CSS
+// (touch-action) lo frenan en Android; Safari del iPhone los ignora, así que aquí se cancela el gesto en sí.
+for (const ev of ['gesturestart', 'gesturechange', 'gestureend']) document.addEventListener(ev, (e) => e.preventDefault(), { passive: false });
+document.addEventListener('touchmove', (e) => { if (e.touches.length > 1) e.preventDefault(); }, { passive: false });
 // Botones de imprimir y de reintentar (antes con onclick="…" en el HTML; así la política de seguridad CSP puede prohibir scripts en línea)
 document.addEventListener('click', (e) => {
   if (e.target.closest('[data-imprimir]')) window.print();
@@ -112,6 +117,8 @@ const RUTAS = [
   ['boletin/:est/:periodo', async (p) => (await pant.familia()).boletin(main(), p)],
   ['circulares', async () => (await pant.circulares()).lista(main())],
   ['circular/:id', async (p) => (await pant.circulares()).detalle(main(), p)],
+  ['circulares-institucionales', async () => (await pant.circularInst()).lista(main())],
+  ['circular-institucional/:id', async (p) => (await pant.circularInst()).editor(main(), p)],
   ['planeaciones', async (p) => (await pant.planeaciones()).lista(main(), p)],
   ['bandeja', async (p) => (await pant.mensajeria()).bandeja(main(), p)],
   ['enviados', async () => (await pant.mensajeria()).enviados(main())],
@@ -241,7 +248,7 @@ function menuBase() {
     { t: 'Tesorería', ic: '💰', items: [[`estado-cuenta/${est}`, 'Consolidado']] }];
   return [tablero, perfilG(), COMUNICACION, { t: 'Comunidad', ic: '👥', items: [['calendario', 'Calendario'], ['procesos', 'Procesos'], ['archivos', 'Archivos globales']] }, { t: 'Matrícula', ic: '🎒', items: [['obligaciones', 'Obligaciones']] }, { t: 'Tesorería', ic: '💰', items: [['tesoreria', 'Consolidado']] }];
 }
-const SECCION = { 'curso/:id': 'estructura', 'notas/:asig': 'clases', 'asistencia/:asig': 'clases', 'circular/:id': 'circulares', 'mensaje/:id': 'bandeja', 'aula/:asig': 'aula', 'tarea/:id': 'aula', 'examen/:id': 'aula', 'estado-cuenta/:est': 'tesoreria', 'proceso/:id': 'procesos', 'proceso/:id/respuestas': 'procesos', 'seguimiento/:id': 'seguimientos', 'docente/:id': 'docentes', 'grupo/:asig': 'clases', 'consolidado/:asig': 'clases', 'observaciones-boletin/:asig': 'clases', 'remediales/:asig': 'clases' };
+const SECCION = { 'curso/:id': 'estructura', 'notas/:asig': 'clases', 'asistencia/:asig': 'clases', 'circular/:id': 'circulares', 'circulares-institucionales': 'circulares', 'circular-institucional/:id': 'circulares', 'mensaje/:id': 'bandeja', 'aula/:asig': 'aula', 'tarea/:id': 'aula', 'examen/:id': 'aula', 'estado-cuenta/:est': 'tesoreria', 'proceso/:id': 'procesos', 'proceso/:id/respuestas': 'procesos', 'seguimiento/:id': 'seguimientos', 'docente/:id': 'docentes', 'grupo/:asig': 'clases', 'consolidado/:asig': 'clases', 'observaciones-boletin/:asig': 'clases', 'remediales/:asig': 'clases' };
 
 function itemActivo(ruta, patron) {
   const h = (location.hash || '#/inicio').slice(2);

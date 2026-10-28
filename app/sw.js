@@ -1,13 +1,13 @@
 // Service worker de Complex_: guarda la app para abrirla rápido y sin internet.
 // Los datos (Supabase) siempre van a la red.
-const VERSION = 'complexapp-20261027194727';
+const VERSION = 'complexapp-20261027220352';
 // Solo se borran las versiones viejas de ESTA app: en fabiandres55.github.io viven también Relax y Complex_ (app2),
 // y la caché del navegador es una sola por dominio (antes se borraba todo lo que no fuera esta versión).
 const PREFIJO = VERSION.replace(/[^-]+$/, '');
 const ARCHIVOS = [
   './', './index.html', './estilos.css', './estilos-rea.css', './manifest.webmanifest', './img/icono.svg', './img/simbolo.svg', './img/logo-complex.svg',
   './vendor/supabase-2.117.3.js', './js/app.js', './js/config.js', './js/db.js', './js/demo-semilla.js', './js/ui.js', './js/estado.js', './js/calculos.js',
-  './js/pantallas/comun.js', './js/pantallas/admin.js', './js/pantallas/profesor.js', './js/pantallas/planilla.js', './js/pantallas/boletin_docente.js', './js/pantallas/notas_util.js', './js/pantallas/destinos.js', './js/pantallas/seguimientos.js', './js/pantallas/docencia.js', './js/pantallas/familia_perfil.js', './js/pantallas/familia.js', './js/pantallas/circulares.js', './js/pantallas/planeaciones.js', './js/pantallas/mensajeria.js', './js/pantallas/aula.js', './js/pantallas/calendario.js', './js/pantallas/tesoreria.js', './js/pantallas/comunidad.js', './js/pantallas/procesos.js', './js/pantallas/tablero.js', './js/pantallas/certificados.js', './js/pantallas/usuarios.js', './js/pantallas/horario.js', './js/pantallas/reportes.js', './js/pantallas/examenes.js', './js/pantallas/ayuda.js', './js/pantallas/carnet.js',
+  './js/pantallas/comun.js', './js/pantallas/admin.js', './js/pantallas/profesor.js', './js/pantallas/planilla.js', './js/pantallas/boletin_docente.js', './js/pantallas/notas_util.js', './js/pantallas/destinos.js', './js/pantallas/seguimientos.js', './js/pantallas/docencia.js', './js/pantallas/familia_perfil.js', './js/pantallas/familia.js', './js/pantallas/circulares.js', './js/pantallas/circular_institucional.js', './js/circular_contenido.js','./js/pantallas/planeaciones.js', './js/pantallas/mensajeria.js', './js/pantallas/aula.js', './js/pantallas/calendario.js', './js/pantallas/tesoreria.js', './js/pantallas/comunidad.js', './js/pantallas/procesos.js', './js/pantallas/tablero.js', './js/pantallas/certificados.js', './js/pantallas/usuarios.js', './js/pantallas/horario.js', './js/pantallas/reportes.js', './js/pantallas/examenes.js', './js/pantallas/ayuda.js', './js/pantallas/carnet.js',
   './js/pantallas/enfermeria.js', './js/pantallas/compromisos.js', './js/pantallas/casos.js', './js/pantallas/plantillas.js', './js/pantallas/docente.js',
   './js/i18n.js', './js/i18n/en1.js', './js/i18n/en2.js', './js/i18n/en3.js', './js/i18n/en4.js',
 ];
