@@ -1,6 +1,6 @@
 // Complex_ — arranque, enrutador y armazón de la app.
 import { crearDbSupabase, crearDbDemo, cargarSemillaDemo, huellaEnEsteEquipo } from './db.js';
-import { E, pref, base, cargarYo, elegirColegio, cambiarRol, cargarPersonas, elegirPersona, personaActiva, viendoHijo, logoHTML, aplicarMarca } from './estado.js';
+import { E, pref, base, cargarYo, elegirColegio, cambiarRol, cargarPersonas, elegirPersona, personaActiva, viendoHijo, logoHTML, aplicarMarca, fotos } from './estado.js';
 import { esc, $, aviso, ventana, leerForm, confirmar, ROL, nombre, iniciales, etiquetarTablas, fecha, fechaHora } from './ui.js';
 import { APP_VERSION } from './config.js';
 import { idioma, elegirIdioma, activarTraduccion } from './i18n.js';
@@ -300,6 +300,7 @@ function pintarArmazon(patron) {
     });
     document.addEventListener('keydown', (e) => { if (e.key === 'Escape') abrirMenu(false); });
     window.addEventListener('complex:mensajes', pintarContadores);
+    window.addEventListener('complex:foto', () => ponerFotos($('#app')));
   }
   aplicarMarca();
   $('#btn-colegio').innerHTML = `${logoHTML('logo-mini')}<span class="nombre-colegio">${esc(E.colegio.nombre)}</span>${E.db.modo === 'demo' ? '<span class="etiqueta-demo">DEMO</span>' : ''}`;
@@ -313,12 +314,12 @@ function pintarArmazon(patron) {
     const pe = E.perfiles.get(x.id) || {};
     const act = x.id === E.persona;
     return `<button role="tab" aria-selected="${act}" class="persona ${act ? 'activa' : ''}" data-persona="${x.id}">
-      <span class="avatar">${esc(iniciales(pe))}</span><span><b>${esc(pe.nombres || nombre(pe))}</b><small>${x.familiar ? 'familiar' : 'estudiante'}</small></span></button>`;
+      <span class="avatar" data-foto-de="${x.id}">${esc(iniciales(pe))}</span><span><b>${esc(pe.nombres || nombre(pe))}</b><small>${x.familiar ? 'familiar' : 'estudiante'}</small></span></button>`;
   }).join('');
 
   $('#menu').innerHTML = `
     <div class="menu-cab">
-      <span class="avatar grande">${esc(iniciales(E.yo))}</span>
+      <span class="avatar grande" data-foto-de="${E.yo.id}">${esc(iniciales(E.yo))}</span>
       <span><b>${esc(nombre(E.yo))}</b><small>${ROL[E.rol]} · ${esc(E.colegio.nombre)}</small></span>
     </div>
     <input class="filtro-menu" type="search" placeholder="🔍 Filtrar menú" aria-label="Filtrar menú">
@@ -332,6 +333,19 @@ function pintarArmazon(patron) {
       <button class="menu-boton" data-salir><span class="ic">🚪</span><span>Cerrar sesión</span></button>
     </div>`;
   pintarContadores();
+  ponerFotos($('#app'));
+}
+
+// Foto de la persona en el menú, las pestañas de persona y Mi cuenta: primero las iniciales; si tiene foto, la foto.
+// Al subir una foto (evento complex:foto) se cambia aquí sin recargar.
+async function ponerFotos(raiz) {
+  const els = [...raiz.querySelectorAll('[data-foto-de]')];
+  if (!els.length) return;
+  const fot = await fotos(els.map((el) => el.dataset.fotoDe)).catch(() => new Map());
+  for (const el of els) {
+    const url = fot.get(el.dataset.fotoDe);
+    if (url && el.querySelector('img')?.getAttribute('src') !== url) el.innerHTML = `<img src="${esc(url)}" alt="" decoding="async">`;
+  }
 }
 
 async function pintarContadores() {
@@ -603,10 +617,12 @@ async function pantallaColegios() {
 async function perfil() {
   const m = main();
   const tema = pref('tema') || 'auto';
+  const tieneFoto = !!(await fotos([E.yo.id]).catch(() => new Map())).get(E.yo.id);
   m.innerHTML = `
     <h1 class="titulo">Más</h1>
     <section class="tarjeta">
-      <div class="fila"><span class="avatar grande">${esc(iniciales(E.yo))}</span><span><b>${esc(nombre(E.yo))}</b><small>${esc(E.sesion.user.email || '')}</small></span></div>
+      <div class="fila"><span class="avatar grande" data-foto-de="${E.yo.id}">${esc(iniciales(E.yo))}</span><span><b>${esc(nombre(E.yo))}</b><small>${esc(E.sesion.user.email || '')}</small></span></div>
+      <div class="acciones-grupo"><button class="btn" id="btn-foto">📷 ${tieneFoto ? 'Cambiar foto' : 'Poner foto'}</button></div>
       <div class="form" id="f-perfil">
         <label>Nombres<input name="nombres" value="${esc(E.yo.nombres)}"></label>
         <label>Apellidos<input name="apellidos" value="${esc(E.yo.apellidos)}"></label>
@@ -664,6 +680,13 @@ async function perfil() {
   $('#btn-cambiar-rol')?.addEventListener('click', elegirRol);
   $('#btn-cambiar-colegio').onclick = () => { E.colegio = null; navegar(); };
   $('#btn-salir').onclick = salir;
+  $('#btn-foto').onclick = async (ev) => {
+    ev.target.disabled = true;
+    try { if (await (await pant.famPerfil()).cambiarFoto(E.yo.id)) { aviso('Foto guardada'); perfil(); } }
+    catch (e) { aviso(e.message, 'error'); }
+    finally { ev.target.disabled = false; }
+  };
+  ponerFotos(m);
   if (E.db.modo === 'real' && window.PublicKeyCredential) pintarHuellas(m);
 }
 

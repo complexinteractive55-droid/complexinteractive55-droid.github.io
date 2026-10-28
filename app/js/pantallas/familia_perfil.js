@@ -141,7 +141,7 @@ async function achicarFoto(archivo, lado = 480) {
   return new Promise((ok, mal) => c.toBlob((b) => (b ? ok(b) : mal(new Error('No se pudo leer la imagen.'))), 'image/jpeg', 0.85));
 }
 
-async function cambiarFoto(id) {
+export async function cambiarFoto(id) {
   const inp = document.createElement('input');
   inp.type = 'file';
   inp.accept = 'image/*';
@@ -155,5 +155,6 @@ async function cambiarFoto(id) {
   await E.db.upsert('fotos', [{ perfil_id: id, ruta, actualizado_en: new Date().toISOString() }], 'perfil_id');
   if (antes?.ruta && antes.ruta !== ruta) E.db.borrarArchivo('fotos', antes.ruta).catch(() => {});
   olvidarFoto(id);
+  window.dispatchEvent(new CustomEvent('complex:foto', { detail: { id } })); // menú y Mi cuenta
   return true;
 }
