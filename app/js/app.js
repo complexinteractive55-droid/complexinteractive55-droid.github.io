@@ -20,6 +20,7 @@ const pant = {
   circulares: () => import('./pantallas/circulares.js'),
   circularInst: () => import('./pantallas/circular_institucional.js'),
   espacios: () => import('./pantallas/espacios.js'),
+  pqrs: () => import('./pantallas/pqrs.js'),
   planeaciones: () => import('./pantallas/planeaciones.js'),
   mensajeria: () => import('./pantallas/mensajeria.js'),
   aula: () => import('./pantallas/aula.js'),
@@ -142,6 +143,8 @@ const RUTAS = [
   ['horario', async (p) => (await pant.horario()).horario(main(), p)],
   ['espacios', async (p) => (await pant.espacios()).solicitud(main(), p)],
   ['espacios-solicitudes', async (p) => (await pant.espacios()).solicitudesAdmin(main(), p)],
+  ['pqrs', async (p) => (await pant.pqrs()).inicio(main(), p)],
+  ['pqrs/:id', async (p) => (await pant.pqrs()).detalle(main(), p)],
   ['reportes', async (p) => (await pant.reportes()).reportes(main(), p)],
   ['examen/:id', async (p) => (await pant.examenesP()).examen(main(), p)],
   ['ayuda', async () => (await pant.ayudaP()).ayuda(main())],
@@ -205,7 +208,7 @@ window.addEventListener('complex:datos-nuevos', async () => {
 // ---------------------------------------------------------------- Armazón (REA Phidias §1.2)
 // Menú lateral izquierdo agrupado (Tablero · Comunicación · Comunidad · Academia · Perfil),
 // con buscador "Filtrar menú" y, para acudientes, pestañas de persona (yo + cada hijo).
-const COMUNICACION = { t: 'Comunicación', ic: '💬', items: [['bandeja', 'Bandeja de entrada', 'noLeidos'], ['redactar', 'Redactar mensaje'], ['enviados', 'Enviados'], ['cartelera', 'Cartelera'], ['circulares', 'Circulares']] };
+const COMUNICACION = { t: 'Comunicación', ic: '💬', items: [['bandeja', 'Bandeja de entrada', 'noLeidos'], ['redactar', 'Redactar mensaje'], ['enviados', 'Enviados'], ['cartelera', 'Cartelera'], ['circulares', 'Circulares'], ['pqrs', 'PQRS']] };
 // Orden como Phidias: Tablero · Perfil · Comunicación · Comunidad · … · Pasarelas (al final)
 function menuDe() {
   const lista = menuBase();
@@ -251,7 +254,7 @@ function menuBase() {
     { t: 'Tesorería', ic: '💰', items: [[`estado-cuenta/${est}`, 'Consolidado']] }];
   return [tablero, perfilG(), COMUNICACION, { t: 'Comunidad', ic: '👥', items: [['calendario', 'Calendario'], ['procesos', 'Procesos'], ['archivos', 'Archivos globales']] }, { t: 'Matrícula', ic: '🎒', items: [['obligaciones', 'Obligaciones']] }, { t: 'Tesorería', ic: '💰', items: [['tesoreria', 'Consolidado']] }];
 }
-const SECCION = { 'curso/:id': 'estructura', 'notas/:asig': 'clases', 'asistencia/:asig': 'clases', 'circular/:id': 'circulares', 'circulares-institucionales': 'circulares', 'circular-institucional/:id': 'circulares', 'mensaje/:id': 'bandeja', 'aula/:asig': 'aula', 'tarea/:id': 'aula', 'examen/:id': 'aula', 'estado-cuenta/:est': 'tesoreria', 'proceso/:id': 'procesos', 'proceso/:id/respuestas': 'procesos', 'seguimiento/:id': 'seguimientos', 'docente/:id': 'docentes', 'grupo/:asig': 'clases', 'consolidado/:asig': 'clases', 'observaciones-boletin/:asig': 'clases', 'remediales/:asig': 'clases' };
+const SECCION = { 'curso/:id': 'estructura', 'notas/:asig': 'clases', 'asistencia/:asig': 'clases', 'circular/:id': 'circulares', 'circulares-institucionales': 'circulares', 'circular-institucional/:id': 'circulares', 'mensaje/:id': 'bandeja', 'pqrs/:id': 'pqrs', 'aula/:asig': 'aula', 'tarea/:id': 'aula', 'examen/:id': 'aula', 'estado-cuenta/:est': 'tesoreria', 'proceso/:id': 'procesos', 'proceso/:id/respuestas': 'procesos', 'seguimiento/:id': 'seguimientos', 'docente/:id': 'docentes', 'grupo/:asig': 'clases', 'consolidado/:asig': 'clases', 'observaciones-boletin/:asig': 'clases', 'remediales/:asig': 'clases' };
 
 function itemActivo(ruta, patron) {
   const h = (location.hash || '#/inicio').slice(2);

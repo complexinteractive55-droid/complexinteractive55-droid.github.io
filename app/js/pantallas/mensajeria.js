@@ -11,6 +11,11 @@ const nombreSeguro = (s) => s.normalize('NFD').replace(/[̀-ͯ]/g, '').replace(/
 // Tipos de mensaje del colegio (Circulares, Notificaciones…), cada uno con su color
 const tiposMensaje = () => E.db.select('tipos_mensaje', { eq: { colegio_id: E.colegio.id }, order: 'orden' }).catch(() => []);
 const chipTipo = (tipos, x) => { const tm = x.tipo_id && tipos.find((t) => t.id === x.tipo_id); return tm ? `<span class="chip chip-tipo" style="--c:${esc(tm.color)}">${esc(tm.nombre)}${x.numero ? ' No. ' + x.numero : ''}</span> ` : ''; };
+// Avisos automáticos de PQRS (28-oct, con el OK de Fabio): llegan sin autor y su enlace al caso se puede tocar
+const remitente = (x) => (x.autor_id ? nombre(E.perfiles.get(x.autor_id)) : 'Complex · aviso automático');
+const cuerpoHTML = (t) => esc(t).replace(/\n/g, '<br>')
+  .replace(/Abrir la PQRS: #\/pqrs\/([0-9a-f-]{36})/g, '<a class="btn btn-chico btn-primario" href="#/pqrs/$1">Abrir la PQRS</a>')
+  .replace(/(^|[\s>])#\/pqrs\/([0-9a-f-]{36})/g, '$1<a href="#/pqrs/$2">Abrir la PQRS</a>');
 // Mensajes que se están enviando (o que fallaron): aparecen ya en "Enviados", sin esperar al servidor.
 // El id se crea aquí, así el mensaje no se duplica si se reintenta o si la lista se recarga a mitad del envío.
 const enviando = [];
@@ -86,10 +91,10 @@ export async function bandeja(m, p) {
           const d = fila.get(x.id);
           const autor = E.perfiles.get(x.autor_id);
           return `
-          <div class="fila fila-mensaje ${d.leido_en ? '' : 'sin-leer'}" data-buscar="${esc(nombre(autor) + ' ' + x.asunto + ' ' + x.cuerpo)}">
+          <div class="fila fila-mensaje ${d.leido_en ? '' : 'sin-leer'}" data-buscar="${esc(remitente(x) + ' ' + x.asunto + ' ' + x.cuerpo)}">
             <input type="checkbox" data-sel="${x.id}" aria-label="Seleccionar mensaje">
             <a class="crece" href="#/mensaje/${x.id}">
-              <span class="linea1"><b>${esc(nombre(autor))}</b><small>${fechaHora(x.creado_en)}${x.editado_en ? ' · editado' : ''}</small></span>
+              <span class="linea1"><b>${esc(remitente(x))}</b><small>${fechaHora(x.creado_en)}${x.editado_en ? ' · editado' : ''}</small></span>
               <span class="asunto">${chipTipo(tipos, x)}${x.destacado ? '📌 ' : ''}${esc(x.asunto)}</span>
               <small>${esc(corto(x.cuerpo))}</small>
             </a>
@@ -219,11 +224,11 @@ export async function detalle(m, p) {
       ${x.tipo_id && tipos.length ? `<p>${chipTipo(tipos, x)}</p>` : ''}
       <h1 class="titulo">${x.destacado ? '📌 ' : ''}${esc(x.asunto)}</h1>
       <div class="fila">
-        <span class="avatar">${esc(iniciales(autor))}</span>
-        <span><b>${esc(nombre(autor))}</b><small>${fechaHora(x.creado_en)}${x.editado_en ? ` · <span class="chip chip-editado" title="Editado el ${fechaHora(x.editado_en)}">Editado ${fechaHora(x.editado_en)}</span>` : ''}</small></span>
+        <span class="avatar">${x.autor_id ? esc(iniciales(autor)) : '🔔'}</span>
+        <span><b>${esc(remitente(x))}</b><small>${fechaHora(x.creado_en)}${x.editado_en ? ` · <span class="chip chip-editado" title="Editado el ${fechaHora(x.editado_en)}">Editado ${fechaHora(x.editado_en)}</span>` : ''}</small></span>
       </div>
       <p class="ayuda">Para: ${visibles.map((d) => `${esc(nombre(E.perfiles.get(d.perfil_id)))}${soyAutor ? (d.leido_en ? ` <span class="ok" title="Leído ${fechaHora(d.leido_en)}">✓✓</span>` : ' <span title="Sin leer">✓</span>') : ''}`).join(', ')}${x.ocultar_destinatarios && !soyAutor ? ' (destinatarios ocultos)' : ''}</p>
-      <div class="mensaje-cuerpo">${esc(x.cuerpo).replace(/\n/g, '<br>')}</div>
+      <div class="mensaje-cuerpo">${cuerpoHTML(x.cuerpo)}</div>
       ${adj.length ? `<h3 class="sub">Adjuntos</h3><div class="lista">${adj.map((a) => `<button class="fila fila-boton tarjeta-archivo" data-adj="${a.id}"><span class="avatar">📎</span><span><b>${esc(a.nombre)}</b><small>${peso(a.bytes)}</small></span><span class="flecha">↗</span></button>`).join('')}</div>` : ''}
       ${x.evento_inicio ? `<p class="aviso-caja">📅 Marcado en el calendario: <b>${x.evento_todo_el_dia ? fecha(x.evento_inicio) : fechaHora(x.evento_inicio)}</b>${x.evento_fin ? ' – ' + (x.evento_todo_el_dia ? fecha(x.evento_fin) : fechaHora(x.evento_fin)) : ''}</p>` : ''}
       ${x.expira_en ? `<p class="ayuda">⏳ Disponible hasta el ${fechaHora(x.expira_en)}${soyAutor ? ' (después los destinatarios ya no lo ven)' : ''}.</p>` : ''}

@@ -357,6 +357,7 @@ export function crearDbDemo() {
   const err = (m) => { throw new Error(m); };
 
   const esAdmin = (colegio) => tabla('miembros').some((m) => m.colegio_id === colegio && m.perfil_id === usuario() && m.rol === 'admin' && m.activo);
+  let pqrsDemo = null; // PQRS (pqrs_demo.js, mismas reglas que la base): se carga la primera vez que se usa
 
   // Valores por defecto (los mismos que pone la base de datos real)
   const hoyLocal = () => { const d = new Date(); return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`; };
@@ -729,6 +730,10 @@ export function crearDbDemo() {
     async rpc(nombre, a) {
       await lento();
       const yo = usuario();
+      if (nombre.startsWith('pqrs_')) {
+        pqrsDemo ||= (await import('./pqrs_demo.js')).crearPqrsDemo({ tabla, usuario, guardar, copia, ahora, err });
+        return pqrsDemo(nombre, a);
+      }
       if (nombre === 'firmar_compromiso') {
         const c = tabla('compromisos').find((x) => x.id === a.p_id);
         if (!c || !c.visible_familia) err('Ese compromiso no existe o no tienes acceso.');
