@@ -1,6 +1,6 @@
 // Complex_ — arranque, enrutador y armazón de la app.
 import { crearDbSupabase, crearDbDemo, cargarSemillaDemo, huellaEnEsteEquipo } from './db.js';
-import { E, pref, base, cargarYo, elegirColegio, cambiarRol, cargarPersonas, elegirPersona, personaActiva, viendoHijo, logoHTML, aplicarMarca, fotos } from './estado.js';
+import { E, pref, base, cargarYo, elegirColegio, cambiarRol, cargarPersonas, elegirPersona, personaActiva, viendoHijo, logoHTML, aplicarMarca, fotos, olvidarFoto, olvidarFotos } from './estado.js';
 import { esc, $, aviso, ventana, leerForm, confirmar, ROL, nombre, iniciales, etiquetarTablas, fecha, fechaHora } from './ui.js';
 import { APP_VERSION } from './config.js';
 import { idioma, elegirIdioma, activarTraduccion } from './i18n.js';
@@ -192,6 +192,35 @@ async function navegar() {
 // Llegaron datos más nuevos del servidor para la pantalla que se está viendo (db.js los pidió por detrás):
 // se vuelve a pintar sin la rueda de carga y sin perder el scroll. No se toca si hay una ventana abierta,
 // si la persona está escribiendo o si la app está bloqueada; en ese caso la siguiente navegación ya trae lo nuevo.
+// La marca del colegio cambió (se guardó aquí o llegó la versión del servidor más nueva que la copia del equipo):
+// se repinta el encabezado, o la lista de colegios si es la que se está viendo.
+window.addEventListener('complex:marca', () => {
+  if (E.colegio && $('#btn-colegio')) { aplicarMarca(); pintarBarraColegio(); }
+  else if (!E.colegio && E.sesion && $('#app .entrada [data-id]')) pantallaColegios();
+});
+
+// Si el logo del colegio o una foto no cargan (archivo borrado, enlace vencido, sin internet) no queda una imagen rota:
+// el logo pasa a las iniciales del colegio (no al símbolo de Complex_, que es la marca de la plataforma) y la foto a las
+// iniciales de la persona; esa foto se vuelve a pedir la próxima vez.
+document.addEventListener('error', (e) => {
+  const img = e.target;
+  if (!(img instanceof HTMLImageElement)) return;
+  if (img.classList.contains('logo-colegio')) {
+    const s = document.createElement('span');
+    s.className = img.className.replace(/\blogo-(img|colegio)\b/g, '').trim() + ' logo-sin-imagen';
+    s.title = 'No se pudo cargar el logo del colegio';
+    s.textContent = iniciales({ nombres: img.dataset.nombre || '' }).replace('?', '🏫');
+    img.replaceWith(s);
+    return;
+  }
+  const av = img.closest('.avatar');
+  if (av) {
+    if (av.dataset.fotoDe) olvidarFoto(av.dataset.fotoDe);
+    av.textContent = av.dataset.iniciales || '';
+    av.title = 'No se pudo cargar la foto';
+  }
+}, true);
+
 window.addEventListener('complex:datos-nuevos', async () => {
   window.dispatchEvent(new Event('complex:mensajes')); // contadores del menú
   if (!E.sesion || !E.colegio || !desbloqueada || document.querySelector('.ventana')) return;
@@ -309,7 +338,7 @@ function pintarArmazon(patron) {
     window.addEventListener('complex:foto', () => ponerFotos($('#app')));
   }
   aplicarMarca();
-  $('#btn-colegio').innerHTML = `${logoHTML('logo-mini')}<span class="nombre-colegio">${esc(E.colegio.nombre)}</span>${E.db.modo === 'demo' ? '<span class="etiqueta-demo">DEMO</span>' : ''}`;
+  pintarBarraColegio();
   $('#btn-rol').textContent = ROL[E.rol] + (E.roles.length > 1 ? ' ▾' : '');
   $('#btn-rol').disabled = E.roles.length < 2;
 
@@ -344,9 +373,14 @@ function pintarArmazon(patron) {
 
 // Foto de la persona en el menú, las pestañas de persona y Mi cuenta: primero las iniciales; si tiene foto, la foto.
 // Al subir una foto (evento complex:foto) se cambia aquí sin recargar.
+function pintarBarraColegio() {
+  $('#btn-colegio').innerHTML = `${logoHTML('logo-mini')}<span class="nombre-colegio">${esc(E.colegio.nombre)}</span>${E.db.modo === 'demo' ? '<span class="etiqueta-demo">DEMO</span>' : ''}`;
+}
+
 async function ponerFotos(raiz) {
   const els = [...raiz.querySelectorAll('[data-foto-de]')];
   if (!els.length) return;
+  for (const el of els) if (!el.dataset.iniciales && !el.querySelector('img')) el.dataset.iniciales = el.textContent;
   const fot = await fotos(els.map((el) => el.dataset.fotoDe)).catch(() => new Map());
   for (const el of els) {
     const url = fot.get(el.dataset.fotoDe);
@@ -592,7 +626,7 @@ async function pantallaColegios() {
       <div class="entrada-caja ancha">
         <div class="marca"><img class="logo logo-img logo-complex" src="img/simbolo.svg" alt="Complex_"><h1>Hola, ${esc(E.yo.nombres || E.sesion.user.email)}</h1></div>
         ${E.colegios.length ? `<p class="ayuda">Elige el colegio:</p><div class="lista">${E.colegios.map((c) => `
-          <button class="fila fila-boton" data-id="${c.id}"><span class="avatar">🏫</span><span><b>${esc(c.nombre)}</b><small>${esc([...new Set(E.membresias.filter((m) => m.colegio_id === c.id).map((m) => ROL[m.rol]))].join(' · '))}</small></span></button>`).join('')}</div>`
+          <button class="fila fila-boton" data-id="${c.id}">${c.logo_ruta ? logoHTML('logo-mini', c) : '<span class="avatar">🏫</span>'}<span><b>${esc(c.nombre)}</b><small>${esc([...new Set(E.membresias.filter((m) => m.colegio_id === c.id).map((m) => ROL[m.rol]))].join(' · '))}</small></span></button>`).join('')}</div>`
         : `<div class="aviso-caja"><p><b>Todavía no perteneces a ningún colegio.</b></p><p>Si eres profesor, acudiente o estudiante, pídele al colegio que te agregue con tu correo <b>${esc(E.sesion.user.email || '')}</b>.</p><p>Si administras un colegio, créalo aquí:</p></div>`}
         <button class="btn btn-ancho" id="btn-nuevo-colegio">＋ Crear un colegio</button>
         <button class="btn-link" id="btn-salir">Cerrar sesión</button>
@@ -686,11 +720,18 @@ async function perfil() {
   $('#btn-cambiar-rol')?.addEventListener('click', elegirRol);
   $('#btn-cambiar-colegio').onclick = () => { E.colegio = null; navegar(); };
   $('#btn-salir').onclick = salir;
+  // El módulo de la foto se carga ANTES del toque: si se esperaba a descargarlo después, en una red lenta el navegador
+  // dejaba de considerar el toque como de la persona y no abría el selector (el botón «no respondía»).
+  let famPerfil = null;
+  pant.famPerfil().then((mod) => { famPerfil = mod; }).catch(() => {});
   $('#btn-foto').onclick = async (ev) => {
-    ev.target.disabled = true;
-    try { if (await (await pant.famPerfil()).cambiarFoto(E.yo.id)) { aviso('Foto guardada'); perfil(); } }
-    catch (e) { aviso(e.message, 'error'); }
-    finally { ev.target.disabled = false; }
+    const b = ev.currentTarget, texto = b.textContent;
+    b.disabled = true;
+    try {
+      const mod = famPerfil || (await pant.famPerfil());
+      if (await mod.cambiarFoto(E.yo.id, { alElegir: () => { b.textContent = 'Subiendo la foto…'; } })) { aviso('Foto guardada'); perfil(); }
+    } catch (e) { aviso(e.message, 'error'); }
+    finally { b.disabled = false; b.textContent = texto; }
   };
   ponerFotos(m);
   if (E.db.modo === 'real' && window.PublicKeyCredential) pintarHuellas(m);
@@ -730,6 +771,7 @@ async function salir() {
   E.sesion = null; E.colegio = null; E.yo = null;
   // que el siguiente usuario de este equipo no herede pestañas, hijos ni datos del anterior
   E._personasDe = null; E.personas = []; E.persona = null; E.base = null; E.perfiles = new Map(); E.colegios = []; E.membresias = [];
+  olvidarFotos();
   pref('modo', null);
   location.hash = '';
   navegar();

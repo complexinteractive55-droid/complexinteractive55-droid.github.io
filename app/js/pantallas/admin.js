@@ -520,28 +520,42 @@ export async function ajustesColegio(m) {
     const arch = caja.querySelector('[name=logo]').files[0];
     const color = caja.querySelector('[name=color]').value;
     if (arch && arch.size > 1024 * 1024) return aviso('El logo pesa más de 1 MB.', 'error');
+    if (arch && !/^image\/(png|jpeg|webp|svg\+xml)$/.test(arch.type)) return aviso('El logo debe ser PNG, JPG, WEBP o SVG.', 'error');
     ev.target.disabled = true;
+    // Orden seguro: 1) subir el logo nuevo (ruta nueva: el navegador no puede mostrar uno viejo guardado),
+    // 2) guardar la ruta en el colegio y comprobar que el servidor la guardó, 3) recién ahí borrar el logo anterior.
+    // Antes se borraba el anterior primero y, si no se guardaba la fila, se decía «Marca guardada» igual.
+    let nueva = null;
     try {
       const cambios = { color: /^#[0-9a-f]{6}$/i.test(color) ? color.toLowerCase() : null };
       if (arch) {
-        const ruta = `${c.id}/${Date.now()}_${arch.name.normalize('NFD').replace(/[̀-ͯ]/g, '').replace(/[^\w.\-]+/g, '_').slice(-80)}`;
-        await E.db.subirArchivo('logos', ruta, arch);
-        if (c.logo_ruta) await E.db.borrarArchivo('logos', c.logo_ruta).catch(() => {});
-        cambios.logo_ruta = ruta;
+        nueva = `${c.id}/${Date.now()}_${arch.name.normalize('NFD').replace(/[̀-ͯ]/g, '').replace(/[^\w.\-]+/g, '_').slice(-80)}`;
+        await E.db.subirArchivo('logos', nueva, arch);
+        cambios.logo_ruta = nueva;
       }
+      const antes = c.logo_ruta;
       const [r] = await E.db.update('colegios', cambios, { id: c.id });
-      Object.assign(E.colegio, r || cambios);
+      if (!r || (nueva && r.logo_ruta !== nueva)) throw new Error('El servidor no guardó la marca (¿sigues siendo administrador de este colegio?). No se cambió nada.');
+      nueva = null;
+      Object.assign(E.colegio, r);
+      if (arch && antes && antes !== r.logo_ruta) E.db.borrarArchivo('logos', antes).catch(() => {});
       aplicarMarca();
+      window.dispatchEvent(new Event('complex:marca')); // el encabezado se actualiza ya, no en la siguiente pantalla
       aviso('Marca guardada');
       ajustesColegio(m);
-    } catch (e) { aviso(e.message, 'error'); ev.target.disabled = false; }
+    } catch (e) {
+      if (nueva) E.db.borrarArchivo('logos', nueva).catch(() => {}); // lo subido sin guardar no queda huérfano
+      aviso(e.message, 'error'); ev.target.disabled = false;
+    }
   };
   m.querySelector('[data-quitar-marca]')?.addEventListener('click', async () => {
     try {
-      if (c.logo_ruta) await E.db.borrarArchivo('logos', c.logo_ruta).catch(() => {});
+      const antes = c.logo_ruta;
       const [r] = await E.db.update('colegios', { color: null, logo_ruta: null }, { id: c.id });
-      Object.assign(E.colegio, r || { color: null, logo_ruta: null });
-      aplicarMarca(); aviso('Marca restablecida'); ajustesColegio(m);
+      if (!r) throw new Error('El servidor no guardó el cambio (¿sigues siendo administrador de este colegio?).');
+      Object.assign(E.colegio, r);
+      if (antes) E.db.borrarArchivo('logos', antes).catch(() => {});
+      aplicarMarca(); window.dispatchEvent(new Event('complex:marca')); aviso('Marca restablecida'); ajustesColegio(m);
     } catch (e) { aviso(e.message, 'error'); }
   });
   // Escala cualitativa: filas editables

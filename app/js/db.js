@@ -168,6 +168,47 @@ export async function crearDbSupabase() {
       const { error } = await sb.storage.from(bucket).remove([ruta]);
       falla(error);
     },
+    // Subida con avance (adjuntos de PQRS): directo a la API de Storage para poder mostrar el porcentaje.
+    // Sin reemplazar (x-upsert: false). Si el archivo ya estaba (un intento anterior sí llegó), se da por subido.
+    async subirConAvance(bucket, ruta, archivo, tipo, alAvanzar, senal) {
+      const { data } = await sb.auth.getSession();
+      const token = data.session?.access_token;
+      if (!token) throw new Error('La sesión venció: vuelve a entrar.');
+      await new Promise((ok, mal) => {
+        const x = new XMLHttpRequest();
+        x.open('POST', `${SUPABASE_URL}/storage/v1/object/${bucket}/${ruta.split('/').map(encodeURIComponent).join('/')}`);
+        x.setRequestHeader('authorization', 'Bearer ' + token);
+        x.setRequestHeader('apikey', SUPABASE_KEY);
+        x.setRequestHeader('x-upsert', 'false');
+        x.setRequestHeader('content-type', tipo);
+        x.timeout = 180000;
+        x.upload.onprogress = (e) => e.lengthComputable && alAvanzar?.(e.loaded / e.total);
+        x.onload = () => (x.status >= 200 && x.status < 300) || x.status === 409 || /Duplicate|already exists/i.test(x.responseText) ? ok()
+          : mal(new Error(x.status === 413 ? 'El archivo es demasiado grande.' : x.status === 403 || x.status === 401 ? 'No tienes permiso para subir ese archivo (o la sesión venció).' : 'No se pudo subir el archivo. Reintenta.'));
+        x.onerror = () => mal(new Error('Failed to fetch'));
+        x.ontimeout = () => mal(new Error('La subida tardó demasiado. Reintenta.'));
+        senal?.addEventListener('abort', () => { x.abort(); mal(new Error('Subida cancelada.')); });
+        x.send(archivo);
+      });
+    },
+    // Formato del adjunto verificado por la Edge Function pqrs-adjuntos (firma del archivo; no es un antivirus)
+    verificarAdjunto(id) { return this.funcion('pqrs-adjuntos', { adjunto: id }); },
+    // Enlace firmado de 2 minutos, pedido justo antes de mostrar o descargar (la RLS de Storage decide si se puede)
+    async urlAdjunto(ruta, nombre, descargar) {
+      const { data, error } = await sb.storage.from('pqrs-adjuntos').createSignedUrl(ruta, 120, descargar ? { download: nombre } : undefined);
+      falla(error);
+      return data.signedUrl;
+    },
+    // Aviso en vivo por un canal PRIVADO (Realtime Broadcast con RLS): solo dice «cambió»; los datos se piden aparte
+    escucharCanal(tema, cb, alEstado) {
+      let canal = null, fin = false;
+      (async () => {
+        try { const { data } = await sb.auth.getSession(); sb.realtime.setAuth(data.session?.access_token); } catch {}
+        if (fin) return;
+        canal = sb.channel(tema, { config: { private: true } }).on('broadcast', { event: 'cambio' }, (m) => cb(m.payload)).subscribe((estado) => alEstado?.(estado));
+      })();
+      return () => { fin = true; if (canal) sb.removeChannel(canal); };
+    },
     // Cambios en vivo (Supabase Realtime): la RLS decide qué filas le llegan a cada persona
     escuchar(tabla, filtro, cb) {
       const canal = sb.channel(`vivo-${tabla}-${Math.random().toString(36).slice(2)}`)
@@ -191,6 +232,8 @@ export async function crearDbSupabase() {
 //    que vive en el mismo dominio) para abrir la app al instante; se borra al cerrar sesión.
 const VIDA = 30000;
 const RPC_LECTURA = new Set(['mis_contactos', 'personas_colegio', 'mi_intento']);
+// Lecturas que van siempre al servidor y no marcan lo demás «por revisar» (el hilo de una PQRS se consulta cada poco)
+const RPC_DIRECTA = new Set(['pqrs_mensajes', 'pqrs_adjunto_estado', 'circular_previsualizar_numero', 'circular_numeracion']);
 // Escrituras que también cambian otras tablas (triggers del servidor o lógica de la app)
 const AFECTA = {
   tarea_entregas: ['calificaciones'], examenes: ['calificaciones'], examen_intentos: ['calificaciones'],
@@ -198,6 +241,9 @@ const AFECTA = {
   mensajes: ['tipos_mensaje', 'mensaje_destinatarios', 'mensaje_versiones'], reportes_ausencia: ['asistencia'],
   entregar_examen: ['examen_intentos', 'calificaciones'], iniciar_examen: ['examen_intentos'],
   agregar_miembro: ['miembros', 'perfiles'], crear_colegio: ['colegios', 'miembros'],
+  calendario_importar: ['calendario_fuentes', 'calendario_dias'], calendario_anotar: ['calendario_anotaciones'],
+  circular_serie_guardar: ['circular_series'], circular_serie_validar: ['circular_series'], circular_area_guardar: ['circular_areas'], circular_ajustes_guardar: ['circular_ajustes'],
+  circular_emitir: ['circular_borradores', 'circular_series'], circular_anular: ['circular_borradores', 'circular_numeros_anulados'],
 };
 const clonar = (x) => (x == null ? x : typeof structuredClone === 'function' ? structuredClone(x) : JSON.parse(JSON.stringify(x)));
 
@@ -287,7 +333,10 @@ function conMemoria(db, { persistir = false } = {}) {
     olvidar,
     refrescar: tocar, // otra persona cambió esta tabla (aviso en vivo): lo de ella se pide de nuevo
     select: (tabla, q = {}) => leer('s|' + tabla + '|' + JSON.stringify(q), () => db.select(tabla, q)),
-    rpc: (nombre, args) => (RPC_LECTURA.has(nombre) ? leer('r|' + nombre + '|' + JSON.stringify(args ?? null), () => db.rpc(nombre, args)) : escribe(db.rpc, nombre)(nombre, args)),
+    // Directo al servidor, sin la copia del equipo (la marca del colegio, las fotos): no guarda ni invalida nada
+    fresco: (tabla, q = {}) => db.select(tabla, q),
+    rpc: (nombre, args) => (RPC_DIRECTA.has(nombre) ? db.rpc(nombre, args)
+      : RPC_LECTURA.has(nombre) ? leer('r|' + nombre + '|' + JSON.stringify(args ?? null), () => db.rpc(nombre, args)) : escribe(db.rpc, nombre)(nombre, args)),
     insert: escribe(db.insert),
     upsert: escribe(db.upsert),
     update: escribe(db.update),
@@ -347,7 +396,8 @@ export function crearDbDemo() {
   const guardar = () => { try { localStorage.setItem(CLAVE_DEMO, JSON.stringify(t)); } catch {} };
   cargar();
 
-  const usuario = () => { try { return localStorage.getItem(CLAVE_DEMO_USUARIO); } catch { return null; } };
+  // Quién está en el demo: lo de esta pestaña primero (así dos pestañas pueden ser dos personas distintas) y si no, lo del equipo
+  const usuario = () => { try { return globalThis.sessionStorage?.getItem(CLAVE_DEMO_USUARIO) || localStorage.getItem(CLAVE_DEMO_USUARIO); } catch { return null; } };
   const tabla = (n) => (t[n] ||= []);
   const coincide = (f, { eq, in: en } = {}) =>
     Object.entries(eq || {}).every(([k, v]) => (f[k] ?? null) === v) &&
@@ -358,6 +408,8 @@ export function crearDbDemo() {
 
   const esAdmin = (colegio) => tabla('miembros').some((m) => m.colegio_id === colegio && m.perfil_id === usuario() && m.rol === 'admin' && m.activo);
   let pqrsDemo = null; // PQRS (pqrs_demo.js, mismas reglas que la base): se carga la primera vez que se usa
+  let calendarioDemo = null;
+  let circularesDemo = null; // series de circulares por área (circulares_demo.js, mismas reglas que 20261029130000) // calendario institucional importado (calendario_demo.js, mismas reglas que la base)
 
   // Valores por defecto (los mismos que pone la base de datos real)
   const hoyLocal = () => { const d = new Date(); return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`; };
@@ -365,19 +417,53 @@ export function crearDbDemo() {
   // Consecutivo de las circulares institucionales, como en la base (20261028120000_circular_consecutivo_automatico):
   // una serie vigente por colegio, el número se toma al crear y no cambia; el de un borrador eliminado queda anulado.
   // En el demo la serie es provisional, como la que la base da a un colegio sin serie configurada: PROV-001-<año>.
-  const consecutivoCircular = (colegio) => {
-    let s = tabla('circular_series').find((x) => x.colegio_id === colegio && x.vigente);
-    if (!s) tabla('circular_series').push((s = { id: crypto.randomUUID(), colegio_id: colegio, prefijo: 'PROV-', periodo: String(new Date().getFullYear()), ancho: 3, ultimo: 0, vigente: true, provisional: true, creado_en: ahora() }));
+  // 29-oct (20261029130000_circular_series_area): además una serie por ÁREA (prefijo + número con ceros + sufijo, sin
+  // desbordar el ancho), número al guardar (como hoy) o al emitir según circular_ajustes, y emitir solo con serie validada.
+  const ajusteCirc = (c) => tabla('circular_ajustes').find((x) => x.colegio_id === c)?.asignar_numero || 'guardar';
+  const formatoCirc = (s, num) => {
+    const n = String(num);
+    if (!s.area_id) return s.prefijo + (n.length >= s.ancho ? n : n.padStart(s.ancho, '0')) + '-' + s.periodo; // la de siempre
+    if (n.length > s.ancho) err(`La serie «${s.prefijo}» llegó al máximo de ${s.ancho} cifras: crea una serie nueva (no se reinicia ni se recorta el número).`);
+    return s.prefijo + n.padStart(s.ancho, '0') + (s.sufijo ?? '-' + s.periodo);
+  };
+  const consecutivoCircular = (colegio, area = null, oficial = false) => {
+    let s = tabla('circular_series').find((x) => x.colegio_id === colegio && x.vigente && (x.area_id || null) === area);
+    if (!s && !area) tabla('circular_series').push((s = { id: crypto.randomUUID(), colegio_id: colegio, prefijo: 'PROV-', periodo: String(new Date().getFullYear()), ancho: 3, ultimo: 0, vigente: true, provisional: true, creado_en: ahora() }));
+    if (!s) err('Esa área no tiene una serie de consecutivos vigente: configúrala en «Numeración».');
+    if (oficial && s.provisional) err(`La serie «${s.prefijo}» es provisional: para emitir oficialmente, el administrador debe validarla con los registros del colegio.`);
+    const c = formatoCirc(s, s.ultimo + 1);
+    const ya = (b) => b.colegio_id === colegio && String(b.consecutivo || '').toLowerCase() === c.toLowerCase();
+    if ((area || oficial) && (tabla('circular_borradores').some(ya) || tabla('circular_numeros_anulados').some(ya))) err(`El consecutivo ${c} ya existe en el colegio: revisa el inicio de la serie.`);
     s.ultimo += 1;
-    const n = String(s.ultimo);
-    return { serie_id: s.id, numero: s.ultimo, consecutivo: s.prefijo + (n.length >= s.ancho ? n : n.padStart(s.ancho, '0')) + '-' + s.periodo };
+    return { serie_id: s.id, numero: s.ultimo, consecutivo: c };
   };
   const numerarBorrador = (r) => {
-    Object.assign(r, { solicitud_id: r.solicitud_id || crypto.randomUUID() }, consecutivoCircular(r.colegio_id));
-    r.datos = { ...(r.datos || {}), consecutivo: r.consecutivo };
+    r.solicitud_id ||= crypto.randomUUID();
+    const area = r.area_id || r.datos?.area_id || null;
+    if (area && !tabla('circular_areas').some((x) => x.id === area && x.colegio_id === r.colegio_id)) err('Esa área no es de este colegio.');
+    const datos = { ...(r.datos || {}) };
+    delete datos.area_id;
+    Object.assign(r, { area_id: area, estado: 'borrador' });
+    if (ajusteCirc(r.colegio_id) === 'guardar' && (!area || tabla('circular_series').some((x) => x.colegio_id === r.colegio_id && x.area_id === area && x.vigente))) {
+      Object.assign(r, consecutivoCircular(r.colegio_id, area));
+      datos.consecutivo = r.consecutivo;
+    } else { Object.assign(r, { serie_id: null, numero: null, consecutivo: null }); delete datos.consecutivo; }
+    r.datos = datos;
+  };
+  // Como el disparador: al editar no cambia lo de origen ni el número; queda la versión anterior; emitida o anulada no se edita
+  const actualizarBorrador = (f, cambios) => {
+    const datos = { ...(cambios.datos ?? f.datos) };
+    const area = f.numero ? f.area_id || null : datos.area_id || f.area_id || null;
+    delete datos.area_id;
+    if (f.consecutivo) datos.consecutivo = f.consecutivo; else delete datos.consecutivo;
+    if ((f.estado || 'borrador') !== 'borrador' && JSON.stringify(datos) !== JSON.stringify(f.datos)) err('Una circular emitida o anulada no se edita (su contenido y número quedan como se emitieron).');
+    if (JSON.stringify(datos) !== JSON.stringify(f.datos)) tabla('circular_borrador_versiones').push({ borrador_id: f.id, version: f.version, datos: f.datos, guardado_por: f.actualizado_por || null, guardado_en: f.actualizado_en || null });
+    return { ...f, ...cambios, id: f.id, colegio_id: f.colegio_id, autor_id: f.autor_id, creado_en: f.creado_en, version: f.version + 1, actualizado_en: ahora(), actualizado_por: usuario(),
+      solicitud_id: f.solicitud_id, serie_id: f.serie_id, numero: f.numero, consecutivo: f.consecutivo, area_id: area, estado: f.estado || 'borrador', datos };
   };
   // Borradores guardados en este equipo antes del consecutivo automático: reciben número en orden de creación
-  const sinNumero = tabla('circular_borradores').filter((b) => !b.numero).sort((a, b) => String(a.creado_en).localeCompare(String(b.creado_en)));
+  // (solo los de antes: los que ya tienen estado pudieron quedar sin número a propósito)
+  const sinNumero = tabla('circular_borradores').filter((b) => !b.numero && !b.estado).sort((a, b) => String(a.creado_en).localeCompare(String(b.creado_en)));
   if (sinNumero.length) { sinNumero.forEach(numerarBorrador); guardar(); }
 
   // Espacios académicos, como la base (20261028150000_solicitudes_espacios): los seis espacios del colegio; franjas = bloques
@@ -639,7 +725,15 @@ export function crearDbDemo() {
   }
 
   // Para medir la velocidad sin cuentas reales: localStorage.complex_demo_latencia = '500' hace que cada consulta espere 0,5 s
-  const lento = () => { const ms = Number(localStorage.getItem('complex_demo_latencia')) || 0; return ms ? new Promise((r) => setTimeout(r, ms)) : null; };
+  // Pruebas del demo: complex_demo_latencia (ms de demora) y complex_demo_sin_red = '1' (falla como si no hubiera conexión)
+  // Otra pestaña del demo guardó cambios: se vuelven a leer antes de la siguiente consulta (como una base compartida)
+  let sucio = false;
+  try { window.addEventListener('storage', (e) => { if (e.key === CLAVE_DEMO) sucio = true; }); } catch {}
+  const lento = async () => {
+    if (sucio) { sucio = false; cargar(); }
+    const ms = Number(localStorage.getItem('complex_demo_latencia')) || 0; if (ms) await new Promise((r) => setTimeout(r, ms));
+    if (localStorage.getItem('complex_demo_sin_red') === '1') err('Failed to fetch');
+  };
   const db = {
     modo: 'demo',
     auth: {
@@ -648,9 +742,9 @@ export function crearDbDemo() {
         const p = id && tabla('perfiles').find((x) => x.id === id);
         return p ? { user: { id: p.id, email: p.correo } } : null;
       },
-      async signIn(idDemo) { localStorage.setItem(CLAVE_DEMO_USUARIO, idDemo); },
+      async signIn(idDemo) { localStorage.setItem(CLAVE_DEMO_USUARIO, idDemo); try { sessionStorage.setItem(CLAVE_DEMO_USUARIO, idDemo); } catch {} },
       async signUp() { err('En el modo demo no se crean cuentas.'); },
-      async signOut() { localStorage.removeItem(CLAVE_DEMO_USUARIO); },
+      async signOut() { localStorage.removeItem(CLAVE_DEMO_USUARIO); try { sessionStorage.removeItem(CLAVE_DEMO_USUARIO); } catch {} },
       async updatePassword() { err('En el modo demo no se cambian contraseñas.'); },
       async huellaDisponible() { return false; }, // en el demo no hay cuentas reales
       async registrarHuella() { err('En el modo demo no se usa la huella.'); },
@@ -670,6 +764,7 @@ export function crearDbDemo() {
     async select(n, q = {}) {
       await lento();
       let filas = tabla(n).filter((f) => coincide(f, q));
+      if (n === 'eventos_personales') filas = filas.filter((f) => f.perfil_id === usuario()); // como la RLS: solo las propias
       filas = ordenar(copia(filas), q.order);
       return q.limit ? filas.slice(0, q.limit) : filas;
     },
@@ -678,6 +773,8 @@ export function crearDbDemo() {
       const out = [];
       for (const f of [].concat(filas)) {
         const r = completar(n, f);
+        if (n === 'eventos_personales' && r.perfil_id !== usuario()) err('Solo puedes crear tus propias reuniones.');
+        if (n.startsWith('calendario_')) err('El calendario institucional solo se importa con la vista previa (administrador).');
         const k = LLAVES[n];
         if (k && tabla(n).some((x) => k.every((c) => x[c] === r[c]))) err('Ese dato ya existe.');
         if (n === 'circular_borradores') {
@@ -710,7 +807,7 @@ export function crearDbDemo() {
       const out = [];
       tabla(n).forEach((f, i) => {
         // Como el trigger circular_borrador_fijo: la versión sube sola y lo de origen no cambia
-        if (coincide(f, { eq })) { tabla(n)[i] = completar(n, { ...f, ...cambios, ...(n === 'circular_borradores' ? { id: f.id, colegio_id: f.colegio_id, autor_id: f.autor_id, creado_en: f.creado_en, version: f.version + 1, actualizado_en: ahora(), actualizado_por: usuario(), solicitud_id: f.solicitud_id, serie_id: f.serie_id, numero: f.numero, consecutivo: f.consecutivo, datos: { ...(cambios.datos ?? f.datos), consecutivo: f.consecutivo } } : {}) }); if ('nota' in cambios || 'pendiente_revision' in cambios) aPlanilla(n, tabla(n)[i]);
+        if (coincide(f, { eq })) { tabla(n)[i] = completar(n, n === 'circular_borradores' ? actualizarBorrador(f, cambios) : { ...f, ...cambios }); if ('nota' in cambios || 'pendiente_revision' in cambios) aPlanilla(n, tabla(n)[i]);
           if (n === 'examenes' && ('resultados_publicados' in cambios || 'mostrar_resultado' in cambios)) for (const it of tabla('examen_intentos').filter((x) => x.examen_id === f.id && x.nota != null)) aPlanilla('examen_intentos', it); out.push(copia(tabla(n)[i])); }
       });
       guardar();
@@ -718,6 +815,7 @@ export function crearDbDemo() {
     },
     async remove(n, eq) {
       await lento();
+      if (n === 'circular_borradores' && tabla(n).some((f) => coincide(f, { eq }) && (f.estado || 'borrador') !== 'borrador')) err('Una circular emitida o anulada no se elimina: queda en el historial con su número.');
       if (n === 'circular_borradores') for (const b of tabla(n).filter((f) => coincide(f, { eq }) && f.numero)) {
         tabla('circular_numeros_anulados').push({ serie_id: b.serie_id, numero: b.numero, colegio_id: b.colegio_id, consecutivo: b.consecutivo, borrador_id: b.id, solicitud_id: b.solicitud_id, titulo: b.datos?.titulo || null, anulado_por: usuario(), anulado_en: ahora() });
       }
@@ -731,8 +829,12 @@ export function crearDbDemo() {
       await lento();
       const yo = usuario();
       if (nombre.startsWith('pqrs_')) {
-        pqrsDemo ||= (await import('./pqrs_demo.js')).crearPqrsDemo({ tabla, usuario, guardar, copia, ahora, err });
+        pqrsDemo ||= (await import('./pqrs_demo.js')).crearPqrsDemo({ tabla, usuario, guardar, copia, ahora, err, archivo: (bucket, ruta) => leerArchivos()[bucket + '/' + ruta] || null });
         return pqrsDemo(nombre, a);
+      }
+      if (nombre.startsWith('calendario_')) {
+        calendarioDemo ||= (await import('./calendario_demo.js')).crearCalendarioDemo({ tabla, usuario, guardar, ahora, err });
+        return calendarioDemo(nombre, a);
       }
       if (nombre === 'firmar_compromiso') {
         const c = tabla('compromisos').find((x) => x.id === a.p_id);
@@ -796,6 +898,10 @@ export function crearDbDemo() {
         Object.assign(r, { estado, nota_decision: String(a.p_nota ?? '').trim() || null, decidido_por: yo, decidido_en: ahora() });
         guardar();
         return copia(r);
+      }
+      if (nombre.startsWith('circular_')) {
+        circularesDemo ||= (await import('./circulares_demo.js')).crearCircularesDemo({ tabla, usuario, guardar, ahora, err, esAdmin, consecutivoCircular, formatoCirc });
+        return circularesDemo(nombre, a);
       }
       if (nombre === 'crear_circular_borrador') {
         if (!esAdmin(a.p_colegio)) err('Solo Administración prepara las circulares institucionales.');
@@ -895,6 +1001,26 @@ export function crearDbDemo() {
       const a = leerArchivos();
       a[bucket + '/' + ruta] = url;
       try { localStorage.setItem(CLAVE_DEMO_ARCHIVOS, JSON.stringify(a)); } catch { err('No hay espacio en este navegador para el archivo (modo demo).'); }
+    },
+    // Adjuntos de PQRS en el demo: el archivo queda en el navegador; el avance y la verificación se imitan con las mismas reglas
+    async subirConAvance(bucket, ruta, archivo, tipo, alAvanzar, senal) {
+      for (const k of [0.25, 0.5, 0.75]) { if (senal?.aborted) err('Subida cancelada.'); alAvanzar?.(k); await new Promise((r) => setTimeout(r, 60)); }
+      if (leerArchivos()[bucket + '/' + ruta]) { alAvanzar?.(1); return; } // ya había llegado (reintento)
+      await db.subirArchivo(bucket, ruta, new File([archivo], ruta.split('/').pop(), { type: tipo }));
+      alAvanzar?.(1);
+    },
+    verificarAdjunto(id) { return db.rpc('pqrs_adjunto_verificar_demo', { p_id: id }); },
+    async urlAdjunto(ruta) { const u = leerArchivos()['pqrs-adjuntos/' + ruta]; if (!u) err('Archivo no encontrado'); return u; },
+    escucharCanal(tema, cb, alEstado) {
+      let c = null;
+      try {
+        c = new BroadcastChannel('complex-demo-pqrs');
+        const [tipo, id] = tema.split(':');
+        // otra pestaña escribió en el demo: se vuelve a leer lo guardado en el equipo antes de avisar a la pantalla
+        c.onmessage = (e) => { if (e.data?.pqrs === id && (tipo === 'pqrs-personal' || e.data.publico)) setTimeout(() => { cargar(); cb(e.data); }, 80); };
+      } catch {}
+      setTimeout(() => alEstado?.(c ? 'SUBSCRIBED' : 'CHANNEL_ERROR'), 0);
+      return () => c?.close();
     },
     urlPublica(bucket, ruta) { return leerArchivos()[bucket + '/' + ruta] || null; },
     async urlsArchivos(bucket, rutas) { const a = leerArchivos(); return Object.fromEntries(rutas.filter((r) => a[bucket + '/' + r]).map((r) => [r, a[bucket + '/' + r]])); },

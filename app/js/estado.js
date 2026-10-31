@@ -30,6 +30,24 @@ export async function cargarYo() {
   E.membresias = miembros.filter((m) => m.activo);
   const ids = [...new Set(E.membresias.map((m) => m.colegio_id))];
   E.colegios = ids.length ? await E.db.select('colegios', { in: { id: ids }, order: 'nombre' }) : [];
+  refrescarColegios().catch(() => {});
+}
+
+// La lista de colegios puede salir de la copia guardada en el equipo (así la app abre al instante), y esa copia puede tener
+// la marca vieja: un logo guardado desde otro equipo no se veía al elegir el colegio. Por eso se vuelve a pedir al servidor
+// enseguida y, si cambió el logo, el color o el nombre, se corrige en los mismos objetos y se avisa (complex:marca).
+export async function refrescarColegios() {
+  if (!E.colegios?.length || !E.db.fresco) return false;
+  const frescos = await E.db.fresco('colegios', { in: { id: E.colegios.map((c) => c.id) }, order: 'nombre' });
+  let cambio = false;
+  for (const f of frescos) {
+    const c = E.colegios.find((x) => x.id === f.id);
+    if (!c) continue;
+    if (c.logo_ruta !== f.logo_ruta || c.color !== f.color || c.nombre !== f.nombre) cambio = true;
+    Object.assign(c, f);
+  }
+  if (cambio) window.dispatchEvent(new Event('complex:marca'));
+  return cambio;
 }
 
 const ORDEN_ROLES = ['admin', 'director_seccion', 'profesor', 'enfermeria', 'acudiente', 'estudiante'];
@@ -85,20 +103,23 @@ export const recargarBase = () => { E.base = null; return base(); };
 
 // Fotos por persona: Map perfil_id → url (o null). Bucket privado: enlaces firmados por 1 hora, en memoria.
 // La RLS decide de quién se ve la foto (la de un estudiante: él, su familia, el admin y sus profesores).
+// La fila de la foto se pide siempre al servidor (no a la copia del equipo): una foto puesta desde otro equipo se ve ya.
+// «Sin foto» o un enlace que no se pudo firmar se recuerdan solo 1 minuto (antes 10 y 50 minutos: la foto «no aparecía»).
 const FOTOS = new Map(); // perfil_id → { url, hasta }
 export async function fotos(ids) {
   const ahora = Date.now();
   const faltan = [...new Set(ids.filter(Boolean))].filter((id) => !(FOTOS.get(id)?.hasta > ahora));
   for (let i = 0; i < faltan.length; i += 150) {
     const lote = faltan.slice(i, i + 150);
-    const filas = await E.db.select('fotos', { in: { perfil_id: lote } }).catch(() => []);
+    const filas = await (E.db.fresco || E.db.select)('fotos', { in: { perfil_id: lote } }).catch(() => []);
     const urls = filas.length ? await E.db.urlsArchivos('fotos', filas.map((f) => f.ruta)).catch(() => ({})) : {};
-    for (const id of lote) FOTOS.set(id, { url: null, hasta: ahora + 10 * 60000 });
-    for (const f of filas) FOTOS.set(f.perfil_id, { url: urls[f.ruta] || null, hasta: ahora + 50 * 60000 });
+    for (const id of lote) FOTOS.set(id, { url: null, hasta: ahora + 60000 });
+    for (const f of filas) FOTOS.set(f.perfil_id, urls[f.ruta] ? { url: urls[f.ruta], hasta: ahora + 50 * 60000 } : { url: null, hasta: ahora + 60000 });
   }
   return new Map(ids.map((id) => [id, FOTOS.get(id)?.url || null]));
 }
 export const olvidarFoto = (id) => FOTOS.delete(id);
+export const olvidarFotos = () => FOTOS.clear(); // al cerrar sesión: el siguiente usuario del equipo no hereda enlaces
 
 // Perfiles por id (con caché). La RLS decide cuáles se pueden ver.
 export async function perfiles(ids) {
@@ -148,15 +169,16 @@ export function personaActiva() {
 export const viendoHijo = () => E.rol === 'acudiente' && E.persona && E.persona !== E.yo.id;
 
 // ---------------------------------------------------------------- Marca del colegio (logo y color)
-export function logoUrl() {
-  if (!E.colegio?.logo_ruta) return null;
-  try { return E.db.urlPublica('logos', E.colegio.logo_ruta); } catch { return null; }
+export function logoUrl(colegio = E.colegio) {
+  if (!colegio?.logo_ruta) return null;
+  try { return E.db.urlPublica('logos', colegio.logo_ruta); } catch { return null; }
 }
 const escA = (s) => String(s ?? '').replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
-// HTML del logo: la imagen del colegio o el símbolo de Complex_ (√-1)
-export function logoHTML(clase = 'logo-mini') {
-  const u = logoUrl();
-  return u ? `<img class="${clase} logo-img" src="${escA(u)}" alt="${escA(E.colegio?.nombre || '')}">` : `<img class="${clase} logo-img logo-complex" src="img/simbolo.svg" alt="Complex_">`;
+// HTML del logo: la imagen del colegio o, si el colegio no tiene logo, el símbolo de Complex_ (√-1).
+// Si el logo guardado no carga, app.js pone las iniciales del colegio (nunca el símbolo de Complex_ en su lugar).
+export function logoHTML(clase = 'logo-mini', colegio = E.colegio) {
+  const u = logoUrl(colegio);
+  return u ? `<img class="${clase} logo-img logo-colegio" src="${escA(u)}" alt="${escA(colegio?.nombre || '')}" data-nombre="${escA(colegio?.nombre || '')}">` : `<img class="${clase} logo-img logo-complex" src="img/simbolo.svg" alt="Complex_">`;
 }
 // Aplica el color institucional a toda la app (claro y oscuro)
 export function aplicarMarca() {

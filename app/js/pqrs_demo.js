@@ -3,11 +3,15 @@
 // En el demo algunas áreas ya tienen responsables (personas ficticias) para poder probar; las secciones quedan sin grados
 // (el administrador los marca, igual que en el colegio real).
 import { AREAS, analizar, decidir, motivos as motivosDe, estadoGeneral, TIPOS } from './pqrs_reglas.js';
+import { verificarFirma } from './pqrs_firma.js';
+// Desde el 29-oct también la conversación con adjuntos (20261029120000_pqrs_conversacion.sql): adjuntos en cuarentena, envío con
+// adjuntos todo o nada, hilo paginado y avisos agrupados. En el demo los archivos quedan en este navegador y la verificación del
+// formato (que en la base hace la Edge Function pqrs-adjuntos) se hace aquí mismo con la misma función (pqrs_firma.js).
 
 const ESTADO_TXT = { pendiente_clasificacion: 'Pendiente de clasificación', pendiente: 'Pendiente', en_atencion: 'En atención', respuesta_parcial: 'Respuesta parcial', respondida: 'Respondida', cerrada: 'Cerrada' };
 const PERSONAL = ['admin', 'profesor', 'enfermeria', 'director_seccion'];
 
-export function crearPqrsDemo({ tabla, usuario, guardar, copia, ahora, err }) {
+export function crearPqrsDemo({ tabla, usuario, guardar, copia, ahora, err, archivo = () => null }) {
   const T = (n) => tabla(n);
   const yo = () => usuario();
   const miembroActivo = (c, p) => T('miembros').some((m) => m.colegio_id === c && m.perfil_id === p && m.activo !== false);
@@ -120,20 +124,28 @@ export function crearPqrsDemo({ tabla, usuario, guardar, copia, ahora, err }) {
     const dest = ['creada', 'comentario', 'aporte', 'resumen'].includes(e.tipo) ? [...staff, ...admins]
       : ['asignada', 'retirada'].includes(e.tipo) ? [...delArea, ...admins]
       : ['respuesta', 'respuesta_corregida', 'cerrada', 'reabierta'].includes(e.tipo) ? [...staff, ...admins, ...sol] : [];
+    // Avisos sin saturar: por los mensajes del chat no se repite el aviso a quien tiene uno de este caso sin leer y no lo ha abierto
+    const agrupar = ['respuesta', 'comentario', 'aporte'].includes(e.tipo) && limites(p.colegio_id).agrupar_avisos;
+    const ultimaLectura = (d) => T('pqrs_lecturas').find((l) => l.pqrs_id === p.id && l.perfil_id === d)?.ultima_en || '';
+    const tieneSinLeer = (d) => T('pqrs_avisos').some((a) => a.pqrs_id === p.id && a.perfil_id === d && a.estado === 'enviado' && a.enviado_en > ultimaLectura(d)
+      && T('mensaje_destinatarios').some((md) => md.mensaje_id === a.mensaje_id && md.perfil_id === d && !md.leido_en));
+    let agrupados = 0;
     for (const d of new Set(dest)) {
       if (!d || d === e.actor_id || !miembroActivo(p.colegio_id, d)) continue;
       if (T('pqrs_avisos').some((a) => a.evento_id === eventoId && a.perfil_id === d)) continue;
+      if (agrupar && tieneSinLeer(d)) { agrupados++; continue; }
       T('pqrs_avisos').push({ evento_id: eventoId, perfil_id: d, colegio_id: p.colegio_id, pqrs_id: p.id, vista: admins.includes(d) ? 'admin' : staff.includes(d) || delArea.includes(d) ? 'area' : 'solicitante',
         estado: 'pendiente', mensaje_id: null, error: null, intentos: 0, creado_en: ahora(), enviado_en: null });
     }
+    if (agrupados) e.detalle = { ...e.detalle, avisos_agrupados: agrupados };
     enviar(eventoId);
   };
-  let nEvento = Math.max(0, ...T('pqrs_eventos').map((e) => e.id));
   const evento = (pid, tipo, areaId = null, intervencion = null, detalle = {}, publico = false, conAviso = true) => {
     const p = caso(pid);
-    const e = { id: ++nEvento, colegio_id: p.colegio_id, pqrs_id: pid, tipo, actor_id: yo(), actor_nombre: nombreDe(yo()) || '', area_id: areaId, intervencion_id: intervencion, detalle: detalle || {}, publico, creado_en: ahora() };
+    const e = { id: Math.max(0, ...T('pqrs_eventos').map((x) => x.id)) + 1, // se calcula cada vez: otra pestaña del demo pudo agregar eventos
+      colegio_id: p.colegio_id, pqrs_id: pid, tipo, actor_id: yo(), actor_nombre: nombreDe(yo()) || '', area_id: areaId, intervencion_id: intervencion, detalle: detalle || {}, publico, creado_en: ahora() };
     T('pqrs_eventos').push(e);
-    if (tipo !== 'leida') p.actualizado_en = ahora();
+    if (tipo !== 'leida') { p.actualizado_en = ahora(); senal(pid, publico); }
     if (conAviso) avisar(e.id);
     return e.id;
   };
@@ -193,6 +205,103 @@ export function crearPqrsDemo({ tabla, usuario, guardar, copia, ahora, err }) {
   const largo = (t, min, max, msg) => { const v = String(t ?? '').trim(); if (v.length < min || v.length > max) fallo(msg); return v; };
   const soloAdmin = (c, msg) => { if (!esAdmin(c)) fallo(msg); };
   const abierto = (p) => { if (p.cerrado_en) fallo('El caso está cerrado.'); };
+  let canal = null;
+  // Se avisa DESPUÉS de guardar (la función del demo guarda al terminar): la otra pestaña ya encuentra el cambio
+  const senal = (pid, publico) => setTimeout(() => { try { (canal ||= new BroadcastChannel('complex-demo-pqrs')).postMessage({ pqrs: pid, publico }); } catch {} }, 30);
+
+  // ---------------------------------------------------------------- Conversación y adjuntos (20261029120000)
+  const FORMATOS = ['jpg', 'jpeg', 'png', 'webp', 'heic', 'heif', 'pdf'];
+  const TIPO_ARCHIVO = { jpg: 'image/jpeg', jpeg: 'image/jpeg', png: 'image/png', webp: 'image/webp', heic: 'image/heic', heif: 'image/heif', pdf: 'application/pdf',
+    docx: 'application/vnd.openxmlformats-officedocument.wordprocessingml.document', xlsx: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' };
+  const limites = (c) => { const x = T('pqrs_ajustes').find((y) => y.colegio_id === c);
+    return x ? { max_mb: x.adjunto_max_mb, por_mensaje: x.adjuntos_por_mensaje, por_caso: x.adjuntos_por_caso, formatos: x.formatos, agrupar_avisos: x.agrupar_avisos }
+      : { max_mb: 10, por_mensaje: 5, por_caso: 30, formatos: FORMATOS, agrupar_avisos: true }; };
+  const SIN_TILDE = { á: 'a', é: 'e', í: 'i', ó: 'o', ú: 'u', Á: 'A', É: 'E', Í: 'I', Ó: 'O', Ú: 'U', ñ: 'n', Ñ: 'N', ü: 'u', Ü: 'U' };
+  const nombreArchivo = (n) => (String(n || '').replace(/^.*[\\/]/, '').replace(/[áéíóúÁÉÍÓÚñÑüÜ]/g, (c) => SIN_TILDE[c]).replace(/[^A-Za-z0-9 ._()-]/g, '_').replace(/_+/g, '_')
+    .replace(/^[ ._]+|[ ._]+$/g, '') || 'archivo').slice(0, 120);
+  const adj = (id) => T('pqrs_adjuntos').find((x) => x.id === id);
+  const adjuntosJson = (pid, iid, desc) => T('pqrs_adjuntos').filter((x) => x.pqrs_id === pid && x.estado === 'listo' && (desc ? x.en_descripcion : x.intervencion_id === iid))
+    .sort((x, y) => x.creado_en.localeCompare(y.creado_en) || x.id.localeCompare(y.id))
+    .map((x) => ({ id: x.id, nombre: x.nombre, extension: x.extension, tipo: x.tipo, tamano: x.tamano, ruta: x.ruta, imagen: x.tipo.startsWith('image/') }));
+  // Revisión de los adjuntos (mismos errores que private.pqrs_vincular) ANTES de escribir: si uno no sirve, no se guarda nada
+  const revisarAdjuntos = (c, pid, iid, ids) => {
+    const lim = limites(c), unicos = [...new Set(ids)];
+    if (unicos.length > lim.por_mensaje) fallo(`Un mensaje admite hasta ${lim.por_mensaje} adjuntos.`);
+    for (const id of unicos) {
+      const a = adj(id);
+      if (!a || a.subido_por !== yo() || a.colegio_id !== c || (a.pqrs_id && pid && a.pqrs_id !== pid)) fallo('Uno de los adjuntos no existe o no es tuyo.');
+      if ((iid && a.intervencion_id === iid) || (!iid && a.en_descripcion && a.pqrs_id === pid)) continue;
+      if (a.intervencion_id || a.en_descripcion) fallo('Uno de los adjuntos ya está en otro mensaje.');
+      if (a.estado === 'subiendo') fallo(`«${a.nombre}» no terminó de subirse.`);
+      if (a.estado === 'verificando') fallo(`«${a.nombre}» aún se está verificando. Espera un momento.`);
+      if (a.estado !== 'listo') fallo(`«${a.nombre}» no se puede enviar: ${a.motivo || 'fue retirado.'}`);
+    }
+    const ya = T('pqrs_adjuntos').filter((x) => pid && x.pqrs_id === pid && (x.intervencion_id || x.en_descripcion)).length;
+    const nuevos = unicos.filter((id) => !adj(id).vinculado_en).length;
+    if (ya + nuevos > lim.por_caso) fallo(`Una PQRS admite hasta ${lim.por_caso} adjuntos en total.`);
+    return unicos;
+  };
+  const vincular = (p, iid, ids) => {
+    if (!ids?.length) return 0;
+    const unicos = revisarAdjuntos(p.colegio_id, p.id, iid, ids);
+    for (const id of unicos) { const a = adj(id); if (!a.vinculado_en) Object.assign(a, { pqrs_id: p.id, intervencion_id: iid, en_descripcion: !iid, vinculado_en: ahora() }); }
+    return unicos.length;
+  };
+  // Las tres clases de mensaje con las mismas comprobaciones (y en el mismo orden) que private.pqrs_intervenir
+  const intervenir = (a, tipo, adjuntos = null) => {
+    if (!['respuesta', 'comentario', 'aporte'].includes(tipo)) fallo('Tipo de mensaje no válido.');
+    const p = tomar(a.p_id);
+    if (tipo === 'aporte' && p.solicitante_id !== yo()) fallo('Solo quien presentó la PQRS puede aportar información.');
+    if (!a.p_solicitud) fallo('Falta la identificación del envío.');
+    const ya = yaEnviada(p, a.p_solicitud);
+    if (ya) return tipo === 'aporte' ? { id: ya.id, repetido: true } : { id: ya.id, repetido: true, estado: estado(p.id) };
+    if (p.cerrado_en) fallo(tipo === 'aporte' ? 'El caso está cerrado: si necesitas algo más, presenta una PQRS nueva.' : 'El caso está cerrado.');
+    const con = (adjuntos?.length || 0) > 0, txt = String(a.p_contenido ?? '').trim();
+    const area0 = tipo === 'aporte' ? null : a.p_area || null;
+    if (tipo === 'respuesta') {
+      if (!misAreas(p.id).includes(area0)) fallo('Solo los responsables de esa área responden en su nombre.');
+      if (txt.length < 1 && !con) fallo('Escribe la respuesta.');
+      if (txt.length > 5000) fallo('La respuesta admite hasta 5000 caracteres.');
+    } else if (tipo === 'comentario') {
+      if (!area0) { if (!esAdmin(p.colegio_id)) fallo('Elige el área en cuyo nombre comentas.'); }
+      else if (!misAreas(p.id).includes(area0)) fallo('Solo los responsables de esa área comentan en su nombre.');
+      if (txt.length < 1 && !con) fallo('Escribe el comentario.');
+      if (txt.length > 5000) fallo('El comentario admite hasta 5000 caracteres.');
+    } else if ((txt.length < 3 && !con) || txt.length > 5000) fallo('Escribe la información (de 3 a 5000 caracteres).');
+    let salud = tipo === 'aporte' ? p.sensible : a.p_salud ?? (area(area0)?.clave === 'enfermeria' && p.sensible);
+    if (tipo !== 'aporte' && salud && !veSalud(p.id)) salud = false;
+    if (con) revisarAdjuntos(p.colegio_id, p.id, '__nuevo__', adjuntos); // un adjunto de la descripción no se reutiliza en un mensaje
+    const i = nuevaIntervencion(p, tipo, area0, txt, salud, a.p_solicitud);
+    const n = vincular(p, i.id, adjuntos);
+    const det = n > 0 ? { adjuntos: n } : {};
+    if (tipo === 'respuesta') {
+      Object.assign(asign(p.id).find((x) => x.area_id === area0), { estado: 'respondida', aporte_pendiente: false, estado_por: yo(), estado_en: ahora() });
+      evento(p.id, 'respuesta', area0, i.id, det, true);
+      return { id: i.id, repetido: false, estado: estado(p.id) };
+    }
+    if (tipo === 'comentario') {
+      let paso = false;
+      if (area0) { const s = asign(p.id).find((x) => x.area_id === area0); if (s.estado === 'pendiente') { Object.assign(s, { estado: 'en_revision', estado_por: yo(), estado_en: ahora() }); paso = true; } }
+      evento(p.id, 'comentario', area0, i.id, { paso_a_revision: paso, ...det }, false);
+      return { id: i.id, repetido: false, estado: estado(p.id) };
+    }
+    for (const s of activas(p.id)) s.aporte_pendiente = true;
+    evento(p.id, 'aporte', null, i.id, det, true);
+    return { id: i.id, repetido: false };
+  };
+  const mensajeJson = (iid) => {
+    const i = T('pqrs_intervenciones').find((x) => x.id === iid);
+    if (!i) return null;
+    const acc = acceso(i.pqrs_id);
+    if (!acc || !(acc.personal || ['respuesta', 'aporte'].includes(i.tipo))) return null;
+    const p = caso(i.pqrs_id), oculto = i.salud && !acc.salud;
+    return { id: i.id, tipo: i.tipo, area: area(i.area_id)?.nombre ?? null, area_id: i.area_id, autor: i.autor_nombre, rol: i.tipo === 'aporte' ? p.rol_solicitante : null,
+      mia: i.autor_id === yo(), solicitud_id: i.autor_id === yo() ? i.solicitud_id : null, contenido: oculto ? null : i.contenido, oculto_salud: oculto, salud: i.salud,
+      creado_en: i.creado_en, version: i.version, editado_en: i.editado_en, versiones: T('pqrs_intervencion_versiones').filter((v) => v.intervencion_id === i.id).length,
+      adjuntos: oculto ? [] : adjuntosJson(i.pqrs_id, i.id, false), adjuntos_ocultos: oculto ? T('pqrs_adjuntos').filter((x) => x.intervencion_id === i.id && x.estado === 'listo').length : 0 };
+  };
+  const bytesDe = (url) => { try { const b = atob(String(url || '').split(',')[1] || ''); return Uint8Array.from(b, (c) => c.charCodeAt(0)); } catch { return new Uint8Array(); } };
+
 
   const F = {
     pqrs_yo(a) {
@@ -291,38 +400,8 @@ export function crearPqrsDemo({ tabla, usuario, guardar, copia, ahora, err }) {
           puede_cerrar: acc.admin && !p.cerrado_en, puede_reabrir: acc.admin && !!p.cerrado_en, puede_asignar: acc.admin && !p.cerrado_en, puede_resumen: acc.personal && acc.salud && p.sensible && !p.cerrado_en },
       });
     },
-    pqrs_responder(a) {
-      const p = tomar(a.p_id);
-      if (!a.p_solicitud) fallo('Falta la identificación del envío.');
-      const ya = yaEnviada(p, a.p_solicitud);
-      if (ya) return { id: ya.id, repetido: true, estado: estado(p.id) };
-      abierto(p);
-      if (!misAreas(p.id).includes(a.p_area)) fallo('Solo los responsables de esa área responden en su nombre.');
-      const txt = largo(a.p_contenido, 1, 5000, 'Escribe la respuesta (hasta 5000 caracteres).');
-      let salud = a.p_salud ?? (area(a.p_area)?.clave === 'enfermeria' && p.sensible);
-      if (salud && !veSalud(p.id)) salud = false;
-      const i = nuevaIntervencion(p, 'respuesta', a.p_area, txt, salud, a.p_solicitud);
-      Object.assign(asign(p.id).find((x) => x.area_id === a.p_area), { estado: 'respondida', aporte_pendiente: false, estado_por: yo(), estado_en: ahora() });
-      evento(p.id, 'respuesta', a.p_area, i.id, {}, true);
-      return { id: i.id, repetido: false, estado: estado(p.id) };
-    },
-    pqrs_comentar(a) {
-      const p = tomar(a.p_id);
-      if (!a.p_solicitud) fallo('Falta la identificación del envío.');
-      const ya = yaEnviada(p, a.p_solicitud);
-      if (ya) return { id: ya.id, repetido: true, estado: estado(p.id) };
-      abierto(p);
-      if (!a.p_area) { if (!esAdmin(p.colegio_id)) fallo('Elige el área en cuyo nombre comentas.'); }
-      else if (!misAreas(p.id).includes(a.p_area)) fallo('Solo los responsables de esa área comentan en su nombre.');
-      const txt = largo(a.p_contenido, 1, 5000, 'Escribe el comentario (hasta 5000 caracteres).');
-      let salud = a.p_salud ?? (area(a.p_area)?.clave === 'enfermeria' && p.sensible);
-      if (salud && !veSalud(p.id)) salud = false;
-      const i = nuevaIntervencion(p, 'comentario', a.p_area || null, txt, salud, a.p_solicitud);
-      let paso = false;
-      if (a.p_area) { const s = asign(p.id).find((x) => x.area_id === a.p_area); if (s.estado === 'pendiente') { Object.assign(s, { estado: 'en_revision', estado_por: yo(), estado_en: ahora() }); paso = true; } }
-      evento(p.id, 'comentario', a.p_area || null, i.id, { paso_a_revision: paso }, false);
-      return { id: i.id, repetido: false, estado: estado(p.id) };
-    },
+    pqrs_responder(a) { return intervenir(a, 'respuesta'); },
+    pqrs_comentar(a) { return intervenir(a, 'comentario'); },
     pqrs_corregir(a) {
       const i0 = T('pqrs_intervenciones').find((x) => x.id === a.p_intervencion);
       if (!i0) fallo('Esa intervención no existe o no tienes acceso.');
@@ -339,18 +418,84 @@ export function crearPqrsDemo({ tabla, usuario, guardar, copia, ahora, err }) {
       evento(p.id, i0.tipo === 'respuesta' ? 'respuesta_corregida' : 'comentario_corregido', i0.area_id, i0.id, { motivo: mot.slice(0, 300), version: i0.version }, i0.tipo === 'respuesta', i0.tipo === 'respuesta');
       return { id: i0.id, version: i0.version, igual: false };
     },
-    pqrs_aportar(a) {
-      const p = tomar(a.p_id);
-      if (p.solicitante_id !== yo()) fallo('Solo quien presentó la PQRS puede aportar información.');
-      if (!a.p_solicitud) fallo('Falta la identificación del envío.');
-      const ya = yaEnviada(p, a.p_solicitud);
-      if (ya) return { id: ya.id, repetido: true };
-      if (p.cerrado_en) fallo('El caso está cerrado: si necesitas algo más, presenta una PQRS nueva.');
-      const txt = largo(a.p_contenido, 3, 5000, 'Escribe la información (de 3 a 5000 caracteres).');
-      const i = nuevaIntervencion(p, 'aporte', null, txt, p.sensible, a.p_solicitud);
-      for (const s of activas(p.id)) s.aporte_pendiente = true;
-      evento(p.id, 'aporte', null, i.id, {}, true);
-      return { id: i.id, repetido: false };
+    pqrs_aportar(a) { return intervenir(a, 'aporte'); },
+    // ---------------------------------------------------------------- Conversación y adjuntos
+    pqrs_adjunto_preparar(a) {
+      if (!yo() || !esMiembro(a.p_colegio)) fallo('No perteneces a este colegio.');
+      if (!a.p_solicitud) fallo('Falta la identificación del archivo.');
+      const ya = T('pqrs_adjuntos').find((x) => x.subido_por === yo() && x.solicitud_id === a.p_solicitud);
+      if (ya) return { id: ya.id, ruta: ya.ruta, tipo: ya.tipo, estado: ya.estado, nombre: ya.nombre, repetido: true };
+      if (a.p_pqrs) {
+        const p = caso(a.p_pqrs);
+        if (!p || p.colegio_id !== a.p_colegio || !acceso(a.p_pqrs)) fallo('Esa PQRS no existe o no tienes acceso.');
+        if (p.cerrado_en) fallo('La PQRS está finalizada: ya no recibe adjuntos.');
+      }
+      const lim = limites(a.p_colegio), ext = (String(a.p_nombre || '').match(/\.([A-Za-z0-9]{1,5})$/)?.[1] || '').toLowerCase();
+      if (!ext || !lim.formatos.includes(ext)) fallo(`Ese tipo de archivo no se admite. Formatos permitidos: ${lim.formatos.map((f) => f.toUpperCase()).join(', ')}.`);
+      if (!(a.p_tamano > 0)) fallo('El archivo está vacío.');
+      if (a.p_tamano > lim.max_mb * 1048576) fallo(`El archivo pesa más de ${lim.max_mb} MB.`);
+      if (T('pqrs_adjuntos').filter((x) => x.subido_por === yo() && !x.intervencion_id && !x.en_descripcion && ['subiendo', 'verificando', 'listo'].includes(x.estado)).length >= 20) fallo('Tienes muchos archivos sin enviar. Envía o quita alguno antes de agregar más.');
+      const id = crypto.randomUUID();
+      const x = { id, colegio_id: a.p_colegio, pqrs_id: a.p_pqrs || null, intervencion_id: null, en_descripcion: false, solicitud_id: a.p_solicitud, subido_por: yo(), nombre: nombreArchivo(a.p_nombre),
+        extension: ext, tipo: TIPO_ARCHIVO[ext], tamano: a.p_tamano, ruta: `${a.p_colegio}/${id}.${ext}`, estado: 'subiendo', motivo: null, formato_detectado: null, verificado_en: null, creado_en: ahora(), vinculado_en: null };
+      T('pqrs_adjuntos').push(x);
+      return { id, ruta: x.ruta, tipo: x.tipo, estado: x.estado, nombre: x.nombre, repetido: false };
+    },
+    pqrs_adjunto_subido(a) {
+      const x = adj(a.p_id);
+      if (!x || x.subido_por !== yo()) fallo('Ese adjunto no existe o no es tuyo.');
+      if (x.estado !== 'subiendo') return { id: x.id, estado: x.estado, motivo: x.motivo };
+      const url = archivo('pqrs-adjuntos', x.ruta);
+      if (!url) fallo('El archivo no llegó al servidor. Reintenta la subida.');
+      if (bytesDe(url).length !== x.tamano) Object.assign(x, { estado: 'rechazado', motivo: 'El tamaño subido no coincide con el del archivo elegido.' });
+      else x.estado = 'verificando';
+      return { id: x.id, estado: x.estado, motivo: x.motivo };
+    },
+    // En la base esto lo hace la Edge Function pqrs-adjuntos; en el demo, la misma verificación aquí (pqrs_firma.js)
+    pqrs_adjunto_verificar_demo(a) {
+      const x = adj(a.p_id);
+      if (!x || x.subido_por !== yo()) fallo('Ese adjunto no existe o no es tuyo.');
+      if (x.estado === 'verificando') {
+        const r = verificarFirma(bytesDe(archivo('pqrs-adjuntos', x.ruta)), x.extension);
+        Object.assign(x, { estado: r.ok ? 'listo' : 'rechazado', formato_detectado: r.formato, motivo: r.ok ? null : r.motivo, verificado_en: ahora() });
+      }
+      return { id: x.id, estado: x.estado, motivo: x.motivo };
+    },
+    pqrs_adjunto_estado(a) { return T('pqrs_adjuntos').filter((x) => (a.p_ids || []).includes(x.id) && x.subido_por === yo()).map((x) => ({ id: x.id, estado: x.estado, motivo: x.motivo, formato: x.formato_detectado })); },
+    pqrs_adjunto_retirar(a) {
+      const x = adj(a.p_id);
+      if (!x || x.subido_por !== yo()) fallo('Ese adjunto no existe o no es tuyo.');
+      if (x.intervencion_id || x.en_descripcion) fallo('Ese adjunto ya se envió: queda en la PQRS.');
+      x.estado = 'retirado';
+      return { id: x.id, estado: 'retirado' };
+    },
+    pqrs_enviar(a) {
+      const r = intervenir(a, a.p_modo, a.p_adjuntos);
+      return { ...r, mensaje: mensajeJson(r.id), estado: estado(a.p_id) };
+    },
+    pqrs_presentar(a) {
+      const previo = T('pqrs').find((p) => p.colegio_id === a.p_colegio && p.solicitud_id === a.p_solicitud);
+      if (a.p_adjuntos?.length) revisarAdjuntos(a.p_colegio, previo?.id || null, null, a.p_adjuntos); // antes de crear: todo o nada
+      const r = F.pqrs_crear(a);
+      const n = a.p_adjuntos?.length ? vincular(caso(r.id), null, a.p_adjuntos) : 0;
+      return { ...r, adjuntos: n };
+    },
+    pqrs_mensajes(a) {
+      const acc = acceso(a.p_id);
+      if (!acc) fallo('Esa PQRS no existe o no tienes acceso.');
+      const p = caso(a.p_id), oculto = p.sensible && !acc.salud, lim = Math.min(Math.max(a.p_limite || 50, 1), 200);
+      const vis = T('pqrs_intervenciones').filter((i) => i.pqrs_id === p.id && (acc.personal || ['respuesta', 'aporte'].includes(i.tipo)))
+        .sort((x, y) => x.creado_en.localeCompare(y.creado_en) || x.id.localeCompare(y.id));
+      let lista, mas = false;
+      if (a.p_desde) lista = vis.filter((i) => (i.editado_en && i.editado_en > i.creado_en ? i.editado_en : i.creado_en) >= a.p_desde);
+      else { const previos = a.p_antes ? vis.filter((i) => i.creado_en < a.p_antes) : vis; lista = previos.slice(-lim); mas = previos.length > lista.length; }
+      return {
+        id: p.id, consecutivo: p.consecutivo, estado: estado(p.id), pendientes: nombresAreas(p.id, true), cerrada: !!p.cerrado_en,
+        cierre: p.cerrado_en ? { en: p.cerrado_en, por: nombreDe(p.cerrado_por), motivo: p.cierre_motivo } : null, actualizado_en: p.actualizado_en, ahora: ahora(),
+        inicio: a.p_desde ? null : { autor: p.solicitante_nombre, rol: p.rol_solicitante, creado_en: p.creado_en, mia: p.solicitante_id === yo(), contenido: oculto ? null : p.descripcion,
+          oculto_salud: oculto, adjuntos: oculto ? [] : adjuntosJson(p.id, null, true) },
+        hay_anteriores: mas, mensajes: lista.map((i) => mensajeJson(i.id)),
+      };
     },
     pqrs_estado_area(a) {
       const p = tomar(a.p_id);

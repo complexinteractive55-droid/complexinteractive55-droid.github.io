@@ -62,9 +62,101 @@ export async function lista(m) {
     ${sinGuardar || filas.length ? `<div class="lista">
       ${sinGuardar ? fila('#/circular-institucional/nueva', normal({ ...sinGuardar.datos, consecutivo: '' }), 'Sin guardar · solo en este equipo · aún sin consecutivo') : ''}
       ${filas.map((f) => fila(`#/circular-institucional/${f.id}`, deFila(f),
-        `Borrador · guardado ${esc(fechaHora(f.actualizado_en))} por ${esc(nombre(E.perfiles.get(f.actualizado_por || f.autor_id)))}`,
+        `${f.estado === 'emitida' ? '✅ Emitida' : f.estado === 'anulada' ? '⛔ Anulada' : 'Borrador'}${!f.consecutivo && (!f.estado || f.estado === 'borrador') ? ' · aún sin número' : ''} · guardado ${esc(fechaHora(f.actualizado_en))} por ${esc(nombre(E.perfiles.get(f.actualizado_por || f.autor_id)))}`,
         leerLocal(f.id) ? ' · <b>con cambios sin guardar en este equipo</b>' : '')).join('')}
-    </div>` : vacio('Aún no hay circulares institucionales en borrador.')}`;
+    </div>` : vacio('Aún no hay circulares institucionales en borrador.')}
+    <details class="tarjeta" data-numeracion><summary><b>Numeración por área</b> · series de consecutivos (prefijo, número y sufijo)</summary><div data-numeracion-cuerpo><p class="ayuda">Cargando…</p></div></details>`;
+  // El panel sigue abierto cuando la lista se vuelve a pintar (llegan datos nuevos tras guardar algo en él)
+  const det = m.querySelector('[data-numeracion]');
+  det.addEventListener('toggle', () => { numeracionAbierta = det.open; if (det.open) numeracion_(det.querySelector('[data-numeracion-cuerpo]')); });
+  if (numeracionAbierta) det.open = true;
+}
+
+let numeracionAbierta = false;
+// ---------------------------------------------------------------- Numeración por área (29-oct-2026; migración 20261029130000)
+// Cada área tiene su serie y su contador. El campo pide el ÚLTIMO número oficialmente usado (el siguiente es +1).
+// Una serie nueva queda PROVISIONAL: sirve para borradores, pero solo se emite cuando el administrador la valida con los
+// registros del colegio. Nada de esto inventa los formatos oficiales: se configuran aquí cuando el colegio los confirme.
+async function numeracion_(caja) {
+  let n;
+  try { n = await E.db.rpc('circular_numeracion', { p_colegio: E.colegio.id }); }
+  catch (e) { caja.innerHTML = `<p class="ayuda">${/does not exist|no existe|function/i.test(e.message) ? 'La numeración por área aún no está instalada en la base de este colegio (migración pendiente).' : esc(e.message)}</p>`; return; }
+  const otra = () => numeracion_(caja);
+  const serieHTML = (s) => `<div class="fila" data-serie="${esc(s.id)}"><span class="crece">
+      <b>${esc(s.area || 'Colegio (sin área)')}</b> ${s.vigente ? '' : '<small>(ya no vigente)</small>'}
+      <small>Último usado: <b>${esc(s.area_id ? s.ultimo_texto_area || 'ninguno' : s.ultimo_texto || 'ninguno')}</b> · Siguiente: <b data-siguiente>${esc(s.siguiente || 'la serie se agotó: crea una nueva')}</b></small>
+      <small>${s.provisional ? '⚠ Provisional: sirve para borradores; para emitir hay que validarla' : `✅ Validada por ${esc(s.validada_por_nombre || '—')} el ${esc(fechaHora(s.validada_en))}`}${s.vigente_desde || s.vigente_hasta ? ` · vigencia ${esc(s.vigente_desde || '…')} a ${esc(s.vigente_hasta || '…')}` : ''}${s.anulados ? ` · ${s.anulados} número(s) anulado(s)` : ''}</small>
+      ${s.ultimo_documento ? `<small>Último documento: ${esc(s.ultimo_documento.consecutivo || '')} · «${esc(s.ultimo_documento.titulo || '(sin asunto)')}» · ${esc(s.ultimo_documento.estado)} · versión ${s.ultimo_documento.version}</small>` : ''}
+      ${s.nota ? `<small>Nota: ${esc(s.nota)}</small>` : ''}</span>
+    ${s.vigente ? `<span class="acciones-grupo"><button class="btn btn-chico" data-editar-serie="${esc(s.id)}">Editar</button>${s.provisional ? `<button class="btn btn-chico" data-validar="${esc(s.id)}">Validar</button>` : ''}</span>` : ''}</div>`;
+  caja.innerHTML = `
+    <p class="ayuda">Formato: <b>prefijo</b> + número con ceros (ancho) + <b>sufijo</b>. Ej.: «Memo E2-» + 008 + «-2026-2027». Solo sube el número; el prefijo y el sufijo no cambian dentro de la serie.
+      No se reinicia sola al cambiar de año: abrir otra serie es una decisión explícita. <b>Los formatos oficiales de cada área están pendientes de confirmar con Gerencia.</b></p>
+    <fieldset class="form" data-ajuste><legend><b>¿Cuándo queda definitivo el número?</b> (decisión pendiente)</legend>
+      <label class="check"><input type="radio" name="asignar" value="guardar" ${n.asignar_numero === 'guardar' ? 'checked' : ''}> Al guardar el borrador por primera vez (como hoy)</label>
+      <label class="check"><input type="radio" name="asignar" value="emitir" ${n.asignar_numero === 'emitir' ? 'checked' : ''}> Al emitir (el borrador muestra el número previsto, sin reservarlo)</label>
+    </fieldset>
+    <h3>Áreas</h3>
+    <div class="acciones-grupo">${n.areas.map((a) => `<button class="btn btn-chico" data-area="${esc(a.id)}">${esc(a.nombre)}${a.activo ? '' : ' (inactiva)'}</button>`).join('') || '<span class="ayuda">Aún no hay áreas.</span>'}
+      <button class="btn btn-chico" data-area-nueva>＋ Área</button></div>
+    <h3>Series</h3>
+    <div class="lista">${n.series.map(serieHTML).join('') || '<p class="ayuda">Aún no hay series.</p>'}</div>
+    <div class="acciones"><button class="btn" data-serie-nueva>＋ Serie</button></div>
+    ${n.historial.length ? `<details><summary>Historial de cambios (${n.historial.length})</summary><ul class="lista-simple">${n.historial.slice(0, 20).map((h) => `<li>${esc(fechaHora(h.creado_en))} · ${esc(h.actor || '—')} · ${esc(h.objeto)} ${esc(h.accion)}${h.despues?.prefijo ? ` · ${esc(h.despues.prefijo)}` : h.despues?.nombre ? ` · ${esc(h.despues.nombre)}` : h.despues?.asignar_numero ? ` · al ${esc(h.despues.asignar_numero)}` : ''}</li>`).join('')}</ul></details>` : ''}`;
+  caja.querySelector('[data-ajuste]').addEventListener('change', async (e) => {
+    try { await E.db.rpc('circular_ajustes_guardar', { p_colegio: E.colegio.id, p_asignar_numero: e.target.value }); aviso('Ajuste guardado'); otra(); }
+    catch (err) { aviso(err.message, 'error'); otra(); }
+  });
+  const area = async (a) => {
+    const r = await ventana({ titulo: a ? 'Área' : 'Nueva área', html: `<div class="form"><label>Nombre del área<input name="nombre" maxlength="80" value="${esc(a?.nombre || '')}" placeholder="Ej.: Rectoría"></label>
+      ${a ? `<label class="check"><input type="checkbox" name="activo" ${a.activo ? 'checked' : ''}> Activa</label>` : ''}</div>`,
+      botones: [{ texto: 'Cancelar' }, { texto: 'Guardar', antes: async (c) => { const d = leerForm(c); return E.db.rpc('circular_area_guardar', { p_colegio: E.colegio.id, p_id: a?.id || null, p_nombre: d.nombre, p_activo: a ? !!d.activo : true }); } }] });
+    if (r) { aviso('Área guardada'); otra(); }
+  };
+  const serie = async (s) => {
+    const vig = (areaId) => n.series.some((x) => x.vigente && (x.area_id || null) === (areaId || null) && x.id !== s?.id);
+    const r = await ventana({ titulo: s ? 'Editar serie' : 'Nueva serie', html: `<div class="form">
+      ${s ? `<p><b>${esc(s.area || 'Colegio (sin área)')}</b></p>` : `<label>Área<select name="area"><option value="">Colegio (sin área)</option>${n.areas.filter((a) => a.activo).map((a) => `<option value="${esc(a.id)}">${esc(a.nombre)}</option>`).join('')}</select></label>`}
+      <label>Prefijo (constante)<input name="prefijo" maxlength="30" value="${esc(s?.prefijo || '')}" placeholder="Ej.: Memo E2-"></label>
+      <label>Ancho del número (cifras con ceros)<input name="ancho" type="number" min="1" max="6" value="${esc(s?.ancho ?? 3)}"></label>
+      <label>Sufijo (constante; vacío = «-» + período)<input name="sufijo" maxlength="40" value="${esc(s?.sufijo || '')}" placeholder="Ej.: -2026-2027"></label>
+      <label>Período (año o año académico)<input name="periodo" maxlength="9" value="${esc(s?.periodo || '')}" placeholder="2026-2027"></label>
+      <label><b>Último número OFICIALMENTE usado</b> (0 si empieza; el siguiente será +1)<input name="ultimo" type="number" min="0" value="${esc(s?.ultimo ?? 0)}"></label>
+      <p class="ayuda" data-ejemplo></p>
+      <label>Vigente desde (opcional)<input name="desde" type="date" value="${esc(s?.vigente_desde || '')}"></label>
+      <label>Vigente hasta (opcional)<input name="hasta" type="date" value="${esc(s?.vigente_hasta || '')}"></label>
+      <label>Nota (opcional)<input name="nota" maxlength="500" value="${esc(s?.nota || '')}"></label>
+      <label class="check" data-reemplazar hidden><input type="checkbox" name="reemplazar"> Esta área ya tiene una serie vigente: abrir esta la reemplaza (la anterior conserva sus números)</label>
+      <p class="ayuda">Al cambiar el formato o el último número, la serie queda provisional y hay que volver a validarla.</p></div>`,
+      alAbrir: (c) => {
+        const ver = () => {
+          const d = leerForm(c), anc = Number(d.ancho) || 3, sig = String((Number(d.ultimo) || 0) + 1);
+          c.querySelector('[data-ejemplo]').textContent = sig.length > anc ? `El siguiente número (${sig}) no cabe en ${anc} cifras.` : `Último: ${Number(d.ultimo) ? d.prefijo + String(Number(d.ultimo)).padStart(anc, '0') + (d.sufijo || '-' + d.periodo) : '(ninguno)'} → siguiente: ${d.prefijo}${sig.padStart(anc, '0')}${d.sufijo || '-' + d.periodo}`;
+          const rem = c.querySelector('[data-reemplazar]'); if (rem) rem.hidden = s ? true : !vig(d.area);
+        };
+        c.addEventListener('input', ver); c.addEventListener('change', ver); ver();
+      },
+      botones: [{ texto: 'Cancelar' }, { texto: 'Guardar', antes: async (c) => { const d = leerForm(c);
+        return E.db.rpc('circular_serie_guardar', { p_colegio: E.colegio.id, p_id: s?.id || null, p_area: s ? s.area_id : d.area || null, p_prefijo: d.prefijo, p_periodo: d.periodo, p_ancho: Number(d.ancho),
+          p_sufijo: d.sufijo || null, p_ultimo_usado: Number(d.ultimo), p_vigente_desde: d.desde || null, p_vigente_hasta: d.hasta || null, p_nota: d.nota || null, p_reemplazar: !!d.reemplazar }); } }] });
+    if (r) { aviso(`Serie guardada · siguiente: ${r.siguiente}`); otra(); }
+  };
+  // onclick (no addEventListener): el panel se vuelve a pintar en la misma caja y debe quedar UN solo manejador, con los datos nuevos
+  caja.onclick = async (e) => {
+    const b = e.target.closest('button');
+    if (!b) return;
+    if (b.hasAttribute('data-area-nueva')) return area(null);
+    if (b.dataset.area) return area(n.areas.find((a) => a.id === b.dataset.area));
+    if (b.hasAttribute('data-serie-nueva')) return serie(null);
+    if (b.dataset.editarSerie) return serie(n.series.find((x) => x.id === b.dataset.editarSerie));
+    if (b.dataset.validar) {
+      const s = n.series.find((x) => x.id === b.dataset.validar);
+      const r = await ventana({ titulo: 'Validar serie', html: `<p>Confirma que <b>${esc(s.area || 'el colegio')}</b> usa el formato <b>${esc(s.siguiente || '')}</b> y que el último número oficialmente usado es el correcto, comparándolo con los registros del colegio.</p>
+        <div class="form"><label>¿Con qué registro lo comprobaste? (obligatorio)<textarea name="constancia" rows="3" maxlength="500" placeholder="Ej.: libro de memos de Rectoría, último memo E2-007-2026-2027"></textarea></label></div>`,
+        botones: [{ texto: 'Cancelar' }, { texto: 'Validar', antes: (c) => E.db.rpc('circular_serie_validar', { p_colegio: E.colegio.id, p_id: s.id, p_constancia: leerForm(c).constancia }) }] });
+      if (r) { aviso('Serie validada'); otra(); }
+    }
+  };
 }
 
 // ---------------------------------------------------------------- Editor
@@ -94,6 +186,11 @@ export async function editor(m, p) {
     E.db.modo === 'demo' ? [] : E.db.select('circular_plantillas', { eq: { colegio_id: E.colegio.id, estado: 'aprobada' }, order: 'revision desc', limit: 1 }).catch(() => []),
   ]);
   let plantilla = plantillas[0] || null;
+  // Numeración por área (si la migración 20261029130000 está en la base): áreas configuradas y número PREVISTO (no reservado)
+  const num = await E.db.rpc('circular_numeracion', { p_colegio: E.colegio.id }).catch(() => null);
+  const areasCfg = (num?.areas || []).filter((a) => a.activo);
+  const areaDe = (txt) => areasCfg.find((a) => a.nombre.trim().toLowerCase() === String(txt || '').trim().toLowerCase()) || null;
+  let prevista = null;
   const provisional = series[0]?.provisional !== false;
   // Estado del borrador en el servidor: id, versión con la que se abrió, lo último guardado y su consecutivo (fijo).
   // Uno nuevo lleva su identificador de creación, guardado con la copia del equipo: el reintento tras recargar es el mismo.
@@ -119,7 +216,7 @@ export async function editor(m, p) {
         <label>Consecutivo<input data-consec readonly aria-readonly="true" placeholder="Se asigna al guardar"></label>
         <div class="circ-consec"><small class="ayuda" data-consec-ayuda></small></div>
         <small class="ayuda">Referencia interna del borrador: <span data-ref>${esc(referencia(srv.id))}</span></small>
-        <label>Área que emite<input name="dependencia" list="circ-areas" maxlength="${LIMITES.dependencia}" placeholder="Ej.: Rectoría"><datalist id="circ-areas">${AREAS.map((a) => `<option value="${esc(a)}">`).join('')}</datalist></label>
+        <label>Área que emite<input name="dependencia" list="circ-areas" maxlength="${LIMITES.dependencia}" placeholder="Ej.: Rectoría"><datalist id="circ-areas">${[...new Set([...areasCfg.map((a) => a.nombre), ...AREAS])].map((a) => `<option value="${esc(a)}">`).join('')}</datalist></label>
       </section>
       <section class="tarjeta">
         <h2>Para</h2>
@@ -187,6 +284,14 @@ export async function editor(m, p) {
   };
 
   let guardando = false, localT = null;
+  // Vista previa del número (solo lectura): se pide al abrir y al cambiar el área
+  const previsualizar = async () => {
+    if (!num || srv.consecutivo) { prevista = null; return; }
+    const a = areaDe(form.elements.dependencia.value);
+    try { prevista = { area: a, ...(await E.db.rpc('circular_previsualizar_numero', { p_colegio: E.colegio.id, p_area: a?.id || null })) }; } catch { prevista = null; }
+    pintar();
+  };
+  const conArea = (x) => { const a = areaDe(x.dependencia); return a && !srv.consecutivo ? { ...x, area_id: a.id } : x; }; // el área solo cuenta mientras no tenga número
   const pintar = () => {
     const x = actual();
     $c('[data-fecha-txt]').textContent = fechaLarga(x.fecha_emision);
@@ -194,7 +299,12 @@ export async function editor(m, p) {
     $c('[data-para-txt]').textContent = textoDestinatarios(x.destinatarios, x.destinatarios_otros) || '—';
     // Consecutivo: solo lectura; lo pone la base al guardar por primera vez
     $c('[data-consec]').value = srv.consecutivo;
-    $c('[data-consec-ayuda]').textContent = (srv.consecutivo
+    $c('[data-consec]').placeholder = !srv.consecutivo && prevista?.siguiente ? 'Previsto: ' + prevista.siguiente : 'Se asigna al guardar';
+    if (!srv.consecutivo && prevista && (prevista.hay_serie || prevista.area)) {
+      $c('[data-consec-ayuda]').textContent = prevista.hay_serie
+        ? `Próximo previsto: ${prevista.siguiente || '(la serie se agotó: crea una nueva)'}. Es una vista previa, NO queda reservado: ${prevista.asignar_numero === 'emitir' ? 'el número definitivo se asigna al emitir' : 'se asigna al guardar por primera vez'}; si otra persona guarda antes, toma el siguiente.${prevista.provisional ? ' Serie provisional: para emitir hay que validarla.' : ''}`
+        : `«${prevista.area.nombre}» no tiene serie de consecutivos: el borrador se guarda sin número y no se podrá emitir hasta configurarla y validarla (Numeración por área).`;
+    } else $c('[data-consec-ayuda]').textContent = (srv.consecutivo
       ? 'Lo asignó Complex al guardar por primera vez. No cambia al editar, previsualizar ni descargar.'
       : 'Complex lo asigna al guardar por primera vez. Abrir el formulario o previsualizar no gasta números.')
       + (provisional ? ' Numeración provisional: la convención oficial está pendiente.' : '');
@@ -230,6 +340,7 @@ export async function editor(m, p) {
     }, 300);
   };
   pintar();
+  previsualizar();
   form.addEventListener('input', cambio);
   form.addEventListener('change', cambio);
 
@@ -240,6 +351,7 @@ export async function editor(m, p) {
     const cargo = form.elements.cargo;
     if (CARGO_DE_AREA[area] && (!cargo.value.trim() || cargo.value === CARGO_DE_AREA[areaAntes])) { cargo.value = CARGO_DE_AREA[area]; cambio(); }
     areaAntes = area;
+    previsualizar();
   });
   $c('[data-hoy]').addEventListener('click', () => { d = { ...d, fecha_emision: hoyBogota() }; cambio(); });
 
@@ -298,7 +410,7 @@ export async function editor(m, p) {
       if (primera) {
         // La copia del equipo lleva el identificador de esta creación: si la red falla y se recarga, el reintento es el mismo
         guardarLocal('nueva', { datos: x, version: 0, en: Date.now(), solicitud: srv.solicitud });
-        r = await E.db.rpc('crear_circular_borrador', { p_colegio: E.colegio.id, p_solicitud: srv.solicitud, p_datos: x });
+        r = await E.db.rpc('crear_circular_borrador', { p_colegio: E.colegio.id, p_solicitud: srv.solicitud, p_datos: conArea(x) });
         E.db.refrescar('circular_borradores');
         borrarLocal('nueva');
         llave = r.id;
@@ -306,7 +418,7 @@ export async function editor(m, p) {
         $c('[data-ref]').textContent = referencia(r.id);
         history.replaceState(null, '', '#/circular-institucional/' + r.id);
       } else {
-        [r] = await E.db.update('circular_borradores', { datos: x }, { id: srv.id, version: srv.version });
+        [r] = await E.db.update('circular_borradores', { datos: conArea(x) }, { id: srv.id, version: srv.version });
         if (!r) { guardando = false; btnGuardar.disabled = false; pintar(); await conflicto(x); return false; }
       }
       Object.assign(srv, { id: r.id, version: r.version, datos: deFila(r), en: r.actualizado_en, consecutivo: r.consecutivo || r.datos?.consecutivo || '' });

@@ -63,10 +63,11 @@ export async function infoPersonal(m, p) {
     ${comoAcu.length ? `<section class="tarjeta"><h2>Familiares</h2><div class="lista">${comoAcu.map((x) => { const mt = hijosMats.find((y) => y.estudiante_id === x.estudiante_id && y.estado === 'activa'); const c = mt && b.cursoPorId.get(mt.curso_id); return familiar(E.perfiles.get(x.estudiante_id), 'Estudiante', c ? `${esc(b.grados.find((g) => g.id === c.grado_id)?.nombre || '')} ${esc(c.nombre)}${b.anio ? ` (${b.anio.anio})` : ''}` : '', iconos(x)); }).join('')}</div></section>` : ''}`;
   m.querySelector('[data-clave]')?.addEventListener('click', async () => { const { cambiarClave } = await import('../app.js'); cambiarClave(false); });
   m.querySelector('[data-foto]')?.addEventListener('click', async (ev) => {
-    ev.target.disabled = true;
-    try { if (await cambiarFoto(id)) { aviso('Foto guardada'); infoPersonal(m, p); } }
+    const b = ev.currentTarget, texto = b.textContent;
+    b.disabled = true;
+    try { if (await cambiarFoto(id, { alElegir: () => { b.textContent = 'Subiendo la foto…'; } })) { aviso('Foto guardada'); infoPersonal(m, p); } }
     catch (e) { aviso(e.message, 'error'); }
-    finally { ev.target.disabled = false; }
+    finally { b.disabled = false; b.textContent = texto; }
   });
   m.querySelector('[data-editar]')?.addEventListener('click', async () => {
     const campos = [
@@ -141,18 +142,40 @@ async function achicarFoto(archivo, lado = 480) {
   return new Promise((ok, mal) => c.toBlob((b) => (b ? ok(b) : mal(new Error('No se pudo leer la imagen.'))), 'image/jpeg', 0.85));
 }
 
-export async function cambiarFoto(id) {
+// Abre el selector y espera la foto elegida, o null si la persona lo cierra sin elegir. Antes solo se escuchaba «change»:
+// al cancelar, la espera nunca terminaba y el botón quedaba deshabilitado («subir la foto no responde»).
+export function elegirImagen() {
   const inp = document.createElement('input');
   inp.type = 'file';
   inp.accept = 'image/*';
-  const archivo = await new Promise((ok) => { inp.onchange = () => ok(inp.files[0] || null); inp.click(); });
+  inp.hidden = true;
+  document.body.appendChild(inp); // algunos Safari no avisan el cambio de un selector que no está en la página
+  return new Promise((ok) => {
+    let listo = false;
+    const fin = (f) => { if (listo) return; listo = true; window.removeEventListener('focus', alVolver); inp.remove(); ok(f); };
+    // Navegadores que no avisan «cancel» en el selector de archivos: si 4 s después de volver a la página no llegó
+    // ningún archivo, se da por cancelado (el «change» de una foto elegida llega antes)
+    const alVolver = () => setTimeout(() => fin(inp.files?.[0] || null), 4000);
+    inp.addEventListener('change', () => fin(inp.files?.[0] || null));
+    inp.addEventListener('cancel', () => fin(null));
+    window.addEventListener('focus', alVolver, { once: true });
+    inp.click();
+  });
+}
+
+export async function cambiarFoto(id, { alElegir } = {}) {
+  const archivo = await elegirImagen();
   if (!archivo) return false;
-  if (!archivo.type.startsWith('image/')) throw new Error('Elige una imagen (foto).');
-  const blob = await achicarFoto(archivo);
+  if (!archivo.type.startsWith('image/') && !/\.(jpe?g|png|webp|heic|heif)$/i.test(archivo.name)) throw new Error('Elige una imagen (foto).');
+  alElegir?.(archivo);
+  let blob;
+  try { blob = await achicarFoto(archivo); }
+  catch { throw new Error('No se pudo leer esa imagen en este equipo. Prueba con una foto JPG o PNG.'); }
   const ruta = `${id}/${Date.now()}.jpg`;
-  const [antes] = await E.db.select('fotos', { eq: { perfil_id: id } }).catch(() => []);
+  const [antes] = await (E.db.fresco || E.db.select)('fotos', { eq: { perfil_id: id } }).catch(() => []);
   await E.db.subirArchivo('fotos', ruta, new File([blob], 'foto.jpg', { type: 'image/jpeg' }));
-  await E.db.upsert('fotos', [{ perfil_id: id, ruta, actualizado_en: new Date().toISOString() }], 'perfil_id');
+  try { await E.db.upsert('fotos', [{ perfil_id: id, ruta, actualizado_en: new Date().toISOString() }], 'perfil_id'); }
+  catch (e) { E.db.borrarArchivo('fotos', ruta).catch(() => {}); throw e; } // sin la fila, el archivo subido no sirve: no queda huérfano
   if (antes?.ruta && antes.ruta !== ruta) E.db.borrarArchivo('fotos', antes.ruta).catch(() => {});
   olvidarFoto(id);
   window.dispatchEvent(new CustomEvent('complex:foto', { detail: { id } })); // menú y Mi cuenta

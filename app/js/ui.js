@@ -90,7 +90,7 @@ export const hoy = (instante) => {
 export const nombre = (p) => (p ? `${p.nombres || ''} ${p.apellidos || ''}`.trim() || p.correo || 'Sin nombre' : '—');
 export const nombreLista = (p) => (p ? `${p.apellidos || ''} ${p.nombres || ''}`.trim() || p.correo || 'Sin nombre' : '—');
 // Avatar: la foto si la hay; si no, las iniciales
-export const avatarHTML = (p, url, clase = '') => `<span class="avatar ${clase}">${url ? `<img src="${esc(url)}" alt="" loading="lazy" decoding="async">` : esc(iniciales(p || {}))}</span>`;
+export const avatarHTML = (p, url, clase = '') => `<span class="avatar ${clase}" data-iniciales="${esc(iniciales(p || {}))}">${url ? `<img src="${esc(url)}" alt="" loading="lazy" decoding="async">` : esc(iniciales(p || {}))}</span>`;
 export const iniciales = (p) => (nombre(p).split(/\s+/).slice(0, 2).map((x) => x[0]).join('') || '?').toUpperCase();
 
 export const ROL = { admin: 'Administrador', director_seccion: 'Director(a) de sección', profesor: 'Profesor', enfermeria: 'Enfermería', acudiente: 'Acudiente', estudiante: 'Estudiante' };
