@@ -167,66 +167,66 @@ export function aplicarTema() {
 
 // ---------------------------------------------------------------- Rutas
 const RUTAS = [
-  ['inicio', () => inicio()],
-  ['estructura', async (p) => (await pant.admin()).estructura(main(), p)],
-  ['personas', async (p) => (await pant.admin()).personas(main(), p)],
-  ['curso/:id', async (p) => (await pant.admin()).curso(main(), p)],
-  ['ajustes-colegio', async () => (await pant.admin()).ajustesColegio(main())],
-  ['clases', async () => (await pant.docencia()).clases(main())],
-  ['grupo/:asig', async (p) => (await pant.docencia()).grupo(main(), p)],
-  ['direccion', async () => (await pant.docencia()).direccion(main())],
-  ['consolidado/:asig', async (p) => (await pant.docencia()).consolidado(main(), p)],
-  ['info-personal', async (p) => (await pant.famPerfil()).infoPersonal(main(), p)],
-  ['salidas', async (p) => (await pant.enfermeria()).salidas(main(), p)],
-  ['compromisos', async (p) => (await pant.compromisosP()).lista(main(), p)],
-  ['docentes', async () => (await pant.docenteP()).lista(main())],
-  ['docente/:id', async (p) => (await pant.docenteP()).ficha(main(), p)],
-  ['planeacion', async () => (await pant.enfermeria()).planeacionFamilia(main())],
-  ['edocs', async () => (await pant.famPerfil()).edocs(main())],
-  ['obligaciones', async () => (await pant.famPerfil()).obligaciones(main())],
-  ['bandeja-hijo', async () => (await pant.famPerfil()).bandejaHijo(main())],
-  ['notas/:asig', async (p) => (await pant.planillaP()).planilla(main(), p)],
-  ['observaciones-boletin/:asig', async (p) => (await pant.boletinD()).observaciones(main(), p)],
-  ['remediales/:asig', async (p) => (await pant.boletinD()).remediales(main(), p)],
-  ['seguimientos', async () => (await pant.seguimientosP()).lista(main())],
-  ['seguimiento/:id', async (p) => (await pant.seguimientosP()).seguimiento(main(), p)],
-  ['asistencia/:asig', async (p) => (await pant.profe()).asistencia(main(), p)],
-  ['observador/:est', async (p) => (await pant.familia()).observador(main(), p)],
-  ['estudiante/:est', async (p) => (await pant.familia()).estudiante(main(), p)],
-  ['boletin/:est/:periodo', async (p) => (await pant.familia()).boletin(main(), p)],
-  ['circulares', async () => (await pant.circulares()).lista(main())],
-  ['circular/:id', async (p) => (await pant.circulares()).detalle(main(), p)],
-  ['circulares-institucionales', async () => (await pant.circularInst()).lista(main())],
-  ['circular-institucional/:id', async (p) => (await pant.circularInst()).editor(main(), p)],
-  ['planeaciones', async (p) => (await pant.planeaciones()).lista(main(), p)],
-  ['bandeja', async (p) => (await pant.mensajeria()).bandeja(main(), p)],
-  ['enviados', async () => (await pant.mensajeria()).enviados(main())],
-  ['redactar', async (p) => (await pant.mensajeria()).redactar(main(), p)],
-  ['mensaje/:id', async (p) => (await pant.mensajeria()).detalle(main(), p)],
-  ['cartelera', async () => (await pant.mensajeria()).cartelera(main())],
-  ['aula', async () => (await pant.aula()).aula(main())],
-  ['aula/:asig', async (p) => (await pant.aula()).materia(main(), p)],
-  ['tarea/:id', async (p) => (await pant.aula()).tarea(main(), p)],
-  ['calendario', async (p) => (await pant.calendario()).calendario(main(), p)],
-  ['tesoreria', async (p) => (await pant.tesoreria()).tesoreria(main(), p)],
-  ['estado-cuenta/:est', async (p) => (await pant.tesoreria()).estadoCuenta(main(), p)],
-  ['ausencias', async () => (await pant.comunidad()).ausencias(main())],
-  ['archivos', async (p) => (await pant.comunidad()).archivos(main(), p)],
-  ['pasarelas', async () => (await pant.comunidad()).pasarelas(main())],
-  ['procesos', async (p) => (await pant.procesos()).lista(main(), p)],
-  ['proceso/:id', async (p) => (await pant.procesos()).responder(main(), p)],
-  ['proceso/:id/respuestas', async (p) => (await pant.procesos()).respuestas(main(), p)],
-  ['certificado/:tipo/:est', async (p) => (await pant.certificados()).certificado(main(), p)],
-  ['horario', async (p) => (await pant.horario()).horario(main(), p)],
-  ['espacios', async (p) => (await pant.espacios()).solicitud(main(), p)],
-  ['espacios-solicitudes', async (p) => (await pant.espacios()).solicitudesAdmin(main(), p)],
-  ['pqrs', async (p) => (await pant.pqrs()).inicio(main(), p)],
-  ['pqrs/:id', async (p) => (await pant.pqrs()).detalle(main(), p)],
-  ['reportes', async (p) => (await pant.reportes()).reportes(main(), p)],
-  ['examen/:id', async (p) => (await pant.examenesP()).examen(main(), p)],
-  ['ayuda', async () => (await pant.ayudaP()).ayuda(main())],
-  ['carnet/:est', async (p) => (await pant.carnetP()).carnet(main(), p)],
-  ['perfil', () => perfil()],
+  ['inicio', (_, m) => inicio(m)],
+  ['estructura', async (p, m) => (await pant.admin()).estructura(m, p)],
+  ['personas', async (p, m) => (await pant.admin()).personas(m, p)],
+  ['curso/:id', async (p, m) => (await pant.admin()).curso(m, p)],
+  ['ajustes-colegio', async (_, m) => (await pant.admin()).ajustesColegio(m)],
+  ['clases', async (_, m) => (await pant.docencia()).clases(m)],
+  ['grupo/:asig', async (p, m) => (await pant.docencia()).grupo(m, p)],
+  ['direccion', async (_, m) => (await pant.docencia()).direccion(m)],
+  ['consolidado/:asig', async (p, m) => (await pant.docencia()).consolidado(m, p)],
+  ['info-personal', async (p, m) => (await pant.famPerfil()).infoPersonal(m, p)],
+  ['salidas', async (p, m) => (await pant.enfermeria()).salidas(m, p)],
+  ['compromisos', async (p, m) => (await pant.compromisosP()).lista(m, p)],
+  ['docentes', async (_, m) => (await pant.docenteP()).lista(m)],
+  ['docente/:id', async (p, m) => (await pant.docenteP()).ficha(m, p)],
+  ['planeacion', async (_, m) => (await pant.enfermeria()).planeacionFamilia(m)],
+  ['edocs', async (_, m) => (await pant.famPerfil()).edocs(m)],
+  ['obligaciones', async (_, m) => (await pant.famPerfil()).obligaciones(m)],
+  ['bandeja-hijo', async (_, m) => (await pant.famPerfil()).bandejaHijo(m)],
+  ['notas/:asig', async (p, m) => (await pant.planillaP()).planilla(m, p)],
+  ['observaciones-boletin/:asig', async (p, m) => (await pant.boletinD()).observaciones(m, p)],
+  ['remediales/:asig', async (p, m) => (await pant.boletinD()).remediales(m, p)],
+  ['seguimientos', async (_, m) => (await pant.seguimientosP()).lista(m)],
+  ['seguimiento/:id', async (p, m) => (await pant.seguimientosP()).seguimiento(m, p)],
+  ['asistencia/:asig', async (p, m) => (await pant.profe()).asistencia(m, p)],
+  ['observador/:est', async (p, m) => (await pant.familia()).observador(m, p)],
+  ['estudiante/:est', async (p, m) => (await pant.familia()).estudiante(m, p)],
+  ['boletin/:est/:periodo', async (p, m) => (await pant.familia()).boletin(m, p)],
+  ['circulares', async (_, m) => (await pant.circulares()).lista(m)],
+  ['circular/:id', async (p, m) => (await pant.circulares()).detalle(m, p)],
+  ['circulares-institucionales', async (_, m) => (await pant.circularInst()).lista(m)],
+  ['circular-institucional/:id', async (p, m) => (await pant.circularInst()).editor(m, p)],
+  ['planeaciones', async (p, m) => (await pant.planeaciones()).lista(m, p)],
+  ['bandeja', async (p, m) => (await pant.mensajeria()).bandeja(m, p)],
+  ['enviados', async (_, m) => (await pant.mensajeria()).enviados(m)],
+  ['redactar', async (p, m) => (await pant.mensajeria()).redactar(m, p)],
+  ['mensaje/:id', async (p, m) => (await pant.mensajeria()).detalle(m, p)],
+  ['cartelera', async (_, m) => (await pant.mensajeria()).cartelera(m)],
+  ['aula', async (_, m) => (await pant.aula()).aula(m)],
+  ['aula/:asig', async (p, m) => (await pant.aula()).materia(m, p)],
+  ['tarea/:id', async (p, m) => (await pant.aula()).tarea(m, p)],
+  ['calendario', async (p, m) => (await pant.calendario()).calendario(m, p)],
+  ['tesoreria', async (p, m) => (await pant.tesoreria()).tesoreria(m, p)],
+  ['estado-cuenta/:est', async (p, m) => (await pant.tesoreria()).estadoCuenta(m, p)],
+  ['ausencias', async (_, m) => (await pant.comunidad()).ausencias(m)],
+  ['archivos', async (p, m) => (await pant.comunidad()).archivos(m, p)],
+  ['pasarelas', async (_, m) => (await pant.comunidad()).pasarelas(m)],
+  ['procesos', async (p, m) => (await pant.procesos()).lista(m, p)],
+  ['proceso/:id', async (p, m) => (await pant.procesos()).responder(m, p)],
+  ['proceso/:id/respuestas', async (p, m) => (await pant.procesos()).respuestas(m, p)],
+  ['certificado/:tipo/:est', async (p, m) => (await pant.certificados()).certificado(m, p)],
+  ['horario', async (p, m) => (await pant.horario()).horario(m, p)],
+  ['espacios', async (p, m) => (await pant.espacios()).solicitud(m, p)],
+  ['espacios-solicitudes', async (p, m) => (await pant.espacios()).solicitudesAdmin(m, p)],
+  ['pqrs', async (p, m) => (await pant.pqrs()).inicio(m, p)],
+  ['pqrs/:id', async (p, m) => (await pant.pqrs()).detalle(m, p)],
+  ['reportes', async (p, m) => (await pant.reportes()).reportes(m, p)],
+  ['examen/:id', async (p, m) => (await pant.examenesP()).examen(m, p)],
+  ['ayuda', async (_, m) => (await pant.ayudaP()).ayuda(m)],
+  ['carnet/:est', async (p, m) => (await pant.carnetP()).carnet(m, p)],
+  ['perfil', (_, m) => perfil(m)],
 ];
 
 function resolver(hash) {
@@ -257,14 +257,19 @@ async function navegar() {
   escucharNotas(); // si cambió de colegio, escucha las notas del nuevo
   const r = resolver(location.hash || '#/inicio') || resolver('#/inicio');
   pintarArmazon(r.patron);
-  main().innerHTML = '<div class="cargando" aria-label="Cargando"><span></span></div>';
+  // Cada navegación pinta en su PROPIO #principal (uno nuevo en el mismo lugar): si una pantalla anterior termina de cargar
+  // después (p. ej. el Tablero, que es lento), escribe en el que ya salió de la página y no tapa la nueva (2-nov-2026: el menú
+  // marcaba «Mi cuenta y ajustes» y se veía el Tablero)
+  const m = main().cloneNode(false);
+  main().replaceWith(m);
+  m.innerHTML = '<div class="cargando" aria-label="Cargando"><span></span></div>';
   try {
-    await r.fn(r.params);
+    await r.fn(r.params, m);
   } catch (err) {
     console.error(err);
-    if (yo === navegando) main().innerHTML = `<div class="vacio"><p>No se pudo cargar: ${esc(err.message)}</p><button class="btn" data-recargar>Reintentar</button></div>`;
+    if (yo === navegando) m.innerHTML = `<div class="vacio"><p>No se pudo cargar: ${esc(err.message)}</p><button class="btn" data-recargar>Reintentar</button></div>`;
   }
-  if (yo === navegando) { main().scrollTop = 0; window.scrollTo(0, 0); etiquetarTablas(main()); const bx = $('#btn-exportar'); if (bx) bx.hidden = !main().querySelector('table'); }
+  if (yo === navegando) { m.scrollTop = 0; window.scrollTo(0, 0); etiquetarTablas(m); const bx = $('#btn-exportar'); if (bx) bx.hidden = !m.querySelector('table'); }
 }
 
 // Llegaron datos más nuevos del servidor para la pantalla que se está viendo (db.js los pidió por detrás):
@@ -306,7 +311,7 @@ window.addEventListener('complex:datos-nuevos', async () => {
   const r = resolver(location.hash || '#/inicio') || resolver('#/inicio');
   const yo = ++navegando;
   const m = main(), y = m.scrollTop, wy = window.scrollY;
-  try { await r.fn(r.params); } catch (err) { console.warn(err); return; }
+  try { await r.fn(r.params, m); } catch (err) { console.warn(err); return; }
   if (yo !== navegando) return;
   m.scrollTop = y; window.scrollTo(0, wy);
   etiquetarTablas(m);
@@ -521,13 +526,13 @@ function precargarInicio() {
   for (const n of lista) import(`./pantallas/${n}.js`).catch(() => {});
 }
 
-async function inicio() {
-  if (E.rol === 'admin') return (await pant.admin()).inicio(main());
-  if (E.rol === 'profesor') return (await pant.profe()).inicio(main());
-  if (E.rol === 'enfermeria') return (await pant.enfermeria()).inicioEnfermeria(main());
-  if (E.rol === 'director_seccion') return (await pant.enfermeria()).inicioSeccion(main());
-  if (viendoHijo()) return (await pant.familia()).estudiante(main(), { est: E.persona, inicio: 1 });
-  return (await pant.familia()).inicio(main());
+async function inicio(m = main()) {
+  if (E.rol === 'admin') return (await pant.admin()).inicio(m);
+  if (E.rol === 'profesor') return (await pant.profe()).inicio(m);
+  if (E.rol === 'enfermeria') return (await pant.enfermeria()).inicioEnfermeria(m);
+  if (E.rol === 'director_seccion') return (await pant.enfermeria()).inicioSeccion(m);
+  if (viendoHijo()) return (await pant.familia()).estudiante(m, { est: E.persona, inicio: 1 });
+  return (await pant.familia()).inicio(m);
 }
 
 // ---------------------------------------------------------------- Entrar
@@ -748,8 +753,7 @@ async function pantallaColegios() {
 }
 
 // ---------------------------------------------------------------- Perfil / Más
-async function perfil() {
-  const m = main();
+async function perfil(m = main()) {
   const tema = pref('tema') || 'auto';
   const tieneFoto = !!(await fotos([E.yo.id]).catch(() => new Map())).get(E.yo.id);
   m.innerHTML = `
