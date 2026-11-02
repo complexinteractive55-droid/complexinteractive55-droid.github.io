@@ -1,5 +1,6 @@
 // PQRS — Peticiones, Quejas, Reclamos y Sugerencias (pedido de Fabio, 28-oct-2026). Necesita la migración 20261028200000_pqrs.
-// Todos los perfiles presentan PQRS (#/pqrs?tab=nueva) y ven las suyas («Mis PQRS»). Los responsables de un área ven su bandeja;
+// Todos los perfiles presentan PQRS (#/pqrs?tab=nueva) y ven las suyas («Mis PQRS»), menos los estudiantes: la presenta su
+// acudiente (Fabio, 2-nov-2026; la base también lo impide). Los responsables de un área ven su bandeja;
 // el administrador general, la supervisión y la configuración de áreas, responsables, secciones y permisos de salud.
 // Gerencia (responsables del área Gerencia, 1-nov-2026) ve TODAS las PQRS en su bandeja, escribe en nombre de Gerencia y puede
 // finalizar; cada área tiene un líder principal y, guardados en el área, el cargo y el correo que publica el colegio.
@@ -148,6 +149,10 @@ async function miPerfil() {
 // ---------------------------------------------------------------- Inicio del módulo (pestañas según quién soy)
 export async function inicio(m, p = {}) {
   estilos();
+  if (E.rol === 'estudiante') {
+    m.innerHTML = cabecera('PQRS') + `<div class="contenido">${vacio('Los estudiantes no presentan PQRS. Si necesitas algo, cuéntale a tu acudiente para que la presente.')}</div>`;
+    return;
+  }
   const yo = await miPerfil();
   const tabs = [['nueva', 'Nueva PQRS'], ['mias', 'Mis PQRS']];
   if (yo.areas.some((a) => a.clave !== 'gerencia')) tabs.push(['area', 'Bandeja de mis áreas']);

@@ -3,7 +3,7 @@ import { crearDbSupabase, crearDbDemo, cargarSemillaDemo, huellaEnEsteEquipo } f
 import { E, pref, base, cargarYo, elegirColegio, cambiarRol, cargarPersonas, elegirPersona, personaActiva, viendoHijo, logoHTML, aplicarMarca, fotos, olvidarFoto, olvidarFotos } from './estado.js';
 import { esc, $, aviso, ventana, leerForm, confirmar, ROL, nombre, iniciales, etiquetarTablas, fecha, fechaHora } from './ui.js';
 import { APP_VERSION } from './config.js';
-import { idioma, elegirIdioma, activarTraduccion } from './i18n.js';
+import { enIngles, preferenciaIdioma, idiomaDispositivo, elegirIdioma, activarTraduccion } from './i18n.js';
 
 // ---------------------------------------------------------------- Cargo en vez del rol genérico (1-nov-2026)
 // Quien lidera un área con cargo (ej. Gerencia → «Gerente») ve su cargo en lugar de «Profesor»/«Docente». Solo es lo que se
@@ -309,7 +309,8 @@ function menuBase() {
     { t: 'Docencia', ic: '🧑‍🏫', items: [['direccion', 'Dirección de grupo'], ['clases', 'Clases'], ['reportes', 'Reportes']] },
     { t: 'Academia', ic: '🎓', items: [['aula', 'Aula'], ['horario', 'Mi horario'], ['planeaciones', 'Planeaciones'], ['espacios', 'Solicitud de espacios']] },
     perfilG()];
-  if (E.rol === 'estudiante') return [tablero, COMUNICACION,
+  // Los estudiantes no presentan PQRS: la presenta su acudiente (Fabio, 2-nov-2026)
+  if (E.rol === 'estudiante') return [tablero, { ...COMUNICACION, items: COMUNICACION.items.filter(([r]) => r !== 'pqrs') },
     { t: 'Comunidad', ic: '👥', items: [['calendario', 'Calendario'], [`estudiante/${E.yo.id}?tab=observador`, 'Seguimientos'], [`estudiante/${E.yo.id}?tab=compromisos`, 'Compromisos'], ['procesos', 'Procesos en línea'], ['archivos', 'Archivos']] },
     { t: 'Academia', ic: '🎓', items: [['aula', 'Aula'], ['planeacion', 'Planeación'], ['horario', 'Horario'], ...hist] },
     perfilG()];
@@ -739,8 +740,11 @@ async function perfil() {
     <section class="tarjeta">
       <h2>Idioma</h2>
       <div class="segmentos" role="radiogroup" aria-label="Idioma" translate="no">
-        ${[['es', 'Español'], ['en', 'English (beta)']].map(([v, t]) => `<button role="radio" aria-checked="${idioma === v}" class="${idioma === v ? 'activo' : ''}" data-idioma="${v}">${t}</button>`).join('')}
+        ${[['auto', enIngles ? 'Automatic' : 'Automático'], ['es', 'Español'], ['en', 'English (beta)']].map(([v, t]) => `<button role="radio" aria-checked="${preferenciaIdioma === v}" class="${preferenciaIdioma === v ? 'activo' : ''}" data-idioma="${v}">${t}</button>`).join('')}
       </div>
+      <p class="ayuda" translate="no" data-idioma-ayuda>${enIngles
+        ? `Automatic follows this device's language (now: <b>${idiomaDispositivo() === 'en' ? 'English' : 'Spanish'}</b>).`
+        : `Automático usa el idioma de este dispositivo (ahora: <b>${idiomaDispositivo() === 'en' ? 'inglés' : 'español'}</b>).`}</p>
       <p class="ayuda">Inglés (en prueba): menús, botones y pantallas. Los mensajes y las anotaciones quedan como los escribieron.</p>
     </section>
     <section class="tarjeta">
@@ -752,7 +756,7 @@ async function perfil() {
     </section>
     <p class="nota-pie">Complex_ v${esc(APP_VERSION)}${E.db.modo === 'demo' ? ' · modo demo' : ''}</p>`;
   m.querySelectorAll('[data-tema]').forEach((b) => (b.onclick = () => { pref('tema', b.dataset.tema); aplicarTema(); perfil(); }));
-  m.querySelectorAll('[data-idioma]').forEach((b) => (b.onclick = () => { if (b.dataset.idioma !== idioma) elegirIdioma(b.dataset.idioma); }));
+  m.querySelectorAll('[data-idioma]').forEach((b) => (b.onclick = () => { if (b.dataset.idioma !== preferenciaIdioma && !elegirIdioma(b.dataset.idioma)) perfil(); }));
   $('#btn-cambiar-clave')?.addEventListener('click', () => cambiarClave(false));
   $('#btn-guardar-perfil').onclick = async () => {
     const d = leerForm($('#f-perfil'));

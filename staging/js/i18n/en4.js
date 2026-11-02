@@ -38,4 +38,7 @@ export default {
   'lun': 'Mon', 'mar': 'Tue', 'mié': 'Wed', 'jue': 'Thu', 'vie': 'Fri', 'sáb': 'Sat', 'dom': 'Sun', 'Lun': 'Mon', 'Mar': 'Tue', 'Mié': 'Wed', 'Jue': 'Thu', 'Vie': 'Fri', 'Sáb': 'Sat', 'Dom': 'Sun',
   'Lunes': 'Monday', 'Martes': 'Tuesday', 'Miércoles': 'Wednesday', 'Jueves': 'Thursday', 'Viernes': 'Friday', 'Sábado': 'Saturday', 'Domingo': 'Sunday',
   'Borrador': 'Draft', 'Publicada': 'Published', 'Publicado': 'Published', 'Abierto': 'Open', 'Cerrado': 'Closed', 'Aprobada': 'Approved', 'Devuelta': 'Returned', 'Enviada': 'Sent',
+  // PQRS: los estudiantes no la presentan (2-nov-2026)
+  'Los estudiantes no presentan PQRS. Si necesitas algo, cuéntale a tu acudiente para que la presente.': 'Students do not submit PQRS. If you need something, tell your parent or guardian so they can submit it.',
+  'Los estudiantes no presentan PQRS: la presenta su acudiente.': 'Students do not submit PQRS: their parent or guardian does.',
 };
