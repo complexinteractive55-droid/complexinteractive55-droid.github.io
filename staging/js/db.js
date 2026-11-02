@@ -233,7 +233,7 @@ export async function crearDbSupabase() {
 const VIDA = 30000;
 const RPC_LECTURA = new Set(['mis_contactos', 'personas_colegio', 'mi_intento']);
 // Lecturas que van siempre al servidor y no marcan lo demás «por revisar» (el hilo de una PQRS se consulta cada poco)
-const RPC_DIRECTA = new Set(['pqrs_mensajes', 'pqrs_adjunto_estado', 'circular_previsualizar_numero', 'circular_numeracion']);
+const RPC_DIRECTA = new Set(['pqrs_mensajes', 'pqrs_adjunto_estado', 'circular_previsualizar_numero', 'circular_numeracion', 'circular_mi_perfil', 'circular_emisores_ver']);
 // Escrituras que también cambian otras tablas (triggers del servidor o lógica de la app)
 const AFECTA = {
   tarea_entregas: ['calificaciones'], examenes: ['calificaciones'], examen_intentos: ['calificaciones'],
@@ -244,6 +244,7 @@ const AFECTA = {
   calendario_importar: ['calendario_fuentes', 'calendario_dias'], calendario_anotar: ['calendario_anotaciones'],
   circular_serie_guardar: ['circular_series'], circular_serie_validar: ['circular_series'], circular_area_guardar: ['circular_areas'], circular_ajustes_guardar: ['circular_ajustes'],
   circular_emitir: ['circular_borradores', 'circular_series'], circular_anular: ['circular_borradores', 'circular_numeros_anulados'],
+  circular_firma_guardar: ['circular_firmas'], circular_firma_borrar: ['circular_firmas'], circular_emisor_guardar: ['circular_emisores', 'circular_config_historial'],
 };
 const clonar = (x) => (x == null ? x : typeof structuredClone === 'function' ? structuredClone(x) : JSON.parse(JSON.stringify(x)));
 
@@ -437,8 +438,16 @@ export function crearDbDemo() {
     s.ultimo += 1;
     return { serie_id: s.id, numero: s.ultimo, consecutivo: c };
   };
+  // Quién prepara circulares (20261102140000_circular_firmas_emisores): Administración o alguien designado que siga siendo
+  // personal activo; quien no es administrador ve, edita y borra solo sus borradores y numera en el área que le designaron
+  const PERSONAL = ['admin', 'profesor', 'director_seccion', 'enfermeria'];
+  const emisorCirc = (c, p = usuario()) => tabla('circular_emisores').find((e) => e.colegio_id === c && e.perfil_id === p && e.activo
+    && tabla('miembros').some((m) => m.colegio_id === c && m.perfil_id === p && m.activo !== false && PERSONAL.includes(m.rol))) || null;
+  const puedePreparar = (c) => !!usuario() && (esAdmin(c) || !!emisorCirc(c));
+  const borradorMio = (b) => esAdmin(b.colegio_id) || (b.autor_id === usuario() && puedePreparar(b.colegio_id));
   const numerarBorrador = (r) => {
     r.solicitud_id ||= crypto.randomUUID();
+    if (usuario() && !esAdmin(r.colegio_id)) { r.area_id = emisorCirc(r.colegio_id)?.area_id || null; if (r.datos) { r.datos = { ...r.datos }; delete r.datos.area_id; } }
     const area = r.area_id || r.datos?.area_id || null;
     if (area && !tabla('circular_areas').some((x) => x.id === area && x.colegio_id === r.colegio_id)) err('Esa área no es de este colegio.');
     const datos = { ...(r.datos || {}) };
@@ -453,7 +462,7 @@ export function crearDbDemo() {
   // Como el disparador: al editar no cambia lo de origen ni el número; queda la versión anterior; emitida o anulada no se edita
   const actualizarBorrador = (f, cambios) => {
     const datos = { ...(cambios.datos ?? f.datos) };
-    const area = f.numero ? f.area_id || null : datos.area_id || f.area_id || null;
+    const area = f.numero ? f.area_id || null : !esAdmin(f.colegio_id) ? emisorCirc(f.colegio_id)?.area_id || null : datos.area_id || f.area_id || null;
     delete datos.area_id;
     if (f.consecutivo) datos.consecutivo = f.consecutivo; else delete datos.consecutivo;
     if ((f.estado || 'borrador') !== 'borrador' && JSON.stringify(datos) !== JSON.stringify(f.datos)) err('Una circular emitida o anulada no se edita (su contenido y número quedan como se emitieron).');
@@ -765,6 +774,9 @@ export function crearDbDemo() {
       await lento();
       let filas = tabla(n).filter((f) => coincide(f, q));
       if (n === 'eventos_personales') filas = filas.filter((f) => f.perfil_id === usuario()); // como la RLS: solo las propias
+      if (n === 'circular_borradores') filas = filas.filter(borradorMio); // como la RLS: Administración todos; quien prepara, los suyos
+      if (n === 'circular_firmas') filas = filas.filter((f) => f.perfil_id === usuario()); // la firma solo la ve su dueño
+      if (n === 'circular_emisores') filas = filas.filter((f) => esAdmin(f.colegio_id) || f.perfil_id === usuario());
       filas = ordenar(copia(filas), q.order);
       return q.limit ? filas.slice(0, q.limit) : filas;
     },
@@ -807,7 +819,7 @@ export function crearDbDemo() {
       const out = [];
       tabla(n).forEach((f, i) => {
         // Como el trigger circular_borrador_fijo: la versión sube sola y lo de origen no cambia
-        if (coincide(f, { eq })) { tabla(n)[i] = completar(n, n === 'circular_borradores' ? actualizarBorrador(f, cambios) : { ...f, ...cambios }); if ('nota' in cambios || 'pendiente_revision' in cambios) aPlanilla(n, tabla(n)[i]);
+        if (coincide(f, { eq }) && (n !== 'circular_borradores' || borradorMio(f))) { tabla(n)[i] = completar(n, n === 'circular_borradores' ? actualizarBorrador(f, cambios) : { ...f, ...cambios }); if ('nota' in cambios || 'pendiente_revision' in cambios) aPlanilla(n, tabla(n)[i]);
           if (n === 'examenes' && ('resultados_publicados' in cambios || 'mostrar_resultado' in cambios)) for (const it of tabla('examen_intentos').filter((x) => x.examen_id === f.id && x.nota != null)) aPlanilla('examen_intentos', it); out.push(copia(tabla(n)[i])); }
       });
       guardar();
@@ -815,11 +827,12 @@ export function crearDbDemo() {
     },
     async remove(n, eq) {
       await lento();
-      if (n === 'circular_borradores' && tabla(n).some((f) => coincide(f, { eq }) && (f.estado || 'borrador') !== 'borrador')) err('Una circular emitida o anulada no se elimina: queda en el historial con su número.');
-      if (n === 'circular_borradores') for (const b of tabla(n).filter((f) => coincide(f, { eq }) && f.numero)) {
+      const toca = (f) => coincide(f, { eq }) && (n !== 'circular_borradores' || borradorMio(f)); // como la RLS: un borrador ajeno no se borra
+      if (n === 'circular_borradores' && tabla(n).some((f) => toca(f) && (f.estado || 'borrador') !== 'borrador')) err('Una circular emitida o anulada no se elimina: queda en el historial con su número.');
+      if (n === 'circular_borradores') for (const b of tabla(n).filter((f) => toca(f) && f.numero)) {
         tabla('circular_numeros_anulados').push({ serie_id: b.serie_id, numero: b.numero, colegio_id: b.colegio_id, consecutivo: b.consecutivo, borrador_id: b.id, solicitud_id: b.solicitud_id, titulo: b.datos?.titulo || null, anulado_por: usuario(), anulado_en: ahora() });
       }
-      t[n] = tabla(n).filter((f) => !coincide(f, { eq }));
+      t[n] = tabla(n).filter((f) => !toca(f));
       if (n === 'colegios') {
         for (const k of Object.keys(t)) if (k !== 'perfiles' && k !== 'colegios') t[k] = t[k].filter((f) => f.colegio_id !== eq.id);
       }
@@ -900,11 +913,11 @@ export function crearDbDemo() {
         return copia(r);
       }
       if (nombre.startsWith('circular_')) {
-        circularesDemo ||= (await import('./circulares_demo.js')).crearCircularesDemo({ tabla, usuario, guardar, ahora, err, esAdmin, consecutivoCircular, formatoCirc });
+        circularesDemo ||= (await import('./circulares_demo.js')).crearCircularesDemo({ tabla, usuario, guardar, ahora, err, esAdmin, consecutivoCircular, formatoCirc, emisorCirc, puedePreparar, existeArchivo: (b, r) => !!leerArchivos()[b + '/' + r] });
         return circularesDemo(nombre, a);
       }
       if (nombre === 'crear_circular_borrador') {
-        if (!esAdmin(a.p_colegio)) err('Solo Administración prepara las circulares institucionales.');
+        if (!puedePreparar(a.p_colegio)) err('Solo Administración o quien el administrador designe preparan circulares institucionales.');
         if (!a.p_solicitud) err('Falta la identificación de la operación.');
         if (tabla('circular_numeros_anulados').some((x) => x.colegio_id === a.p_colegio && x.solicitud_id === a.p_solicitud)) err('Esa circular se eliminó: su consecutivo quedó anulado.');
         const existente = () => tabla('circular_borradores').find((x) => x.colegio_id === a.p_colegio && x.solicitud_id === a.p_solicitud);
@@ -997,6 +1010,11 @@ export function crearDbDemo() {
     // Archivos: en el demo se guardan en el navegador (máx. ~2 MB cada uno)
     async subirArchivo(bucket, ruta, archivo) {
       if (archivo.size > 2 * 1024 * 1024) err('En el modo demo los archivos pueden pesar máximo 2 MB.');
+      if (bucket === 'firmas') { // como el bucket «firmas»: PNG de máximo 300 KB, cada quien en su carpeta y solo si prepara circulares
+        const [c, p] = ruta.split('/');
+        if (p !== usuario() || !puedePreparar(c)) err('No tienes permiso para subir ese archivo.');
+        if (archivo.type !== 'image/png' || archivo.size > 307200) err('La firma debe ser una imagen PNG de máximo 300 KB.');
+      }
       const url = await new Promise((ok, mal) => { const r = new FileReader(); r.onload = () => ok(r.result); r.onerror = mal; r.readAsDataURL(archivo); });
       const a = leerArchivos();
       a[bucket + '/' + ruta] = url;
@@ -1025,11 +1043,13 @@ export function crearDbDemo() {
     urlPublica(bucket, ruta) { return leerArchivos()[bucket + '/' + ruta] || null; },
     async urlsArchivos(bucket, rutas) { const a = leerArchivos(); return Object.fromEntries(rutas.filter((r) => a[bucket + '/' + r]).map((r) => [r, a[bucket + '/' + r]])); },
     async urlArchivo(bucket, ruta) {
+      if (bucket === 'firmas' && ruta.split('/')[1] !== usuario()) err('Archivo no encontrado'); // la firma solo la ve su dueño
       const url = leerArchivos()[bucket + '/' + ruta];
       if (!url) err('Archivo no encontrado');
       return url;
     },
     async borrarArchivo(bucket, ruta) {
+      if (bucket === 'firmas' && ruta.split('/')[1] !== usuario()) return; // cada quien borra solo sus archivos
       const a = leerArchivos();
       delete a[bucket + '/' + ruta];
       try { localStorage.setItem(CLAVE_DEMO_ARCHIVOS, JSON.stringify(a)); } catch {}

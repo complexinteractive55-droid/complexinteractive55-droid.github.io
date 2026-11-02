@@ -244,6 +244,7 @@ export function datosParaServidor(f) {
   const datos = { titulo: t(f.titulo), destinatarios, dependencia: t(f.dependencia), responsable: t(f.responsable), cargo: t(f.cargo), fecha_emision: f.fecha_emision, contenido: aServidor(f.contenido) };
   const consecutivo = t(f.consecutivo).replace(/\s+/g, ' ');
   if (consecutivo) datos.consecutivo = consecutivo;
+  if (f.firmar === true) datos.firmar = true; // la firma de quien pide el PDF (el servidor pone su nombre y su firma)
   const faltan = [['dependencia', 'el área emisora'], ['destinatarios', 'a quién va dirigida (marca al menos una casilla)'], ['titulo', 'el asunto'], ['responsable', 'el nombre de quien firma'], ['cargo', 'el cargo de quien firma']];
   for (const [k, txt] of faltan) if (!datos[k]) return { error: `Falta ${txt}.`, campo: k };
   for (const k of ['titulo', 'destinatarios', 'dependencia', 'responsable', 'cargo', 'consecutivo']) if (datos[k] && datos[k].length > LIMITES[k]) return { error: `El campo es muy largo (máximo ${LIMITES[k]} caracteres).`, campo: k };

@@ -294,6 +294,12 @@ input.nota:disabled { background: transparent; border-color: transparent; color:
 .circ-cuerpo ol, .circ-cuerpo ul { margin: 0 0 10px; padding-left: 24px; }
 .circ-firma { display: flex; flex-direction: column; margin-top: 30px; }
 .circ-firma p { margin: 0 0 40px; }
+/* Firma manuscrita (2-nov-2026): encima del nombre, en el espacio después de la despedida, bajando un poco sobre el nombre */
+.circ-firma .circ-firma-img { display: block; height: 52px; width: auto; max-width: 45%; object-fit: contain; object-position: left bottom; margin: -48px 0 -9px; }
+/* «Mi firma»: siempre sobre papel blanco (la tinta es oscura), también en modo oscuro */
+.firma-muestra { display: flex; flex-direction: column; align-items: flex-start; gap: 2px; background: #fff; color: #1b1b1b; border: 1px solid var(--borde); border-radius: var(--radio); padding: 14px 16px; margin: 8px 0; font-family: Arial, Helvetica, sans-serif; }
+.firma-muestra img { display: block; max-width: min(100%, 320px); max-height: 110px; height: auto; margin-bottom: -10px; }
+.firma-muestra span { font-size: 14px; }
 .circ-hoja .ayuda { color: var(--tinta); font-size: 13px; }
 .circ-marca { margin: 18px 0 0; text-align: center; font-size: 11px; color: #6b7280; }
 .tarjeta-hijo:hover { border-color: var(--primario); }

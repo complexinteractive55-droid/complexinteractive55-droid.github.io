@@ -286,6 +286,18 @@ window.addEventListener('complex:datos-nuevos', async () => {
 // Menú lateral izquierdo agrupado (Tablero · Comunicación · Comunidad · Academia · Perfil),
 // con buscador "Filtrar menú" y, para acudientes, pestañas de persona (yo + cada hijo).
 const COMUNICACION = { t: 'Comunicación', ic: '💬', items: [['bandeja', 'Bandeja de entrada', 'noLeidos'], ['redactar', 'Redactar mensaje'], ['enviados', 'Enviados'], ['cartelera', 'Cartelera'], ['circulares', 'Circulares'], ['pqrs', 'PQRS']] };
+// Circulares institucionales de quien el administrador designó (Gerencia, directores de sección…; 2-nov-2026): las ve en su
+// menú. Administración entra como siempre por Circulares. Se pregunta una vez por colegio y persona (circular_mi_perfil).
+let circ = { clave: null, puede: false };
+const comunicacion = () => (circ.puede && circ.clave === E.colegio?.id + '|' + E.yo?.id
+  ? { ...COMUNICACION, items: COMUNICACION.items.flatMap((x) => (x[0] === 'circulares' ? [x, ['circulares-institucionales', 'Circulares institucionales']] : [x])) } : COMUNICACION);
+async function revisarCirculares(patron) {
+  const clave = E.colegio.id + '|' + E.yo.id;
+  if (circ.clave === clave || E.rol === 'admin' || !ROLES_PERSONAL.includes(E.rol)) return;
+  circ = { clave, puede: false };
+  try { circ.puede = (await (await import('./firma_circular.js')).perfilCircular()).puede_preparar === true; } catch { /* sin la migración: como antes */ }
+  if (circ.puede && circ.clave === E.colegio?.id + '|' + E.yo?.id) pintarArmazon(patron);
+}
 // Orden como Phidias: Tablero · Perfil · Comunicación · Comunidad · … · Pasarelas (al final)
 function menuDe() {
   const lista = menuBase();
@@ -304,7 +316,7 @@ function menuBase() {
     { t: 'Académico', ic: '🎓', items: [['estructura', 'Estructura del colegio'], ['horario', 'Horarios'], ['planeaciones', 'Planeaciones'], ['reportes', 'Reportes'], ['espacios-solicitudes', 'Solicitudes de espacios']] },
     { t: 'Tesorería', ic: '💰', items: [['tesoreria?tab=cartera', 'Cartera'], ['tesoreria?tab=facturar', 'Facturar'], ['tesoreria?tab=pagos', 'Pagos'], ['tesoreria?tab=conceptos', 'Conceptos']] },
     perfilG([['ajustes-colegio', 'Ajustes del colegio']])];
-  if (E.rol === 'profesor') return [tablero, COMUNICACION,
+  if (E.rol === 'profesor') return [tablero, comunicacion(),
     { t: 'Comunidad', ic: '👥', items: [['calendario', 'Calendario'], ['seguimientos', 'Seguimientos'], ['compromisos', 'Compromisos'], ['salidas', 'Permisos de salida'], ['procesos', 'Procesos en línea'], ['archivos', 'Archivos globales']] },
     { t: 'Docencia', ic: '🧑‍🏫', items: [['direccion', 'Dirección de grupo'], ['clases', 'Clases'], ['reportes', 'Reportes']] },
     { t: 'Academia', ic: '🎓', items: [['aula', 'Aula'], ['horario', 'Mi horario'], ['planeaciones', 'Planeaciones'], ['espacios', 'Solicitud de espacios']] },
@@ -314,11 +326,11 @@ function menuBase() {
     { t: 'Comunidad', ic: '👥', items: [['calendario', 'Calendario'], [`estudiante/${E.yo.id}?tab=observador`, 'Seguimientos'], [`estudiante/${E.yo.id}?tab=compromisos`, 'Compromisos'], ['procesos', 'Procesos en línea'], ['archivos', 'Archivos']] },
     { t: 'Academia', ic: '🎓', items: [['aula', 'Aula'], ['planeacion', 'Planeación'], ['horario', 'Horario'], ...hist] },
     perfilG()];
-  if (E.rol === 'enfermeria') return [tablero, COMUNICACION,
+  if (E.rol === 'enfermeria') return [tablero, comunicacion(),
     { t: 'Enfermería', ic: '🩺', items: [['salidas', 'Permisos de salida'], ['seguimientos', 'Prerreportes'], ['docentes', 'Docentes']] },
     { t: 'Comunidad', ic: '👥', items: [['calendario', 'Calendario'], ['archivos', 'Archivos globales']] },
     perfilG()];
-  if (E.rol === 'director_seccion') return [tablero, COMUNICACION,
+  if (E.rol === 'director_seccion') return [tablero, comunicacion(),
     { t: 'Comunidad', ic: '👥', items: [['calendario', 'Calendario'], ['seguimientos', 'Seguimientos'], ['compromisos', 'Compromisos'], ['salidas', 'Permisos de salida'], ['archivos', 'Archivos globales']] },
     { t: 'Académico', ic: '🎓', items: [['planeaciones', 'Planeaciones'], ['horario', 'Horarios'], ['reportes', 'Reportes'], ['docentes', 'Docentes']] },
     perfilG()];
@@ -391,6 +403,7 @@ function pintarArmazon(patron) {
   $('#btn-rol').textContent = etiquetaRol() + (E.roles.length > 1 ? ' ▾' : '');
   $('#btn-rol').disabled = E.roles.length < 2;
   pintarCargo();
+  revisarCirculares(patron);
 
   // Pestañas de persona (acudiente)
   const pp = $('#personas');
@@ -723,6 +736,7 @@ async function perfil() {
     ${'avisos_correo' in E.yo || E.db.modo === 'demo' ? `<section class="tarjeta"><h2>Avisos por correo</h2>
       <label class="fila"><input type="checkbox" id="chk-avisos" ${E.yo.avisos_correo !== false ? 'checked' : ''}><span><b>Avisarme por correo</b><small>Te escribimos a ${esc(E.sesion?.user?.email?.endsWith('@usuarios.complex') ? 'tu correo (aún no tienes uno registrado)' : E.sesion?.user?.email || E.yo.correo || 'tu correo')} cuando te llegue un mensaje o una circular.</small></span></label>
     </section>` : ''}
+    <section class="tarjeta" id="sec-firma" hidden></section>
     <section class="tarjeta" id="sec-huella" hidden>
       <h2>Entrar con huella</h2>
       <p class="ayuda">Entra a Complex_ con la huella o el rostro de tu celular, sin escribir la contraseña. Tu huella no sale del celular: Complex_ solo guarda una llave de acceso.</p>
@@ -758,6 +772,8 @@ async function perfil() {
   m.querySelectorAll('[data-tema]').forEach((b) => (b.onclick = () => { pref('tema', b.dataset.tema); aplicarTema(); perfil(); }));
   m.querySelectorAll('[data-idioma]').forEach((b) => (b.onclick = () => { if (b.dataset.idioma !== preferenciaIdioma && !elegirIdioma(b.dataset.idioma)) perfil(); }));
   $('#btn-cambiar-clave')?.addEventListener('click', () => cambiarClave(false));
+  // Mi firma (circulares institucionales): solo para quien las prepara (Administración o designado)
+  if (ROLES_PERSONAL.includes(E.rol) || E.rol === 'admin') import('./firma_circular.js').then((f) => f.pintarMiFirma(m.querySelector('#sec-firma'))).catch(() => {});
   $('#btn-guardar-perfil').onclick = async () => {
     const d = leerForm($('#f-perfil'));
     try {
