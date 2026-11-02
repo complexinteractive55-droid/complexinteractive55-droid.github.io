@@ -301,6 +301,11 @@ input.nota:disabled { background: transparent; border-color: transparent; color:
 .firma-muestra img { display: block; max-width: min(100%, 320px); max-height: 110px; height: auto; margin-bottom: -10px; }
 .firma-muestra span { font-size: 14px; }
 .circ-hoja .ayuda { color: var(--tinta); font-size: 13px; }
+/* Carta como la circular E2-006 (2-nov-2026): ciudad y fecha con el consecutivo a la derecha; viñetas «-»; firma en negrita */
+.circ-carta-cab { display: flex; justify-content: space-between; gap: 12px; flex-wrap: wrap; margin: 0 0 14px; }
+.circ-carta .circ-cuerpo { text-align: justify; }
+.circ-carta .circ-cuerpo ul { list-style-type: "-   "; }
+.circ-firma.circ-firma-negrita { margin-top: 44px; }
 .circ-marca { margin: 18px 0 0; text-align: center; font-size: 11px; color: #6b7280; }
 .tarjeta-hijo:hover { border-color: var(--primario); }
 

@@ -47,9 +47,15 @@ const normal = (d = {}) => {
     responsable: d.responsable || '',
     cargo: d.cargo ?? n.cargo,
     firmar: d.firmar === true,
+    plantilla_id: typeof d.plantilla_id === 'string' ? d.plantilla_id : '',
   };
 };
 const igual = (a, b) => JSON.stringify(a) === JSON.stringify(b);
+// Formatos del PDF en el modo demo (no hay servidor ni plantillas del colegio): solo para la vista previa
+const PLANTILLAS_DEMO = [
+  { id: 'demo-carta', revision: 2, nombre: 'Carta (como la circular E2-006)', configuracion: { estructura: 'carta-institucional-v1', carta: { ciudad: 'Cota, Cundinamarca' }, firma: { negrita: true, incluir_institucion: true } } },
+  { id: 'demo-memo', revision: 1, nombre: 'Memorando (cuadro Fecha · De · Para)', configuracion: { estructura: 'memorando-institucional-v4', firma: { despedida: 'Cordialmente,', incluir_institucion: true } } },
+];
 const referencia = (id) => (id ? id.slice(0, 8).toUpperCase() : 'se asigna al guardar');
 const soloAdmin = (m, titulo) => { m.innerHTML = cabecera(titulo, { volver: '#/circulares' }) + vacio('Solo Administración o quien el administrador designe prepara las circulares institucionales.'); };
 
@@ -247,7 +253,7 @@ export async function editor(m, p) {
   // La serie de consecutivos vigente (para decir si es provisional) y la plantilla vigente (firma y revisión)
   const [series, plantillas] = await Promise.all([
     E.db.select('circular_series', { eq: { colegio_id: E.colegio.id, vigente: true } }).catch(() => []),
-    E.db.modo === 'demo' ? [] : E.db.select('circular_plantillas', { eq: { colegio_id: E.colegio.id, estado: 'aprobada' }, order: 'revision desc', limit: 1 }).catch(() => []),
+    E.db.modo === 'demo' ? PLANTILLAS_DEMO : E.db.select('circular_plantillas', { eq: { colegio_id: E.colegio.id, estado: 'aprobada' }, order: 'revision desc' }).catch(() => []),
   ]);
   let plantilla = plantillas[0] || null;
   // Numeración por área (si la migración 20261029130000 está en la base): áreas configuradas y número PREVISTO (no reservado)
@@ -266,6 +272,8 @@ export async function editor(m, p) {
   const recuperado = !!local && !igual(normal({ ...local.datos, consecutivo: srv.consecutivo }), d);
   if (recuperado) { d = normal({ ...local.datos, consecutivo: srv.consecutivo }); srv.version = local.version ?? srv.version; } // se guarda sobre la versión que tenía este equipo
   else if (local && srv.id) borrarLocal(llave);
+  // Formato del PDF: el que eligió este borrador o, si no, el más nuevo aprobado (2-nov-2026: la carta como la E2-006)
+  plantilla = plantillas.find((x) => x.id === d.plantilla_id) || plantilla;
 
   m.innerHTML = cabecera(nueva ? 'Nueva circular institucional' : 'Circular institucional', { volver: VOLVER }) + `
     <div data-circ data-id="${esc(p.id)}">
@@ -281,6 +289,7 @@ export async function editor(m, p) {
         <div class="circ-consec"><small class="ayuda" data-consec-ayuda></small></div>
         <small class="ayuda">Referencia interna del borrador: <span data-ref>${esc(referencia(srv.id))}</span></small>
         <label>Área que emite<input name="dependencia" list="circ-areas" maxlength="${LIMITES.dependencia}" placeholder="Ej.: Rectoría"><datalist id="circ-areas">${[...new Set([...areasCfg.map((a) => a.nombre), ...AREAS])].map((a) => `<option value="${esc(a)}">`).join('')}</datalist></label>
+        <label data-formato-fila ${plantillas.length > 1 ? '' : 'hidden'}>Formato del PDF<select name="plantilla_id">${plantillas.map((x) => `<option value="${esc(x.id)}">${esc(x.nombre || 'Plantilla rev. ' + x.revision)}</option>`).join('')}</select></label>
       </section>
       <section class="tarjeta">
         <h2>Para</h2>
@@ -351,6 +360,7 @@ export async function editor(m, p) {
   // ----- Pintar los datos en el formulario
   const poner = (x) => {
     for (const k of ['dependencia', 'destinatarios_otros', 'titulo', 'responsable', 'cargo']) form.elements[k].value = x[k];
+    form.elements.plantilla_id.value = plantilla?.id || '';
     for (const cb of form.querySelectorAll('[name=destinatarios]')) cb.checked = x.destinatarios.includes(cb.value);
     form.elements.firmar.checked = x.firmar && !ajeno(x);
     ed.innerHTML = contenidoHTML(x.contenido);
@@ -358,11 +368,14 @@ export async function editor(m, p) {
   poner(d);
   pintarFirmar();
   form.elements.firmar.addEventListener('change', pintarFirmar);
+  form.elements.plantilla_id.addEventListener('change', () => { plantilla = plantillas.find((x) => x.id === form.elements.plantilla_id.value) || plantilla; });
 
   // ----- Leer el formulario
   const actual = () => {
     const f = leerForm(form);
-    return normal({ ...f, firmar: firmaAjena ? d.firmar : f.firmar === true && !!yo.firma, consecutivo: srv.consecutivo, fecha_emision: d.fecha_emision, contenido: leerEditor(ed) });
+    // sin elección propia queda vacío (= el formato más nuevo): así un borrador viejo no aparece «con cambios» solo por abrirlo
+    const plantilla_id = !d.plantilla_id && f.plantilla_id === (plantillas[0]?.id || '') ? '' : f.plantilla_id || '';
+    return normal({ ...f, plantilla_id, firmar: firmaAjena ? d.firmar : f.firmar === true && !!yo.firma, consecutivo: srv.consecutivo, fecha_emision: d.fecha_emision, contenido: leerEditor(ed) });
   };
 
   let guardando = false, localT = null;
@@ -617,6 +630,16 @@ export async function editor(m, p) {
 function vistaHTML(x, plantilla, firmaUrl = null) {
   const firma = plantilla?.configuracion?.firma;
   const colegio = (firma?.incluir_institucion !== false) ? (firma?.institucion_texto || E.colegio.nombre) : '';
+  const imgFirma = firmaUrl ? `<img class="circ-firma-img" src="${esc(firmaUrl)}" alt="Firma">` : '';
+  // Carta como la circular E2-006-2026-2027 del colegio: ciudad y fecha, consecutivo a la derecha, sin cuadro ni asunto; el saludo
+  // y la despedida van en el cuerpo; nombre, cargo y colegio en negrita
+  if (plantilla?.configuracion?.estructura === 'carta-institucional-v1') return `<div class="circ-hoja circ-carta">
+    <header class="circ-membrete">${logoHTML('circ-logo')}<b>${esc(E.colegio.nombre)}</b></header>
+    <p class="circ-carta-cab"><span>${esc(plantilla.configuracion.carta?.ciudad || '')} ${esc(fechaLarga(x.fecha_emision).replace(/ (\d{4})$/, ' de $1'))}</span><b>${esc(x.consecutivo.trim() || SIN_NUMERO)}</b></p>
+    <div class="circ-cuerpo">${contenidoHTML(x.contenido) || '<p class="ayuda">(sin contenido)</p>'}</div>
+    <div class="circ-firma circ-firma-negrita">${imgFirma}<b>${esc((x.responsable || 'Nombre de quien firma').toLocaleUpperCase('es-CO'))}</b><b>${esc(x.cargo || 'Cargo')}</b>${colegio ? `<b>${esc(colegio)}</b>` : ''}</div>
+    <p class="circ-marca">VISTA RÁPIDA · el PDF de revisión trae el encabezado, la marca de agua y el pie del colegio</p>
+  </div>`;
   return `<div class="circ-hoja">
     <header class="circ-membrete">${logoHTML('circ-logo')}<b>${esc(E.colegio.nombre)}</b></header>
     <table class="circ-cuadro">
@@ -625,7 +648,7 @@ function vistaHTML(x, plantilla, firmaUrl = null) {
     </table>
     <p class="circ-asunto"><b>Asunto:</b> <u>${esc(x.titulo || '—')}</u></p>
     <div class="circ-cuerpo">${contenidoHTML(x.contenido) || '<p class="ayuda">(sin contenido)</p>'}</div>
-    <div class="circ-firma"><p>${esc(firma?.despedida ?? 'Cordialmente,')}</p>${firmaUrl ? `<img class="circ-firma-img" src="${esc(firmaUrl)}" alt="Firma">` : ''}<b>${esc((x.responsable || 'Nombre de quien firma').toLocaleUpperCase('es-CO'))}</b><span>${esc(x.cargo || 'Cargo')}</span>${colegio ? `<span>${esc(colegio)}</span>` : ''}</div>
+    <div class="circ-firma"><p>${esc(firma?.despedida ?? 'Cordialmente,')}</p>${imgFirma}<b>${esc((x.responsable || 'Nombre de quien firma').toLocaleUpperCase('es-CO'))}</b><span>${esc(x.cargo || 'Cargo')}</span>${colegio ? `<span>${esc(colegio)}</span>` : ''}</div>
     <p class="circ-marca">VISTA RÁPIDA · el PDF de revisión trae el membrete, la marca de agua y el pie del colegio</p>
   </div>`;
 }
