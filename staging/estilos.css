@@ -66,6 +66,7 @@ small { color: var(--texto-2); font-size: .82em; }
 .etiqueta-demo { font-size: 11px; font-weight: 700; background: var(--alerta); color: #fff; padding: 2px 6px; border-radius: 6px; }
 .chip-rol { border: 1px solid var(--borde); background: var(--superficie-2); border-radius: 999px; padding: 6px 12px; font-size: 14px; cursor: pointer; white-space: nowrap; }
 .chip-rol:disabled { cursor: default; }
+.chip-rol { max-width: 42vw; overflow: hidden; text-overflow: ellipsis; } /* un cargo largo (ej. líder de un área) no empuja el encabezado */
 
 /* Menú: panel que se despliega desde la IZQUIERDA en celular; fijo a la izquierda en PC */
 .btn-menu { font-size: 22px; margin-left: -8px; }

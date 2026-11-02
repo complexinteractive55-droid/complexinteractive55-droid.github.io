@@ -634,7 +634,8 @@ function cabChat(d) {
   return `<div class="pq-caso-cab"><span class="pq-tipo">${esc(TIPOS[d.tipo] || d.tipo)}</span>${chipEstado(d.estado)}${d.sensible ? '<span class="pq-badge info">🔒 Información de salud</span>' : ''}${d.revisar ? '<span class="pq-badge suave">Revisar clasificación</span>' : ''}</div>
     <h2 class="pq-asunto" data-asunto>${esc(d.asunto)}</h2>
     <div class="pq-areas">${activas.length ? activas.map(chipArea).join('') : '<span class="pq-badge suave">Pendiente de clasificación</span>'}</div>
-    ${d.estado !== 'cerrada' && d.pendientes?.length && d.pendientes.length < activas.length ? `<small class="ayuda">Falta responder: <b>${esc(lista(d.pendientes))}</b></small>` : ''}`;
+    ${d.estado !== 'cerrada' && d.pendientes?.length && d.pendientes.length < activas.length ? `<small class="ayuda">Falta responder: <b>${esc(lista(d.pendientes))}</b></small>` : ''}
+    ${d.yo?.puede_cerrar && d.estado !== 'cerrada' ? '<div class="pq-acciones"><button type="button" class="btn btn-chico btn-primario" data-finalizar>✅ Finalizar PQRS</button></div>' : ''}`;
 }
 
 const adjuntosHTML = (as) => (as?.length ? `<div class="pq-adjs">${as.map((a) => a.imagen
@@ -812,7 +813,7 @@ async function accionGestion(b, d, recargar, conMotivo) {
   }
   if (b.hasAttribute('data-confirmar')) return conMotivo('Confirmar clasificación', '<p>Quita la marca «Revisar clasificación». Las áreas siguen como están.</p>', 'Nota (opcional)',
     (nota) => rpc('pqrs_confirmar_clasificacion', { p_id: d.id, p_nota: nota || null }), 'Clasificación confirmada');
-  if (b.hasAttribute('data-cerrar')) return conMotivo('Finalizar PQRS', (d.pendientes.length ? `<p class="pq-reservado">Aún falta responder: <b>${esc(lista(d.pendientes))}</b>. Finalizar no marca sus respuestas; queda como constancia.</p>` : '<p>Todas las áreas respondieron.</p>')
+  if (b.hasAttribute('data-cerrar') || b.hasAttribute('data-finalizar')) return conMotivo('Finalizar PQRS', (d.pendientes.length ? `<p class="pq-reservado">Aún falta responder: <b>${esc(lista(d.pendientes))}</b>. Finalizar no marca sus respuestas; queda como constancia.</p>` : '<p>Todas las áreas respondieron.</p>')
     + '<p class="ayuda">Al finalizar ya no se pueden enviar mensajes. La conversación y los adjuntos siguen disponibles para quienes participan.</p>',
     'Conclusión: solución y acuerdos (obligatoria)', (motivo) => rpc('pqrs_cerrar', { p_id: d.id, p_motivo: motivo }), 'PQRS finalizada');
   if (b.hasAttribute('data-reabrir')) return conMotivo('Reabrir el caso', '', 'Motivo (obligatorio)', (motivo) => rpc('pqrs_reabrir', { p_id: d.id, p_motivo: motivo }), 'Caso reabierto');

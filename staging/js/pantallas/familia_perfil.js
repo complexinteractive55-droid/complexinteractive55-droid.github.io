@@ -48,7 +48,7 @@ export async function infoPersonal(m, p) {
     <section class="tarjeta ficha-persona">
       <div class="ficha-cab">${avatarHTML(pe, fot.get(id), 'avatar-grande')}
         <div><h2>${esc(nombre(pe))}</h2>
-        <p class="ayuda">${curso ? `Estudiante activo en ${esc(grado?.nombre || '')} ${esc(curso.nombre)}` : comoAcu.length ? 'Familiar' : esc(E.rol === 'profesor' && esYo ? 'Docente' : '')}</p>
+        <p class="ayuda">${curso ? `Estudiante activo en ${esc(grado?.nombre || '')} ${esc(curso.nombre)}` : comoAcu.length ? 'Familiar' : esc(esYo && E.cargo ? E.cargo : E.rol === 'profesor' && esYo ? 'Docente' : '')}</p>
         <div class="acciones">${puedeEditar ? '<button class="btn" data-editar>✏️ Editar información personal</button>' : ''}${puedeEditar && E.db.modo ? `<button class="btn" data-foto>📷 ${fot.get(id) ? 'Cambiar foto' : 'Poner foto'}</button>` : ''}${esYo ? '<button class="btn" data-clave>🔑 Cambiar contraseña</button>' : ''}</div></div>
       </div>
       <table class="tabla tabla-ficha"><tbody>

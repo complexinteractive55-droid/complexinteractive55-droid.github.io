@@ -62,6 +62,8 @@ export function crearPqrsDemo({ tabla, usuario, guardar, copia, ahora, err, arch
   const areaGerencia = (c) => T('pqrs_areas').find((x) => x.colegio_id === c && x.clave === 'gerencia' && x.activo) || null;
   const respGerencia = (c, p) => { const g = areaGerencia(c); return !!g && responsables(g.id).includes(p); };
   const esGerencia = (c, p = yo()) => miembroActivo(c, p) && respGerencia(c, p);
+  // ¿Lidero un área activa del caso? (igual que private.pqrs_lider_del_caso: el líder puede finalizarlo)
+  const liderDelCaso = (pid) => { const p = caso(pid); return !!p && miembroActivo(p.colegio_id, yo()) && activas(pid).some((a) => lider(a.area_id) === yo()); };
   const acceso = (pid) => {
     const p = caso(pid);
     if (!p || !yo() || !esMiembro(p.colegio_id)) return null;
@@ -412,7 +414,7 @@ export function crearPqrsDemo({ tabla, usuario, guardar, copia, ahora, err, arch
           id: e.id, tipo: e.tipo, actor: e.actor_nombre, area: nombreAreaDe(e.area_id), creado_en: e.creado_en,
           detalle: acc.personal ? e.detalle : (({ motivo, razon, sin_responsables, salud, ...r }) => r)(e.detalle) })),
         yo: { solicitante: acc.solicitante, admin: acc.admin, gerencia: acc.gerencia, area_gerencia: acc.gerencia ? areaGerencia(p.colegio_id)?.id ?? null : null, personal: acc.personal, salud: acc.salud, areas: acc.areas, puede_aportar: acc.solicitante && !p.cerrado_en,
-          puede_cerrar: (acc.admin || acc.gerencia) && !p.cerrado_en, puede_reabrir: acc.admin && !!p.cerrado_en, puede_asignar: acc.admin && !p.cerrado_en, puede_resumen: acc.personal && acc.salud && p.sensible && !p.cerrado_en },
+          puede_cerrar: (acc.admin || acc.gerencia || liderDelCaso(p.id)) && !p.cerrado_en, puede_reabrir: acc.admin && !!p.cerrado_en, puede_asignar: acc.admin && !p.cerrado_en, puede_resumen: acc.personal && acc.salud && p.sensible && !p.cerrado_en },
       });
     },
     pqrs_responder(a) { return intervenir(a, 'respuesta'); },
@@ -558,7 +560,7 @@ export function crearPqrsDemo({ tabla, usuario, guardar, copia, ahora, err, arch
     },
     pqrs_cerrar(a) {
       const p = tomar(a.p_id);
-      if (!(esAdmin(p.colegio_id) || esGerencia(p.colegio_id))) fallo('Solo el administrador general o Gerencia finalizan las PQRS.');
+      if (!(esAdmin(p.colegio_id) || esGerencia(p.colegio_id) || liderDelCaso(p.id))) fallo('Solo el administrador general, Gerencia o el líder de un área del caso finalizan la PQRS.');
       if (p.cerrado_en) return { estado: 'cerrada', igual: true };
       const mot = String(a.p_motivo ?? '').trim();
       if (mot.length < 3) fallo('Escribe la constancia del cierre.');
@@ -642,6 +644,12 @@ export function crearPqrsDemo({ tabla, usuario, guardar, copia, ahora, err, arch
       // Si se quita al líder, el área queda sin líder y queda constancia
       if (cambio && eraLider) T('pqrs_config_historial').push({ id: Date.now() + 1, colegio_id: a.p_colegio, actor_id: yo(), accion: 'lider_cambiado', area_id: ar.id, perfil_id: null, detalle: { antes: a.p_perfil, antes_nombre: nombreDe(a.p_perfil), ahora: null }, creado_en: ahora() });
       return { cambio };
+    },
+    // Cargo de la persona (el de las áreas que lidera): igual que public.pqrs_mi_cargo; solo para mostrarlo
+    pqrs_mi_cargo(a) {
+      if (!yo() || !esMiembro(a.p_colegio)) return null;
+      const c = T('pqrs_areas').filter((x) => x.colegio_id === a.p_colegio && x.activo && x.cargo_lider && lider(x.id) === yo()).sort((x, y) => orden(x) - orden(y)).map((x) => x.cargo_lider);
+      return c.length ? c.join(' · ') : null;
     },
     // Cargo y correo publicado del área: igual que public.pqrs_area_contacto
     pqrs_area_contacto(a) {

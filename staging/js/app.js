@@ -5,6 +5,26 @@ import { esc, $, aviso, ventana, leerForm, confirmar, ROL, nombre, iniciales, et
 import { APP_VERSION } from './config.js';
 import { idioma, elegirIdioma, activarTraduccion } from './i18n.js';
 
+// ---------------------------------------------------------------- Cargo en vez del rol genérico (1-nov-2026)
+// Quien lidera un área con cargo (ej. Gerencia → «Gerente») ve su cargo en lugar de «Profesor»/«Docente». Solo es lo que se
+// muestra: los permisos siguen siendo los de su rol y sus áreas. Se pide una vez por colegio y persona.
+const ROLES_PERSONAL = ['profesor', 'director_seccion', 'enfermeria'];
+let cargo = { clave: null, texto: null };
+function etiquetaRol() {
+  return (ROLES_PERSONAL.includes(E.rol) && cargo.clave === E.colegio?.id + '|' + E.yo?.id && cargo.texto) || ROL[E.rol];
+}
+async function pintarCargo() {
+  const clave = E.colegio.id + '|' + E.yo.id;
+  if (cargo.clave !== clave) {
+    cargo = { clave, texto: null };
+    try { cargo.texto = (await E.db.rpc('pqrs_mi_cargo', { p_colegio: E.colegio.id })) || null; } catch { /* sin cargo: queda el rol */ }
+  }
+  E.cargo = ROLES_PERSONAL.includes(E.rol) ? cargo.texto : null;
+  const t = etiquetaRol(), b = $('#btn-rol'), s = $('#menu .menu-cab small');
+  if (b) b.textContent = t + (E.roles.length > 1 ? ' ▾' : '');
+  if (s) s.textContent = `${t} · ${E.colegio.nombre}`;
+}
+
 // ---------------------------------------------------------------- Contraseña con botón de ojo (1-nov-2026)
 // Oculta por defecto. El botón es type="button" (nunca envía el formulario), cambia su etiqueta según la acción disponible y deja
 // el texto, el foco y el cursor donde estaban. Al enviar, el campo vuelve a ocultarse para que el gestor de contraseñas lo reconozca.
@@ -367,8 +387,9 @@ function pintarArmazon(patron) {
   }
   aplicarMarca();
   pintarBarraColegio();
-  $('#btn-rol').textContent = ROL[E.rol] + (E.roles.length > 1 ? ' ▾' : '');
+  $('#btn-rol').textContent = etiquetaRol() + (E.roles.length > 1 ? ' ▾' : '');
   $('#btn-rol').disabled = E.roles.length < 2;
+  pintarCargo();
 
   // Pestañas de persona (acudiente)
   const pp = $('#personas');
@@ -383,7 +404,7 @@ function pintarArmazon(patron) {
   $('#menu').innerHTML = `
     <div class="menu-cab">
       <span class="avatar grande" data-foto-de="${E.yo.id}">${esc(iniciales(E.yo))}</span>
-      <span><b>${esc(nombre(E.yo))}</b><small>${ROL[E.rol]} · ${esc(E.colegio.nombre)}</small></span>
+      <span><b>${esc(nombre(E.yo))}</b><small>${esc(etiquetaRol())} · ${esc(E.colegio.nombre)}</small></span>
     </div>
     <input class="filtro-menu" type="search" placeholder="🔍 Filtrar menú" aria-label="Filtrar menú">
     ${menuDe().map((g) => g.r
