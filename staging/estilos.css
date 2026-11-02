@@ -79,6 +79,11 @@ small { color: var(--texto-2); font-size: .82em; }
 .menu-abierto .menu { transform: none; }
 .menu-fondo { position: fixed; inset: 0; z-index: 55; background: rgba(10, 15, 30, .45); opacity: 0; pointer-events: none; transition: opacity .22s; }
 .menu-abierto .menu-fondo { opacity: 1; pointer-events: auto; }
+/* Con el menú abierto la página de atrás no se mueve (Fabio, 2-nov: «se mueve el fondo cosa que no debe pasar») */
+.menu { overscroll-behavior: contain; }
+.menu-abierto .menu-fondo { touch-action: none; }
+/* (solo html: si también el body, que mide 100 %, la página salta arriba al abrir el menú) */
+@media (max-width: 899.98px) { html.menu-bloqueo { overflow: hidden; } }
 .menu-cab { display: flex; align-items: center; gap: 12px; padding: 8px 8px 16px; margin-bottom: 8px; border-bottom: 1px solid var(--borde); }
 .menu-cab > span:last-child { display: flex; flex-direction: column; min-width: 0; }
 .menu-cab small { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
@@ -301,6 +306,13 @@ input.nota:disabled { background: transparent; border-color: transparent; color:
 .firma-muestra img { display: block; max-width: min(100%, 320px); max-height: 110px; height: auto; margin-bottom: -10px; }
 .firma-muestra span { font-size: 14px; }
 .circ-hoja .ayuda { color: var(--tinta); font-size: 13px; }
+/* Memorando de Gerencia como el V2-2025-2026-1 (2-nov-2026): cuadro con bordes grises, asunto centrado, cargo en cursiva, recibido */
+.circ-cuadro-gerencia td { border-color: #bfbfbf; }
+.circ-asunto-centro { text-align: center; margin: 4px 0 14px; }
+.circ-gerencia .circ-cuerpo { text-align: justify; }
+.circ-recibido { margin: 18px 0 0 auto; width: 170px; border: 1px solid var(--tinta); padding: 6px 8px; display: flex; flex-direction: column; gap: 8px; font-size: 10px; }
+.circ-recibido span { border-bottom: 1px solid var(--tinta); height: 10px; }
+.circ-formatos { border: 1px solid var(--borde); border-radius: var(--radio); padding: 8px 10px; margin: 8px 0; }
 /* Carta como la circular E2-006 (2-nov-2026): ciudad y fecha con el consecutivo a la derecha; viñetas «-»; firma en negrita */
 .circ-carta-cab { display: flex; justify-content: space-between; gap: 12px; flex-wrap: wrap; margin: 0 0 14px; }
 .circ-carta .circ-cuerpo { text-align: justify; }

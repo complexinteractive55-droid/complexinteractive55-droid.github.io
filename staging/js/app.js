@@ -123,6 +123,35 @@ document.addEventListener('click', (e) => { if (e.target.closest('[data-instalar
 // (touch-action) lo frenan en Android; Safari del iPhone los ignora, así que aquí se cancela el gesto en sí.
 for (const ev of ['gesturestart', 'gesturechange', 'gestureend']) document.addEventListener(ev, (e) => e.preventDefault(), { passive: false });
 document.addEventListener('touchmove', (e) => { if (e.touches.length > 1) e.preventDefault(); }, { passive: false });
+// Con el menú abierto, deslizar fuera de él (o sobre él cuando no tiene más que mostrar) no mueve la página de atrás
+// (Fabio, 2-nov). El CSS la bloquea; Safari del iPhone no siempre lo respeta, así que también se cancela el gesto.
+document.addEventListener('touchmove', (e) => {
+  if (!document.documentElement.classList.contains('menu-bloqueo')) return;
+  const m = e.target.closest?.('.menu');
+  if (!m || m.scrollHeight <= m.clientHeight) e.preventDefault();
+}, { passive: false });
+// Barras de pestañas que se desplazan de lado (Fabio, 2-nov: «la barra de selección se debe quedar quieta en donde entre, no debe
+// volver a la izquierda»). Al tocar una pestaña la pantalla se dibuja de nuevo: la barra nueva conserva el desplazamiento que
+// tenía la misma barra y, si la pestaña elegida no se ve entera, se corre solo lo justo para mostrarla.
+const BARRAS = '.pestanas, .segmentos';
+const despBarra = new Map();
+const firmaBarra = (b) => [...b.children].map((x) => x.getAttribute('href') || x.textContent).join('|');
+document.addEventListener('scroll', (e) => { if (e.target instanceof Element && e.target.matches(BARRAS)) despBarra.set(firmaBarra(e.target), e.target.scrollLeft); }, true);
+function acomodarBarra(b) {
+  if (b.scrollWidth <= b.clientWidth) return;
+  const k = firmaBarra(b);
+  if (despBarra.has(k)) b.scrollLeft = despBarra.get(k);
+  const a = b.querySelector('.activo');
+  if (!a) return;
+  const r = a.getBoundingClientRect(), rb = b.getBoundingClientRect();
+  if (r.left < rb.left + 16) b.scrollLeft -= rb.left + 16 - r.left;
+  else if (r.right > rb.right - 16) b.scrollLeft += r.right - (rb.right - 16);
+  despBarra.set(k, b.scrollLeft);
+}
+// (antes de pintar: el observador corre antes de que se vea la barra nueva, así no se nota el salto)
+new MutationObserver((cambios) => {
+  for (const c of cambios) for (const n of c.addedNodes) if (n.nodeType === 1) (n.matches(BARRAS) ? [n] : n.querySelectorAll(BARRAS)).forEach(acomodarBarra);
+}).observe(document.body, { childList: true, subtree: true });
 // Botones de imprimir y de reintentar (antes con onclick="…" en el HTML; así la política de seguridad CSP puede prohibir scripts en línea)
 document.addEventListener('click', (e) => {
   if (e.target.closest('[data-imprimir]')) window.print();
@@ -220,6 +249,7 @@ export const ir = (h) => { if (location.hash === h) navegar(); else location.has
 let navegando = 0;
 async function navegar() {
   const yo = ++navegando;
+  abrirMenu(false); // cambiar de pantalla (también cerrar sesión o el botón Atrás) cierra el menú y libera la página
   if (!E.sesion) return pantallaEntrar();
   if (!E.colegio) return pantallaColegios();
   precargarInicio();
@@ -460,6 +490,7 @@ async function pintarContadores() {
 function abrirMenu(si) {
   const app = $('#app');
   app.classList.toggle('menu-abierto', si);
+  document.documentElement.classList.toggle('menu-bloqueo', !!si); // la página de atrás no se desplaza
   $('#btn-menu')?.setAttribute('aria-expanded', si);
 }
 

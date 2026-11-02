@@ -55,7 +55,10 @@ const igual = (a, b) => JSON.stringify(a) === JSON.stringify(b);
 const PLANTILLAS_DEMO = [
   { id: 'demo-carta', revision: 2, nombre: 'Carta (como la circular E2-006)', configuracion: { estructura: 'carta-institucional-v1', carta: { ciudad: 'Cota, Cundinamarca' }, firma: { negrita: true, incluir_institucion: true } } },
   { id: 'demo-memo', revision: 1, nombre: 'Memorando (cuadro Fecha · De · Para)', configuracion: { estructura: 'memorando-institucional-v4', firma: { despedida: 'Cordialmente,', incluir_institucion: true } } },
+  { id: 'demo-gerencia', revision: 3, nombre: 'Memorando de Gerencia (como el V2-2025-2026-1)', configuracion: { estructura: 'memorando-gerencia-v1', firma: { despedida: 'Atentamente,', incluir_institucion: false } } },
 ];
+// Cada área su formato (2-nov-2026): quien fue designado en un área ve SOLO los formatos de su área (el servidor también lo revisa)
+const formatoPermitido = (yo, x) => !yo.formatos || yo.formatos.todos || (Array.isArray(yo.formatos.permitidas) ? yo.formatos.permitidas.includes(x.id) : !(yo.formatos.prohibidas || []).includes(x.id));
 const referencia = (id) => (id ? id.slice(0, 8).toUpperCase() : 'se asigna al guardar');
 const soloAdmin = (m, titulo) => { m.innerHTML = cabecera(titulo, { volver: '#/circulares' }) + vacio('Solo Administración o quien el administrador designe prepara las circulares institucionales.'); };
 
@@ -111,10 +114,36 @@ async function emisores_(caja) {
     ${lista.length ? `<div class="lista">${lista.map((x) => `<div class="fila"><span class="avatar">${x.tiene_firma ? '✍️' : '👤'}</span><span class="crece"><b>${esc(x.nombre)}</b>
         <small>${esc(x.cargo)} · ${x.area ? 'numera en ' + esc(x.area.nombre) : 'serie del colegio'} · ${x.tiene_firma ? 'firma cargada' : 'aún sin firma'}${x.activo ? '' : ' · <b>retirado</b>'}</small></span>
         <button type="button" class="btn btn-chico" data-emisor="${esc(x.perfil_id)}">Cambiar</button></div>`).join('')}</div>` : '<p>Aún no hay nadie designado: solo Administración prepara circulares.</p>'}
-    <button type="button" class="btn" data-emisor-nuevo>＋ Designar a alguien</button>`;
+    <button type="button" class="btn" data-emisor-nuevo>＋ Designar a alguien</button>
+    <div data-formatos-area></div>`;
+  formatosArea_(caja.querySelector('[data-formatos-area]'), areas);
   const abrir = (x) => designar(x, areas, lista).then((ok) => ok && emisores_(caja));
   caja.querySelector('[data-emisor-nuevo]').addEventListener('click', () => abrir(null));
   caja.querySelectorAll('[data-emisor]').forEach((b) => b.addEventListener('click', () => abrir(lista.find((x) => x.perfil_id === b.dataset.emisor))));
+}
+// Formato del PDF de cada área (2-nov-2026, Fabio: «en gerencia no debe pasar que pueda enviar el formato como de rectoría y
+// viceversa»; «esta opción no debe ser elegible»): el administrador asigna UN formato a cada área; quien emite por esa área usa ese
+async function formatosArea_(div, areas) {
+  if (!areas.length) { div.innerHTML = '<p class="ayuda"><b>Formato del PDF de cada área:</b> primero crea las áreas (Rectoría, Gerencia…) en «Numeración por área».</p>'; return; }
+  let [plantillas, asignados] = await Promise.all([
+    E.db.modo === 'demo' ? PLANTILLAS_DEMO : E.db.select('circular_plantillas', { eq: { colegio_id: E.colegio.id, estado: 'aprobada' }, order: 'revision desc' }).catch(() => []),
+    E.db.rpc('circular_formatos_por_area', { p_colegio: E.colegio.id }).catch(() => null),
+  ]);
+  if (!asignados) { div.innerHTML = ''; return; } // la base aún no tiene la migración 20261102150000
+  const de = (a) => asignados.find((y) => y.area_id === a)?.plantilla_id || '';
+  div.innerHTML = `<h3>Formato del PDF de cada área</h3><p class="ayuda">Cada área tiene <b>un</b> formato y quien emite por esa área no lo elige: Gerencia no envía el de Rectoría ni al revés (el servidor también lo revisa). El área sin formato usa el general (el que no es de ningún área).</p>
+    ${areas.map((a) => `<fieldset class="circ-formatos"><legend>${esc(a.nombre)}</legend>${plantillas.length ? [{ id: '', nombre: 'Sin formato propio (usa el general)' }, ...plantillas].map((p) => `<label class="check"><input type="radio" name="formato-${esc(a.id)}" data-formato-area="${esc(a.id)}" value="${esc(p.id)}" ${de(a.id) === p.id ? 'checked' : ''}> ${esc(p.nombre || 'Plantilla rev. ' + p.revision)}</label>`).join('') : '<p class="ayuda">No hay plantillas aprobadas.</p>'}</fieldset>`).join('')}`;
+  div.querySelectorAll('[data-formato-area]').forEach((r) => r.addEventListener('change', async () => {
+    const area = r.dataset.formatoArea, antes = de(area);
+    const grupo = div.querySelectorAll(`[data-formato-area="${area}"]`);
+    grupo.forEach((x) => { x.disabled = true; });
+    try {
+      asignados = r.value ? await E.db.rpc('circular_area_formato_guardar', { p_colegio: E.colegio.id, p_area: area, p_plantilla: r.value, p_asignar: true })
+        : await E.db.rpc('circular_area_formato_guardar', { p_colegio: E.colegio.id, p_area: area, p_plantilla: antes, p_asignar: false });
+      aviso(r.value ? 'Formato asignado al área' : 'El área usa el formato general');
+    } catch (e) { grupo.forEach((x) => { x.checked = x.value === antes; }); aviso(e.message, 'error'); }
+    finally { grupo.forEach((x) => { x.disabled = false; }); }
+  }));
 }
 async function designar(x, areas, lista) {
   const miembros = await E.db.select('miembros', { eq: { colegio_id: E.colegio.id } });
@@ -251,15 +280,24 @@ export async function editor(m, p) {
     }
   }
   // La serie de consecutivos vigente (para decir si es provisional) y la plantilla vigente (firma y revisión)
-  const [series, plantillas] = await Promise.all([
+  const [series, plantillasTodas] = await Promise.all([
     E.db.select('circular_series', { eq: { colegio_id: E.colegio.id, vigente: true } }).catch(() => []),
     E.db.modo === 'demo' ? PLANTILLAS_DEMO : E.db.select('circular_plantillas', { eq: { colegio_id: E.colegio.id, estado: 'aprobada' }, order: 'revision desc' }).catch(() => []),
   ]);
-  let plantilla = plantillas[0] || null;
+  const plantillas = plantillasTodas.filter((x) => formatoPermitido(yo, x));
+  let plantilla = null; // el formato del área que emite (ponerFormato)
   // Numeración por área (si la migración 20261029130000 está en la base): áreas configuradas y número PREVISTO (no reservado)
   const num = await E.db.rpc('circular_numeracion', { p_colegio: E.colegio.id }).catch(() => null);
   const areasCfg = (num?.areas || []).filter((a) => a.activo);
   const areaDe = (txt) => areasCfg.find((a) => a.nombre.trim().toLowerCase() === String(txt || '').trim().toLowerCase()) || null;
+  // Formato del PDF (2-nov-2026, Fabio: «esta opción no debe ser elegible»): no se elige, es el del área que emite (uno por área,
+  // lo asigna el administrador). El área sin formato propio usa el formato general (el que no es de ningún área)
+  const asignados = yo.admin ? await E.db.rpc('circular_formatos_por_area', { p_colegio: E.colegio.id }).catch(() => null) : null;
+  const generales = plantillas.filter((x) => !(asignados || []).some((y) => y.plantilla_id === x.id));
+  const formatoDe = (dep) => {
+    const a = asignados && areaDe(dep), y = a && asignados.find((z) => z.area_id === a.id);
+    return (y && plantillas.find((x) => x.id === y.plantilla_id)) || generales[0] || null; // nunca el de otra área
+  };
   let prevista = null;
   const provisional = series[0]?.provisional !== false;
   // Estado del borrador en el servidor: id, versión con la que se abrió, lo último guardado y su consecutivo (fijo).
@@ -272,8 +310,6 @@ export async function editor(m, p) {
   const recuperado = !!local && !igual(normal({ ...local.datos, consecutivo: srv.consecutivo }), d);
   if (recuperado) { d = normal({ ...local.datos, consecutivo: srv.consecutivo }); srv.version = local.version ?? srv.version; } // se guarda sobre la versión que tenía este equipo
   else if (local && srv.id) borrarLocal(llave);
-  // Formato del PDF: el que eligió este borrador o, si no, el más nuevo aprobado (2-nov-2026: la carta como la E2-006)
-  plantilla = plantillas.find((x) => x.id === d.plantilla_id) || plantilla;
 
   m.innerHTML = cabecera(nueva ? 'Nueva circular institucional' : 'Circular institucional', { volver: VOLVER }) + `
     <div data-circ data-id="${esc(p.id)}">
@@ -289,7 +325,7 @@ export async function editor(m, p) {
         <div class="circ-consec"><small class="ayuda" data-consec-ayuda></small></div>
         <small class="ayuda">Referencia interna del borrador: <span data-ref>${esc(referencia(srv.id))}</span></small>
         <label>Área que emite<input name="dependencia" list="circ-areas" maxlength="${LIMITES.dependencia}" placeholder="Ej.: Rectoría"><datalist id="circ-areas">${[...new Set([...areasCfg.map((a) => a.nombre), ...AREAS])].map((a) => `<option value="${esc(a)}">`).join('')}</datalist></label>
-        <label data-formato-fila ${plantillas.length > 1 ? '' : 'hidden'}>Formato del PDF<select name="plantilla_id">${plantillas.map((x) => `<option value="${esc(x.id)}">${esc(x.nombre || 'Plantilla rev. ' + x.revision)}</option>`).join('')}</select></label>
+        <div class="circ-datos" data-formato-fila><div><span>Formato del PDF</span><b data-formato-txt></b><small class="ayuda">${yo.emisor?.area ? 'Es el formato de tu área: lo asigna el administrador.' : 'Lo define el área que emite (el administrador asigna el formato de cada área).'}</small></div></div>
       </section>
       <section class="tarjeta">
         <h2>Para</h2>
@@ -358,24 +394,29 @@ export async function editor(m, p) {
     if (r.readOnly && r.value !== yo.nombre) r.value = yo.nombre;
   };
   // ----- Pintar los datos en el formulario
+  const ponerFormato = () => {
+    plantilla = formatoDe(form.elements.dependencia.value);
+    $c('[data-formato-txt]').textContent = plantilla ? plantilla.nombre || 'Plantilla rev. ' + plantilla.revision : (yo.emisor?.area ? 'Tu área todavía no tiene formato: pídeselo al administrador.' : 'Esa área no tiene formato: asígnalo en «Formato del PDF de cada área».');
+  };
   const poner = (x) => {
     for (const k of ['dependencia', 'destinatarios_otros', 'titulo', 'responsable', 'cargo']) form.elements[k].value = x[k];
-    form.elements.plantilla_id.value = plantilla?.id || '';
+    // Quien fue designado en un área emite como esa área: el «De:» no se cambia (el servidor también lo fija)
+    if (yo.emisor?.area?.nombre) form.elements.dependencia.value = yo.emisor.area.nombre;
     for (const cb of form.querySelectorAll('[name=destinatarios]')) cb.checked = x.destinatarios.includes(cb.value);
     form.elements.firmar.checked = x.firmar && !ajeno(x);
     ed.innerHTML = contenidoHTML(x.contenido);
+    ponerFormato();
   };
   poner(d);
   pintarFirmar();
+  if (yo.emisor?.area?.nombre) { form.elements.dependencia.readOnly = true; form.elements.dependencia.removeAttribute('list'); form.elements.dependencia.title = 'Es tu área: la asignó el administrador'; }
   form.elements.firmar.addEventListener('change', pintarFirmar);
-  form.elements.plantilla_id.addEventListener('change', () => { plantilla = plantillas.find((x) => x.id === form.elements.plantilla_id.value) || plantilla; });
 
   // ----- Leer el formulario
   const actual = () => {
     const f = leerForm(form);
-    // sin elección propia queda vacío (= el formato más nuevo): así un borrador viejo no aparece «con cambios» solo por abrirlo
-    const plantilla_id = !d.plantilla_id && f.plantilla_id === (plantillas[0]?.id || '') ? '' : f.plantilla_id || '';
-    return normal({ ...f, plantilla_id, firmar: firmaAjena ? d.firmar : f.firmar === true && !!yo.firma, consecutivo: srv.consecutivo, fecha_emision: d.fecha_emision, contenido: leerEditor(ed) });
+    // el formato ya no se elige (es el del área): lo guardado en el borrador no cambia y no cuenta como cambio
+    return normal({ ...f, plantilla_id: d.plantilla_id, firmar: firmaAjena ? d.firmar : f.firmar === true && !!yo.firma, consecutivo: srv.consecutivo, fecha_emision: d.fecha_emision, contenido: leerEditor(ed) });
   };
 
   let guardando = false, localT = null;
@@ -446,6 +487,8 @@ export async function editor(m, p) {
     const cargo = form.elements.cargo;
     if (CARGO_DE_AREA[area] && (!cargo.value.trim() || cargo.value === CARGO_DE_AREA[areaAntes])) { cargo.value = CARGO_DE_AREA[area]; cambio(); }
     areaAntes = area;
+    ponerFormato();
+    cambio();
     previsualizar();
   });
   $c('[data-hoy]').addEventListener('click', () => { d = { ...d, fecha_emision: hoyBogota() }; cambio(); });
@@ -583,8 +626,7 @@ export async function editor(m, p) {
     const antes = btnPdf.textContent;
     btnPdf.textContent = 'Generando…';
     try {
-      plantilla ??= (await E.db.select('circular_plantillas', { eq: { colegio_id: E.colegio.id, estado: 'aprobada' }, order: 'revision desc', limit: 1 }))[0];
-      if (!plantilla) throw new Error('El colegio aún no tiene una plantilla institucional aprobada.');
+      if (!plantilla) throw new Error(plantillasTodas.length ? 'Tu área todavía no tiene un formato de PDF asignado: pídele al administrador que lo asigne.' : 'El colegio aún no tiene una plantilla institucional aprobada.');
       const t0 = performance.now();
       const pdf = await E.db.funcion('circular-documentos', { accion: 'previsualizar', colegio_id: E.colegio.id, plantilla_id: plantilla.id, datos: v.datos });
       if (!(pdf instanceof Blob) || !pdf.size) throw new Error('El servidor no devolvió el PDF. Intenta de nuevo.');
@@ -633,6 +675,23 @@ function vistaHTML(x, plantilla, firmaUrl = null) {
   const imgFirma = firmaUrl ? `<img class="circ-firma-img" src="${esc(firmaUrl)}" alt="Firma">` : '';
   // Carta como la circular E2-006-2026-2027 del colegio: ciudad y fecha, consecutivo a la derecha, sin cuadro ni asunto; el saludo
   // y la despedida van en el cuerpo; nombre, cargo y colegio en negrita
+  // Memorando de Gerencia como el V2-2025-2026-1: cuadro en negrita con la fecha dd/mm/aaaa, asunto centrado con el consecutivo,
+  // «Atentamente,», nombre en negrita sin mayúsculas, cargo en cursiva y recuadro de recibido
+  if (plantilla?.configuracion?.estructura === 'memorando-gerencia-v1') {
+    const f = (x.fecha_emision || '').split('-'), num = x.consecutivo.trim() || SIN_NUMERO;
+    return `<div class="circ-hoja circ-gerencia">
+    <header class="circ-membrete">${logoHTML('circ-logo')}<b>${esc(E.colegio.nombre)}</b></header>
+    <table class="circ-cuadro circ-cuadro-gerencia">
+      <tr><td><b>Fecha:&nbsp; ${esc(f.length === 3 ? f[2] + '/' + f[1] + '/' + f[0] : '')}</b></td><td><b>De: ${esc(x.dependencia || '—')}</b></td></tr>
+      <tr><td><b>Consecutivo:&nbsp; ${esc(num)}</b></td><td><b>Para: ${esc(textoDestinatarios(x.destinatarios, x.destinatarios_otros) || '—')}</b></td></tr>
+    </table>
+    <p class="circ-asunto-centro"><b>Asunto: ${esc(num)} – ${esc(x.titulo || '—')}</b></p>
+    <div class="circ-cuerpo">${contenidoHTML(x.contenido) || '<p class="ayuda">(sin contenido)</p>'}</div>
+    <div class="circ-firma"><p>${esc(firma?.despedida ?? 'Atentamente,')}</p>${imgFirma}<b>${esc(x.responsable || 'Nombre de quien firma')}</b><i>${esc(x.cargo || 'Cargo')}</i></div>
+    <div class="circ-recibido"><b>Firma de recibido:</b><span></span><b>Fecha:</b><b>Hora:</b></div>
+    <p class="circ-marca">VISTA RÁPIDA · el PDF de revisión trae el encabezado, la marca de agua y el pie del colegio</p>
+  </div>`;
+  }
   if (plantilla?.configuracion?.estructura === 'carta-institucional-v1') return `<div class="circ-hoja circ-carta">
     <header class="circ-membrete">${logoHTML('circ-logo')}<b>${esc(E.colegio.nombre)}</b></header>
     <p class="circ-carta-cab"><span>${esc(plantilla.configuracion.carta?.ciudad || '')} ${esc(fechaLarga(x.fecha_emision).replace(/ (\d{4})$/, ' de $1'))}</span><b>${esc(x.consecutivo.trim() || SIN_NUMERO)}</b></p>

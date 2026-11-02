@@ -233,7 +233,7 @@ export async function crearDbSupabase() {
 const VIDA = 30000;
 const RPC_LECTURA = new Set(['mis_contactos', 'personas_colegio', 'mi_intento']);
 // Lecturas que van siempre al servidor y no marcan lo demás «por revisar» (el hilo de una PQRS se consulta cada poco)
-const RPC_DIRECTA = new Set(['pqrs_mensajes', 'pqrs_adjunto_estado', 'circular_previsualizar_numero', 'circular_numeracion', 'circular_mi_perfil', 'circular_emisores_ver']);
+const RPC_DIRECTA = new Set(['pqrs_mensajes', 'pqrs_adjunto_estado', 'circular_previsualizar_numero', 'circular_numeracion', 'circular_mi_perfil', 'circular_emisores_ver', 'circular_formatos_por_area']);
 // Escrituras que también cambian otras tablas (triggers del servidor o lógica de la app)
 const AFECTA = {
   tarea_entregas: ['calificaciones'], examenes: ['calificaciones'], examen_intentos: ['calificaciones'],
@@ -245,6 +245,7 @@ const AFECTA = {
   circular_serie_guardar: ['circular_series'], circular_serie_validar: ['circular_series'], circular_area_guardar: ['circular_areas'], circular_ajustes_guardar: ['circular_ajustes'],
   circular_emitir: ['circular_borradores', 'circular_series'], circular_anular: ['circular_borradores', 'circular_numeros_anulados'],
   circular_firma_guardar: ['circular_firmas'], circular_firma_borrar: ['circular_firmas'], circular_emisor_guardar: ['circular_emisores', 'circular_config_historial'],
+  circular_area_formato_guardar: ['circular_area_formatos', 'circular_config_historial'],
 };
 const clonar = (x) => (x == null ? x : typeof structuredClone === 'function' ? structuredClone(x) : JSON.parse(JSON.stringify(x)));
 
@@ -447,7 +448,7 @@ export function crearDbDemo() {
   const borradorMio = (b) => esAdmin(b.colegio_id) || (b.autor_id === usuario() && puedePreparar(b.colegio_id));
   const numerarBorrador = (r) => {
     r.solicitud_id ||= crypto.randomUUID();
-    if (usuario() && !esAdmin(r.colegio_id)) { r.area_id = emisorCirc(r.colegio_id)?.area_id || null; if (r.datos) { r.datos = { ...r.datos }; delete r.datos.area_id; } }
+    if (usuario() && (emisorCirc(r.colegio_id) || !esAdmin(r.colegio_id))) { r.area_id = emisorCirc(r.colegio_id)?.area_id || null; if (r.datos) { r.datos = { ...r.datos }; delete r.datos.area_id; } } // designado (también administrador): su área
     const area = r.area_id || r.datos?.area_id || null;
     if (area && !tabla('circular_areas').some((x) => x.id === area && x.colegio_id === r.colegio_id)) err('Esa área no es de este colegio.');
     const datos = { ...(r.datos || {}) };
@@ -462,7 +463,7 @@ export function crearDbDemo() {
   // Como el disparador: al editar no cambia lo de origen ni el número; queda la versión anterior; emitida o anulada no se edita
   const actualizarBorrador = (f, cambios) => {
     const datos = { ...(cambios.datos ?? f.datos) };
-    const area = f.numero ? f.area_id || null : !esAdmin(f.colegio_id) ? emisorCirc(f.colegio_id)?.area_id || null : datos.area_id || f.area_id || null;
+    const area = f.numero ? f.area_id || null : emisorCirc(f.colegio_id) || !esAdmin(f.colegio_id) ? emisorCirc(f.colegio_id)?.area_id || null : datos.area_id || f.area_id || null;
     delete datos.area_id;
     if (f.consecutivo) datos.consecutivo = f.consecutivo; else delete datos.consecutivo;
     if ((f.estado || 'borrador') !== 'borrador' && JSON.stringify(datos) !== JSON.stringify(f.datos)) err('Una circular emitida o anulada no se edita (su contenido y número quedan como se emitieron).');

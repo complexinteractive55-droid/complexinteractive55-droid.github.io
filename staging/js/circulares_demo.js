@@ -13,6 +13,14 @@ export function crearCircularesDemo({ tabla, usuario, guardar, ahora, err, esAdm
     return tabla('circular_borradores').some(ya) || tabla('circular_numeros_anulados').some(ya);
   };
 
+  // Formatos que puede usar una persona (como private.circular_formatos_de): {todos} | {permitidas} | {prohibidas}
+  const formatosDe = (c, p) => {
+    const e = emisorCirc(c, p);
+    if (!e) return { todos: tabla('miembros').some((m) => m.colegio_id === c && m.perfil_id === p && m.rol === 'admin' && m.activo !== false) };
+    const mias = tabla('circular_area_formatos').filter((x) => e.area_id && x.area_id === e.area_id).map((x) => x.plantilla_id);
+    if (mias.length) return { todos: false, permitidas: mias };
+    return { todos: false, prohibidas: [...new Set(tabla('circular_area_formatos').filter((x) => x.colegio_id === c && x.area_id !== e.area_id).map((x) => x.plantilla_id))] };
+  };
   const F = {
     circular_area_guardar(a) {
       soloAdmin(a.p_colegio);
@@ -107,7 +115,7 @@ export function crearCircularesDemo({ tabla, usuario, guardar, ahora, err, esAdm
     },
     circular_previsualizar_numero(a) {
       if (!puedePreparar(a.p_colegio)) err('Solo Administración o quien el administrador designe preparan circulares institucionales.');
-      if (!esAdmin(a.p_colegio)) a = { ...a, p_area: emisorCirc(a.p_colegio)?.area_id || null }; // numera en su área designada
+      if (emisorCirc(a.p_colegio) || !esAdmin(a.p_colegio)) a = { ...a, p_area: emisorCirc(a.p_colegio)?.area_id || null }; // numera en su área designada
       const modo = tabla('circular_ajustes').find((x) => x.colegio_id === a.p_colegio)?.asignar_numero || 'guardar';
       const s = tabla('circular_series').find((x) => x.colegio_id === a.p_colegio && (x.area_id || null) === (a.p_area || null) && x.vigente);
       if (!s) return { hay_serie: false, asignar_numero: modo };
@@ -120,7 +128,25 @@ export function crearCircularesDemo({ tabla, usuario, guardar, ahora, err, esAdm
       const area = e?.area_id ? tabla('circular_areas').find((x) => x.id === e.area_id) : null;
       return { admin: esAdmin(c), puede_preparar: puedePreparar(c), nombre: nombreDe(yo),
         emisor: e ? { cargo: e.cargo, area: area ? { id: area.id, nombre: area.nombre } : null } : null,
-        firma: f ? { ruta: f.ruta, sha256: f.sha256, ancho: f.ancho, alto: f.alto, actualizado_en: f.actualizado_en } : null };
+        firma: f ? { ruta: f.ruta, sha256: f.sha256, ancho: f.ancho, alto: f.alto, actualizado_en: f.actualizado_en } : null, formatos: formatosDe(c, yo) };
+    },
+    circular_area_formato_guardar(a) {
+      soloAdmin(a.p_colegio);
+      const c = a.p_colegio;
+      if (!tabla('circular_areas').some((x) => x.id === a.p_area && x.colegio_id === c)) err('Esa área no es de este colegio.');
+      if (!a.p_plantilla) err('Elige el formato.');
+      // un solo formato por área: el nuevo reemplaza al que tuviera (como la base)
+      if (a.p_asignar !== false) for (const x of tabla('circular_area_formatos').filter((y) => y.area_id === a.p_area && y.plantilla_id !== a.p_plantilla)) {
+        tabla('circular_area_formatos').splice(tabla('circular_area_formatos').indexOf(x), 1); historia(c, 'area', a.p_area, 'formato_quitado', { plantilla_id: x.plantilla_id }, null);
+      }
+      const i = tabla('circular_area_formatos').findIndex((x) => x.area_id === a.p_area && x.plantilla_id === a.p_plantilla);
+      if (a.p_asignar !== false && i < 0) { tabla('circular_area_formatos').push({ colegio_id: c, area_id: a.p_area, plantilla_id: a.p_plantilla, asignado_por: usuario(), asignado_en: ahora() }); historia(c, 'area', a.p_area, 'formato_asignado', null, { plantilla_id: a.p_plantilla }); }
+      if (a.p_asignar === false && i >= 0) { tabla('circular_area_formatos').splice(i, 1); historia(c, 'area', a.p_area, 'formato_quitado', { plantilla_id: a.p_plantilla }, null); }
+      return F.circular_formatos_por_area({ p_colegio: c });
+    },
+    circular_formatos_por_area(a) {
+      soloAdmin(a.p_colegio);
+      return tabla('circular_area_formatos').filter((x) => x.colegio_id === a.p_colegio).map((x) => ({ area_id: x.area_id, area: tabla('circular_areas').find((y) => y.id === x.area_id)?.nombre || '', plantilla_id: x.plantilla_id }));
     },
     circular_firma_guardar(a) {
       const c = a.p_colegio, yo = usuario();
