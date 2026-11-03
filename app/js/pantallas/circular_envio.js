@@ -29,7 +29,9 @@ export async function revisarEnvioPendiente(borradorId) {
   return null;
 }
 
-export async function enviarCircular({ borrador, plantilla }) {
+// criterios: a quién (lo que se marcó en «¿Para quién?» de la circular, 3-nov-2026). Con ellos la ventana no vuelve a preguntar:
+// revisa enseguida (audiencia del servidor + PDF oficial) y queda «Confirmar y enviar». Sin ellos, se eligen aquí como antes.
+export async function enviarCircular({ borrador, plantilla, criterios: fijos = null }) {
   if (!plantilla) { aviso('Esta circular no tiene un formato de PDF asignado: asígnalo antes de enviarla.', 'error'); return null; }
   if (!borrador.consecutivo) { aviso('La circular aún no tiene su número: guárdala con su área antes de enviarla.', 'error'); return null; }
   const b = await base();
@@ -46,8 +48,8 @@ export async function enviarCircular({ borrador, plantilla }) {
   await ventana({
     titulo: `Enviar ${borrador.consecutivo}`,
     html: `<div class="form" data-envio>
-      <fieldset><legend>¿A quién?</legend>
-        ${Object.entries(GRUPOS).filter(([k]) => k !== 'individual').map(([k, t]) => `<label class="check"><input type="checkbox" name="rol" value="${k}" ${['estudiante', 'profesor'].includes(k) ? '' : ''}> ${t}</label>`).join('')}
+      ${fijos ? '' : `<fieldset><legend>¿A quién?</legend>
+        ${Object.entries(GRUPOS).filter(([k]) => k !== 'individual').map(([k, t]) => `<label class="check"><input type="checkbox" name="rol" value="${k}"> ${t}</label>`).join('')}
       </fieldset>
       <label>Alcance<select data-alcance>${Object.entries(ALCANCE).map(([k, t]) => `<option value="${k}">${t}</option>`).join('')}</select></label>
       <div class="envio-alcance" data-items hidden></div>
@@ -57,55 +59,58 @@ export async function enviarCircular({ borrador, plantilla }) {
         <div class="lista" data-resultados></div>
       </details>
       <p data-elegidas class="ayuda"></p>
-      <div class="circ-acciones"><button type="button" class="btn btn-primario" data-revisar>Revisar el envío</button></div>
-      <div class="envio-paso" data-paso2 hidden>
-        <div data-resumen role="status" aria-live="polite"></div>
+      <div class="circ-acciones"><button type="button" class="btn btn-primario" data-revisar>Revisar el envío</button></div>`}
+      <div class="envio-paso" data-paso2 ${fijos ? '' : 'hidden'}>
+        <div data-resumen role="status" aria-live="polite">${fijos ? '<p class="ayuda">Calculando a quién llega y preparando el PDF oficial…</p>' : ''}</div>
         <div data-pdf></div>
-        <div class="circ-acciones"><button type="button" class="btn btn-primario" data-confirmar disabled>Confirmar y enviar</button></div>
+        <div class="circ-acciones">${fijos ? '<button type="button" class="btn" data-revisar hidden>Volver a revisar</button>' : ''}<button type="button" class="btn btn-primario" data-confirmar disabled>Confirmar y enviar</button></div>
       </div>
       <div class="envio-paso" data-resultado hidden role="status" aria-live="polite"></div>
     </div>`,
     alAbrir: (caja) => {
       const $ = (s) => caja.querySelector(s);
-      const alcance = $('[data-alcance]'), items = $('[data-items]');
-      const pintarItems = () => {
-        const a = alcance.value, lista = a === 'sede' ? b.sedes : a === 'grado' ? b.grados : a === 'curso' ? b.cursos : [];
-        items.hidden = a === 'colegio'; $('[data-nota-alcance]').hidden = a === 'colegio';
-        items.innerHTML = lista.map((x) => `<label class="check"><input type="checkbox" name="item" value="${x.id}"> ${esc(x.nombre)}</label>`).join('') || '<p class="ayuda">No hay opciones.</p>';
-        caja.querySelectorAll('[name=rol]').forEach((r) => { r.disabled = a !== 'colegio' && !['estudiante', 'profesor', 'acudiente'].includes(r.value); if (r.disabled) r.checked = false; });
-        invalidar();
-      };
-      const pintarElegidas = () => {
-        $('[data-elegidas]').innerHTML = elegidas.size ? 'Además: ' + [...elegidas.values()].map((c) => `<span class="chip">${esc(nombreLista(c))} <button type="button" data-quitar="${c.perfil_id}" aria-label="Quitar">×</button></span>`).join(' ') : '';
-        caja.querySelectorAll('[data-quitar]').forEach((x) => (x.onclick = () => { elegidas.delete(x.dataset.quitar); pintarElegidas(); invalidar(); }));
-      };
-      // Cambiar la selección invalida la revisión: hay que revisar de nuevo antes de confirmar
-      const invalidar = () => { revision = null; $('[data-paso2]').hidden = true; $('[data-confirmar]').disabled = true; };
-      alcance.onchange = pintarItems;
-      caja.addEventListener('change', (e) => { if (e.target.matches('[name=rol], [name=item]')) invalidar(); });
-      $('[data-buscar-persona]').oninput = (e) => {
-        const q = e.target.value.trim().toLowerCase();
-        const res = q.length < 2 ? [] : unicas.filter((c) => `${c.nombres} ${c.apellidos} ${c.grupo} ${c.detalle || ''}`.toLowerCase().includes(q)).slice(0, 20);
-        $('[data-resultados]').innerHTML = res.map((c) => `<button type="button" class="fila fila-boton" data-persona="${c.perfil_id}"><span><b>${esc(nombreLista(c))}</b><small>${esc(c.grupo)}</small></span></button>`).join('')
-          || (q.length >= 2 ? '<p class="ayuda">Nadie con ese nombre.</p>' : '');
-        caja.querySelectorAll('[data-persona]').forEach((x) => (x.onclick = () => { elegidas.set(x.dataset.persona, unicas.find((c) => c.perfil_id === x.dataset.persona)); pintarElegidas(); invalidar(); }));
-      };
-      pintarItems();
-
-      const criterios = () => ({ roles: [...caja.querySelectorAll('[name=rol]:checked')].map((x) => x.value), alcance: alcance.value,
-        ids: alcance.value === 'colegio' ? [] : [...caja.querySelectorAll('[name=item]:checked')].map((x) => x.value), personas: [...elegidas.keys()] });
+      const btnRev = $('[data-revisar]'), btnConf = $('[data-confirmar]');
+      // Cambiar la selección (o la circular) invalida la revisión: hay que revisar de nuevo antes de confirmar
+      const invalidar = () => { revision = null; btnConf.disabled = true; if (fijos) btnRev.hidden = false; else $('[data-paso2]').hidden = true; };
+      let criterios = () => fijos;
+      if (!fijos) {
+        const alcance = $('[data-alcance]'), items = $('[data-items]');
+        const pintarItems = () => {
+          const a = alcance.value, lista = a === 'sede' ? b.sedes : a === 'grado' ? b.grados : a === 'curso' ? b.cursos : [];
+          items.hidden = a === 'colegio'; $('[data-nota-alcance]').hidden = a === 'colegio';
+          items.innerHTML = lista.map((x) => `<label class="check"><input type="checkbox" name="item" value="${x.id}"> ${esc(x.nombre)}</label>`).join('') || '<p class="ayuda">No hay opciones.</p>';
+          caja.querySelectorAll('[name=rol]').forEach((r) => { r.disabled = a !== 'colegio' && !['estudiante', 'profesor', 'acudiente'].includes(r.value); if (r.disabled) r.checked = false; });
+          invalidar();
+        };
+        const pintarElegidas = () => {
+          $('[data-elegidas]').innerHTML = elegidas.size ? 'Además: ' + [...elegidas.values()].map((c) => `<span class="chip">${esc(nombreLista(c))} <button type="button" data-quitar="${c.perfil_id}" aria-label="Quitar">×</button></span>`).join(' ') : '';
+          caja.querySelectorAll('[data-quitar]').forEach((x) => (x.onclick = () => { elegidas.delete(x.dataset.quitar); pintarElegidas(); invalidar(); }));
+        };
+        alcance.onchange = pintarItems;
+        caja.addEventListener('change', (e) => { if (e.target.matches('[name=rol], [name=item]')) invalidar(); });
+        $('[data-buscar-persona]').oninput = (e) => {
+          const q = e.target.value.trim().toLowerCase();
+          const res = q.length < 2 ? [] : unicas.filter((c) => `${c.nombres} ${c.apellidos} ${c.grupo} ${c.detalle || ''}`.toLowerCase().includes(q)).slice(0, 20);
+          $('[data-resultados]').innerHTML = res.map((c) => `<button type="button" class="fila fila-boton" data-persona="${c.perfil_id}"><span><b>${esc(nombreLista(c))}</b><small>${esc(c.grupo)}</small></span></button>`).join('')
+            || (q.length >= 2 ? '<p class="ayuda">Nadie con ese nombre.</p>' : '');
+          caja.querySelectorAll('[data-persona]').forEach((x) => (x.onclick = () => { elegidas.set(x.dataset.persona, unicas.find((c) => c.perfil_id === x.dataset.persona)); pintarElegidas(); invalidar(); }));
+        };
+        pintarItems();
+        criterios = () => ({ roles: [...caja.querySelectorAll('[name=rol]:checked')].map((x) => x.value), alcance: alcance.value,
+          ids: alcance.value === 'colegio' ? [] : [...caja.querySelectorAll('[name=item]:checked')].map((x) => x.value), personas: [...elegidas.keys()] });
+      }
       const resumenHTML = (pv) => `<p><b>${pv.total}</b> destinatario(s) únicos${Object.keys(pv.por_grupo || {}).length ? ': ' + Object.entries(pv.por_grupo).map(([k, v]) => `${esc(GRUPOS[k] || k)} ${v}`).join(' · ') : ''}.</p>
         ${pv.excluidos ? `<details><summary>${pv.excluidos} no la recibirán: ${Object.entries(pv.motivos).map(([k, v]) => `${esc(k)} (${v})`).join(' · ')}</summary>
           <div class="lista">${(pv.excluidos_detalle || []).map((x) => `<div class="fila"><span class="crece">${esc(x.nombre)}</span><small>${esc(x.motivo)}</small></div>`).join('')}</div></details>` : ''}
         <p class="ayuda">Calculado por el servidor ${esc(fechaHora(pv.calculado_en))}. Una persona elegida por varias vías recibe una sola.</p>`;
 
       // ---- Revisar: audiencia del servidor + PDF oficial de la versión guardada
-      const btnRev = $('[data-revisar]'), btnConf = $('[data-confirmar]');
       btnRev.onclick = async () => {
         const c = criterios();
         if (!c.roles.length && !c.personas.length) return aviso('Elige a quién enviar.', 'error');
         if (c.alcance !== 'colegio' && !c.ids.length) return aviso('Elige al menos una opción del alcance.', 'error');
         btnRev.disabled = true; btnRev.textContent = 'Revisando…'; invalidar();
+        if (fijos) { btnRev.hidden = true; $('[data-resumen]').innerHTML = '<p class="ayuda">Calculando a quién llega y preparando el PDF oficial…</p>'; $('[data-pdf]').innerHTML = ''; }
         try {
           const pv = await E.db.rpc('audiencia_previa', { p_colegio: E.colegio.id, p_criterios: c });
           $('[data-paso2]').hidden = false;
@@ -125,7 +130,8 @@ export async function enviarCircular({ borrador, plantilla }) {
           btnConf.disabled = false;
         } catch (e) {
           $('[data-pdf]').innerHTML = `<p class="error" data-error-envio>${esc(e.message)}</p><p class="ayuda">No se envió nada. El borrador sigue guardado.</p>`;
-        } finally { btnRev.disabled = false; btnRev.textContent = 'Revisar el envío'; }
+          if (fijos) btnRev.hidden = false;
+        } finally { btnRev.disabled = false; btnRev.textContent = fijos ? 'Volver a revisar' : 'Revisar el envío'; }
       };
 
       // ---- Confirmar: todo o nada, sin duplicar; ante una respuesta perdida, se consulta antes de repetir
@@ -161,6 +167,7 @@ export async function enviarCircular({ borrador, plantilla }) {
           <p><a class="btn btn-primario" href="#/mensaje/${r.mensaje_id}" data-ver-envio>Ver el mensaje enviado</a></p>`;
         caja.querySelector('[data-ver-envio]').onclick = () => document.querySelector('.ventana [data-cerrar], .ventana-pie button')?.click();
       };
+      if (fijos) btnRev.onclick(); // ya se sabe a quién: se revisa enseguida
     },
     botones: [{ texto: 'Cerrar' }],
   });

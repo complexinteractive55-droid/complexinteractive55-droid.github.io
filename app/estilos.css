@@ -289,6 +289,36 @@ input.nota:disabled { background: transparent; border-color: transparent; color:
 .circ-estado { margin: 0 0 6px; font-size: 13px; color: var(--texto-2); }
 .circ-acciones { display: flex; gap: 8px; flex-wrap: wrap; }
 .circ-acciones .btn { flex: 1 1 0; min-width: 0; padding-inline: 6px; white-space: normal; text-align: center; line-height: 1.15; }
+/* Circular en pasos (3-nov-2026): 1 ¿Para quién? (casillas grandes, como el «Para» de Phidias) · 2 la circular con su formato */
+.circ-paso h2 { display: flex; align-items: center; gap: 10px; }
+.circ-num { flex: none; width: 28px; height: 28px; border-radius: 50%; display: grid; place-items: center; background: var(--primario); color: var(--primario-texto, #fff); font-size: 15px; font-weight: 700; }
+.circ-grupos { display: grid; grid-template-columns: repeat(auto-fill, minmax(165px, 1fr)); gap: 8px; }
+.circ-grupo { display: flex; flex-direction: row !important; align-items: center; gap: 10px !important; padding: 12px 14px; min-height: 48px; border: 1px solid var(--borde); border-radius: 12px; background: var(--superficie); cursor: pointer; font-weight: 600; }
+.circ-grupo input { flex: none; width: 20px; height: 20px; margin: 0; accent-color: var(--primario); }
+.circ-grupo:has(input:checked) { border-color: var(--primario); background: var(--primario-suave); color: var(--primario); }
+.circ-grupo.apagado { opacity: .45; cursor: not-allowed; }
+.circ-alcance { display: flex; flex-direction: column; gap: 10px; }
+.circ-items { display: flex; flex-wrap: wrap; gap: 8px 18px; }
+.circ-personas summary { cursor: pointer; font-weight: 600; color: var(--primario); }
+.circ-personas[open] { display: flex; flex-direction: column; gap: 8px; }
+.circ-elegidas:empty { display: none; }
+.circ-elegidas .chip button { border: 0; background: none; color: inherit; cursor: pointer; padding: 0 0 0 4px; font-size: 14px; }
+.circ-llegara { margin: 0; padding: 10px 12px; border-radius: 10px; background: var(--superficie-2); font-size: 15px; }
+.circ-hoja { border-top: 4px solid var(--primario); }
+.circ-cuadro-form { display: grid; grid-template-columns: 1fr; border: 1px solid var(--borde); border-radius: 10px; overflow: hidden; }
+.circ-cuadro-form > * { display: flex; flex-direction: column; gap: 4px; padding: 10px 12px; margin: 0; border-bottom: 1px solid var(--borde); }
+.circ-cuadro-form > :last-child { border-bottom: 0; }
+.circ-cuadro-form > * > span { font-size: 13px; color: var(--texto-2); font-weight: 700; text-transform: uppercase; letter-spacing: .02em; }
+.circ-cuadro-form .ayuda { margin: 0; font-weight: 400; }
+@media (min-width: 700px) {
+  .circ-cuadro-form { grid-template-columns: 1fr 1fr; }
+  .circ-cuadro-form > :nth-child(odd) { border-right: 1px solid var(--borde); }
+  .circ-cuadro-form > :nth-last-child(-n+2) { border-bottom: 0; }
+}
+.circ-firma-form { display: flex; flex-direction: column; gap: 12px; padding-top: 12px; border-top: 1px dashed var(--borde); }
+.circ-firma-form h3 { margin: 0; font-size: 16px; }
+.circ-mas { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 8px 16px; margin: 4px 2px 0; }
+.circ-visor { height: 62vh; margin: 8px 0; }
 /* La hoja simula el papel: blanca también en modo oscuro */
 .circ-hoja { --papel: #fff; --tinta: #1b1b1b; --linea: #9aa3b2; background: var(--papel); color: var(--tinta); border-radius: 6px; padding: 22px 20px; box-shadow: var(--sombra); font-family: Arial, Helvetica, sans-serif; font-size: 14px; line-height: 1.5; }
 .circ-membrete { display: flex; align-items: center; gap: 10px; border-bottom: 2px solid var(--linea); padding-bottom: 10px; margin-bottom: 14px; }
