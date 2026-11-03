@@ -232,8 +232,10 @@ export async function crearDbSupabase() {
 //    que vive en el mismo dominio) para abrir la app al instante; se borra al cerrar sesión.
 const VIDA = 30000;
 const RPC_LECTURA = new Set(['mis_contactos', 'personas_colegio', 'mi_intento']);
-// Lecturas que van siempre al servidor y no marcan lo demás «por revisar» (el hilo de una PQRS se consulta cada poco)
-const RPC_DIRECTA = new Set(['pqrs_mensajes', 'pqrs_adjunto_estado', 'circular_previsualizar_numero', 'circular_numeracion', 'circular_mi_perfil', 'circular_emisores_ver', 'circular_formatos_por_area']);
+// Lecturas que van siempre al servidor y no marcan lo demás «por revisar» (el hilo de una PQRS se consulta cada poco); también el
+// cursor de lectura de la PQRS (solo cambia «hasta dónde vi yo», nada que esté en la copia del equipo)
+const RPC_DIRECTA = new Set(['pqrs_mensajes', 'pqrs_marcar_leido', 'mensajes_sin_leer', 'hora_servidor', 'album_cursos', 'album_curso',
+  'salas_mias', 'sala_mensajes', 'sala_miembros_ver', 'sala_marcar_leido', 'avisos_ver', 'aviso_detalle', 'aviso_marcar_visto', 'pqrs_adjunto_estado', 'circular_previsualizar_numero', 'circular_numeracion', 'circular_mi_perfil', 'circular_emisores_ver', 'circular_formatos_por_area']);
 // Escrituras que también cambian otras tablas (triggers del servidor o lógica de la app)
 const AFECTA = {
   tarea_entregas: ['calificaciones'], examenes: ['calificaciones'], examen_intentos: ['calificaciones'],
@@ -377,6 +379,7 @@ const LLAVES = {
   calificaciones: ['actividad_id', 'estudiante_id'],
   circular_lecturas: ['circular_id', 'perfil_id'],
   mensaje_destinatarios: ['mensaje_id', 'perfil_id'],
+  mensaje_adjuntos: ['mensaje_id', 'ruta'], // como la base (20261103120000)
   tarea_entregas: ['tarea_id', 'estudiante_id'],
   recuperaciones: ['asignacion_id', 'periodo_id', 'estudiante_id'],
   fichas_medicas: ['estudiante_id'],
@@ -410,6 +413,7 @@ export function crearDbDemo() {
 
   const esAdmin = (colegio) => tabla('miembros').some((m) => m.colegio_id === colegio && m.perfil_id === usuario() && m.rol === 'admin' && m.activo);
   let pqrsDemo = null; // PQRS (pqrs_demo.js, mismas reglas que la base): se carga la primera vez que se usa
+  let salasDemo = null; // salas de sección y avisos (salas_demo.js, mismas reglas que la base)
   let calendarioDemo = null;
   let circularesDemo = null; // series de circulares por área (circulares_demo.js, mismas reglas que 20261029130000) // calendario institucional importado (calendario_demo.js, mismas reglas que la base)
 
@@ -790,6 +794,8 @@ export function crearDbDemo() {
         if (n.startsWith('calendario_')) err('El calendario institucional solo se importa con la vista previa (administrador).');
         const k = LLAVES[n];
         if (k && tabla(n).some((x) => k.every((c) => x[c] === r[c]))) err('Ese dato ya existe.');
+        // como la llave primaria de la base: un id que ya existe no entra dos veces (un reintento tras una respuesta perdida, 3-nov-2026)
+        if (f.id && tabla(n).some((x) => x.id === f.id)) err('Ese dato ya existe.');
         if (n === 'circular_borradores') {
           if (r.solicitud_id && tabla(n).some((x) => x.colegio_id === r.colegio_id && x.solicitud_id === r.solicitud_id)) err('Ese dato ya existe.');
           numerarBorrador(r);
@@ -842,6 +848,46 @@ export function crearDbDemo() {
     async rpc(nombre, a) {
       await lento();
       const yo = usuario();
+      if (nombre === 'hora_servidor') return new Date().toISOString(); // como la base (20261103130000)
+      // Álbum por curso: mismas reglas que la base (20261103140000)
+      if (nombre === 'album_cursos' || nombre === 'album_curso') {
+        const c = a.p_colegio, roles = tabla('miembros').filter((x) => x.colegio_id === c && x.perfil_id === yo && x.activo !== false);
+        if (!roles.length) err('No tienes acceso a este colegio.');
+        const r = new Set(roles.map((x) => x.rol));
+        const puede = (cu) => !!cu && cu.colegio_id === c && !!tabla('anios_lectivos').find((y) => y.id === cu.anio_lectivo_id)?.activo && (r.has('admin') || r.has('enfermeria')
+          || (cu.director_id === yo && (r.has('profesor') || r.has('director_seccion')))
+          || (r.has('profesor') && tabla('asignaciones').some((s) => s.curso_id === cu.id && s.profesor_id === yo))
+          || roles.some((x) => x.rol === 'director_seccion' && (x.seccion_grados || []).includes(cu.grado_id)));
+        const activos = (cid) => tabla('matriculas').filter((x) => x.curso_id === cid && (x.estado || 'activa') === 'activa');
+        if (nombre === 'album_cursos') {
+          const gr = (id) => tabla('grados').find((g) => g.id === id);
+          return tabla('cursos').filter(puede).sort((x, z) => (gr(x.grado_id)?.orden ?? 0) - (gr(z.grado_id)?.orden ?? 0) || x.nombre.localeCompare(z.nombre))
+            .map((cu) => ({ id: cu.id, nombre: cu.nombre, grado: gr(cu.grado_id)?.nombre ?? null, estudiantes: activos(cu.id).length }));
+        }
+        const cu = tabla('cursos').find((x) => x.id === a.p_curso);
+        if (!puede(cu)) err('No tienes acceso al álbum de este curso.');
+        const st = (s) => String(s || '').toLowerCase().replace(/[áä]/g, 'a').replace(/[éë]/g, 'e').replace(/[íï]/g, 'i').replace(/[óö]/g, 'o').replace(/[úü]/g, 'u').replace(/ñ/g, 'n');
+        const lim = Math.min(Math.max(a.p_limite || 48, 1), 120), q = st(a.p_buscar).trim().split(' ').filter(Boolean), SEP = String.fromCharCode(1);
+        const base = activos(cu.id).map((x) => tabla('perfiles').find((pp) => pp.id === x.estudiante_id)).filter(Boolean)
+          .map((pp) => ({ id: pp.id, nombres: pp.nombres, apellidos: pp.apellidos, foto: tabla('fotos').find((f) => f.perfil_id === pp.id)?.ruta ?? null,
+            ka: String(pp.apellidos || '').toLowerCase(), kn: String(pp.nombres || '').toLowerCase(), k: st((pp.nombres || '') + ' ' + (pp.apellidos || '')).trim() }));
+        const cuenta = new Map(); for (const x of base) cuenta.set(x.k, (cuenta.get(x.k) || 0) + 1);
+        const clave = (x) => [x.ka, x.kn, x.id].join(SEP);
+        const filtro = base.filter((x) => q.every((w) => x.k.includes(w))).sort((x, z) => (clave(x) < clave(z) ? -1 : 1));
+        const d = a.p_despues, desde = d ? filtro.findIndex((x) => clave(x) > [d.a, d.n, d.i].join(SEP)) : 0;
+        const resto = desde < 0 ? [] : filtro.slice(desde), pagina = resto.slice(0, lim), ult = pagina.at(-1);
+        return { curso: { id: cu.id, nombre: cu.nombre }, total: filtro.length, siguiente: resto.length > lim && ult ? { a: ult.ka, n: ult.kn, i: ult.id } : null,
+          estudiantes: pagina.map((x) => ({ id: x.id, nombres: x.nombres, apellidos: x.apellidos, foto: x.foto, homonimo: cuenta.get(x.k) > 1 })) };
+      }
+      // Como la base (20261103120000): mis filas sin leer, sin archivar ni eliminar, de mensajes no vencidos
+      if (nombre === 'mensajes_sin_leer') {
+        const vigente = (id) => { const m = tabla('mensajes').find((x) => x.id === id); return !!m && (!m.expira_en || m.expira_en > ahora()); };
+        return tabla('mensaje_destinatarios').filter((d) => d.colegio_id === a.p_colegio && d.perfil_id === yo && !d.leido_en && !d.eliminado && !d.archivado && vigente(d.mensaje_id)).length;
+      }
+      if (nombre.startsWith('sala') || nombre.startsWith('aviso')) {
+        salasDemo ||= (await import('./salas_demo.js')).crearSalasDemo({ tabla, usuario, guardar, ahora, err });
+        return salasDemo(nombre, a);
+      }
       if (nombre.startsWith('pqrs_')) {
         pqrsDemo ||= (await import('./pqrs_demo.js')).crearPqrsDemo({ tabla, usuario, guardar, copia, ahora, err, archivo: (bucket, ruta) => leerArchivos()[bucket + '/' + ruta] || null });
         return pqrsDemo(nombre, a);

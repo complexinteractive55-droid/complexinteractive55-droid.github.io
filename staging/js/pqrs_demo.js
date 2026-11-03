@@ -106,7 +106,7 @@ export function crearPqrsDemo({ tabla, usuario, guardar, copia, ahora, err, arch
   };
   const enviar = (eventoId) => {
     const e = T('pqrs_eventos').find((x) => x.id === eventoId), p = caso(e.pqrs_id);
-    const pend = T('pqrs_avisos').filter((a) => a.evento_id === eventoId && a.estado !== 'enviado');
+    const pend = T('pqrs_avisos').filter((a) => a.evento_id === eventoId && a.estado !== 'enviado' && (a.canal || 'bandeja') === 'bandeja'); // solo la bandeja general
     for (const vista of [...new Set(pend.map((a) => a.vista))]) {
       const grupo = pend.filter((a) => a.vista === vista);
       try {
@@ -128,7 +128,8 @@ export function crearPqrsDemo({ tabla, usuario, guardar, copia, ahora, err, arch
     const admins = [...new Set(T('miembros').filter((m) => m.colegio_id === p.colegio_id && m.rol === 'admin' && m.activo !== false).map((m) => m.perfil_id))];
     const delArea = e.area_id ? responsables(e.area_id) : [];
     const sol = p.solicitante_id ? [p.solicitante_id] : [];
-    // Gerencia sabe de cada PQRS nueva y de su cierre o reapertura; del chat, solo si está asignada (como la base)
+    // Gerencia sabe de cada PQRS nueva y de su cierre o reapertura; del chat, solo si está asignada (como la base). Desde el 3-nov-2026
+    // lo sabe DENTRO del módulo PQRS (canal «modulo»): nunca como copia en su bandeja general, aunque además lidere un área (§5)
     const ger = areaGerencia(p.colegio_id) ? responsables(areaGerencia(p.colegio_id).id) : [];
     const dest = e.tipo === 'creada' ? [...staff, ...admins, ...ger]
       : ['comentario', 'aporte', 'resumen'].includes(e.tipo) ? [...staff, ...admins]
@@ -145,8 +146,9 @@ export function crearPqrsDemo({ tabla, usuario, guardar, copia, ahora, err, arch
       if (!d || d === e.actor_id || !miembroActivo(p.colegio_id, d)) continue;
       if (T('pqrs_avisos').some((a) => a.evento_id === eventoId && a.perfil_id === d)) continue;
       if (agrupar && tieneSinLeer(d)) { agrupados++; continue; }
+      const modulo = ger.includes(d);
       T('pqrs_avisos').push({ evento_id: eventoId, perfil_id: d, colegio_id: p.colegio_id, pqrs_id: p.id, vista: admins.includes(d) ? 'admin' : staff.includes(d) || delArea.includes(d) || ger.includes(d) ? 'area' : 'solicitante',
-        estado: 'pendiente', mensaje_id: null, error: null, intentos: 0, creado_en: ahora(), enviado_en: null });
+        canal: modulo ? 'modulo' : 'bandeja', estado: modulo ? 'enviado' : 'pendiente', mensaje_id: null, error: null, intentos: 0, creado_en: ahora(), enviado_en: modulo ? ahora() : null });
     }
     if (agrupados) e.detalle = { ...e.detalle, avisos_agrupados: agrupados };
     enviar(eventoId);
@@ -198,6 +200,7 @@ export function crearPqrsDemo({ tabla, usuario, guardar, copia, ahora, err, arch
       areas: activas(pid).map((a) => ({ a, ar: area(a.area_id) })).sort((x, y) => orden(x.ar) - orden(y.ar)).map(({ a, ar }) => ({ id: ar.id, clave: ar.clave, nombre: ar.nombre, estado: a.estado,
         aporte_pendiente: a.aporte_pendiente, mia: acc.areas.includes(ar.id), sin_responsables: acc.personal && !responsables(ar.id).length })),
       visto_por_mi: T('pqrs_lecturas').some((l) => l.pqrs_id === pid && l.perfil_id === yo()),
+      nuevos: ((leido) => T('pqrs_intervenciones').filter((i) => i.pqrs_id === pid && (acc.personal || ['respuesta', 'aporte'].includes(i.tipo)) && i.autor_id !== yo() && i.seq > leido).length)(leidoDe(p, yo())), // el cursor, una vez por caso
       visto_por_mi_area: acc.personal && T('pqrs_lecturas').some((l) => l.pqrs_id === pid && acc.areas.some((ar) => responsables(ar).includes(l.perfil_id))),
       aporte_pendiente: acc.personal && activas(pid).some((a) => a.aporte_pendiente && (acc.admin || acc.gerencia || acc.areas.includes(a.area_id))),
       respuestas: T('pqrs_intervenciones').filter((i) => i.pqrs_id === pid && i.tipo === 'respuesta').length,
@@ -207,8 +210,19 @@ export function crearPqrsDemo({ tabla, usuario, guardar, copia, ahora, err, arch
     };
   };
   const confirmacion = (pid) => { const p = caso(pid); return { id: p.id, consecutivo: p.consecutivo, creado_en: p.creado_en, estado: estado(pid), areas: nombresAreas(pid) }; };
+  // Secuencia por caso (como la base, 3-nov-2026): orden de guardado; lo que ya había en el demo se numera por fecha la primera vez
+  const numerar = (p) => {
+    if (Number.isInteger(p.ultimo_seq)) return;
+    const xs = T('pqrs_intervenciones').filter((i) => i.pqrs_id === p.id).sort((x, y) => x.creado_en.localeCompare(y.creado_en) || x.id.localeCompare(y.id));
+    xs.forEach((i, k) => { i.seq = k + 1; });
+    p.ultimo_seq = xs.length;
+    for (const l of T('pqrs_lecturas').filter((x) => x.pqrs_id === p.id && !Number.isInteger(x.leido_seq))) l.leido_seq = Math.max(0, ...xs.filter((i) => i.creado_en <= l.ultima_en).map((i) => i.seq));
+  };
+  const leidoDe = (p, d) => { numerar(p); return T('pqrs_lecturas').find((l) => l.pqrs_id === p.id && l.perfil_id === d)?.leido_seq ?? 0; };
   const nuevaIntervencion = (p, tipo, areaId, texto, salud, solicitud) => {
-    const i = { id: crypto.randomUUID(), colegio_id: p.colegio_id, pqrs_id: p.id, tipo, area_id: areaId, autor_id: yo(), autor_nombre: nombreDe(yo()) || '', contenido: texto, salud, solicitud_id: solicitud, version: 1, editado_en: null, editado_por: null, creado_en: ahora() };
+    numerar(p);
+    p.ultimo_seq += 1;
+    const i = { id: crypto.randomUUID(), seq: p.ultimo_seq, colegio_id: p.colegio_id, pqrs_id: p.id, tipo, area_id: areaId, autor_id: yo(), autor_nombre: nombreDe(yo()) || '', contenido: texto, salud, solicitud_id: solicitud, version: 1, editado_en: null, editado_por: null, creado_en: ahora() };
     T('pqrs_intervenciones').push(i);
     return i;
   };
@@ -309,7 +323,8 @@ export function crearPqrsDemo({ tabla, usuario, guardar, copia, ahora, err, arch
     const acc = acceso(i.pqrs_id);
     if (!acc || !(acc.personal || ['respuesta', 'aporte'].includes(i.tipo))) return null;
     const p = caso(i.pqrs_id), oculto = i.salud && !acc.salud;
-    return { id: i.id, tipo: i.tipo, area: area(i.area_id)?.nombre ?? null, area_id: i.area_id, autor: i.autor_nombre, rol: i.tipo === 'aporte' ? p.rol_solicitante : null,
+    numerar(caso(i.pqrs_id));
+    return { id: i.id, seq: i.seq, tipo: i.tipo, area: area(i.area_id)?.nombre ?? null, area_id: i.area_id, autor: i.autor_nombre, rol: i.tipo === 'aporte' ? p.rol_solicitante : null,
       mia: i.autor_id === yo(), solicitud_id: i.autor_id === yo() ? i.solicitud_id : null, contenido: oculto ? null : i.contenido, oculto_salud: oculto, salud: i.salud,
       creado_en: i.creado_en, version: i.version, editado_en: i.editado_en, versiones: T('pqrs_intervencion_versiones').filter((v) => v.intervencion_id === i.id).length,
       adjuntos: oculto ? [] : adjuntosJson(i.pqrs_id, i.id, false), adjuntos_ocultos: oculto ? T('pqrs_adjuntos').filter((x) => x.intervencion_id === i.id && x.estado === 'listo').length : 0 };
@@ -380,12 +395,7 @@ export function crearPqrsDemo({ tabla, usuario, guardar, copia, ahora, err, arch
       const acc = acceso(a.p_id);
       if (!acc) fallo('Esa PQRS no existe o no tienes acceso.');
       const p = caso(a.p_id), ocultar = p.sensible && !acc.salud;
-      let l = T('pqrs_lecturas').find((x) => x.pqrs_id === p.id && x.perfil_id === yo());
-      if (l) l.ultima_en = ahora();
-      else {
-        T('pqrs_lecturas').push((l = { pqrs_id: p.id, colegio_id: p.colegio_id, perfil_id: yo(), primera_en: ahora(), ultima_en: ahora() }));
-        if (acc.personal && !acc.solicitante) evento(p.id, 'leida', null, null, { areas: acc.areas.map((x) => area(x)).sort((x, y) => orden(x) - orden(y)).map((x) => x.nombre), admin: acc.admin, gerencia: acc.gerencia }, false, false);
-      }
+      // (3-nov-2026) abrir ya NO cuenta como leído: lo marca pqrs_marcar_leido cuando el contenido se ve en pantalla (como la base)
       const nombreAreaDe = (id) => area(id)?.nombre ?? null;
       const cl = acc.admin ? (ocultar ? (({ motivos, puntos, ...r }) => r)(p.clasificacion) : p.clasificacion) : null;
       return copia({
@@ -498,18 +508,34 @@ export function crearPqrsDemo({ tabla, usuario, guardar, copia, ahora, err, arch
       const n = a.p_adjuntos?.length ? vincular(caso(r.id), null, a.p_adjuntos) : 0;
       return { ...r, adjuntos: n };
     },
+    // Visto HASTA un mensaje (el último que estuvo en pantalla): solo avanza y nunca pasa del último (como la base)
+    pqrs_marcar_leido(a) {
+      const acc = acceso(a.p_id);
+      if (!acc || !yo()) fallo('Esa PQRS no existe o no tienes acceso.');
+      const p = caso(a.p_id);
+      numerar(p);
+      const hasta = Math.min(Math.max(Number(a.p_hasta) || 0, 0), p.ultimo_seq);
+      let l = T('pqrs_lecturas').find((x) => x.pqrs_id === p.id && x.perfil_id === yo());
+      if (!l) {
+        T('pqrs_lecturas').push((l = { pqrs_id: p.id, colegio_id: p.colegio_id, perfil_id: yo(), primera_en: ahora(), ultima_en: ahora(), leido_seq: hasta }));
+        if (acc.personal && !acc.solicitante) evento(p.id, 'leida', null, null, { areas: acc.areas.map((x) => area(x)).sort((x, y) => orden(x) - orden(y)).map((x) => x.nombre), admin: acc.admin, gerencia: acc.gerencia }, false, false);
+      } else if (hasta > (l.leido_seq ?? 0)) Object.assign(l, { leido_seq: hasta, ultima_en: ahora() });
+      return { leido_seq: l.leido_seq, ultimo_seq: p.ultimo_seq };
+    },
     pqrs_mensajes(a) {
       const acc = acceso(a.p_id);
       if (!acc) fallo('Esa PQRS no existe o no tienes acceso.');
       const p = caso(a.p_id), oculto = p.sensible && !acc.salud, lim = Math.min(Math.max(a.p_limite || 50, 1), 200);
+      numerar(p);
       const vis = T('pqrs_intervenciones').filter((i) => i.pqrs_id === p.id && (acc.personal || ['respuesta', 'aporte'].includes(i.tipo)))
-        .sort((x, y) => x.creado_en.localeCompare(y.creado_en) || x.id.localeCompare(y.id));
+        .sort((x, y) => x.seq - y.seq); // orden de guardado
       let lista, mas = false;
       if (a.p_desde) lista = vis.filter((i) => (i.editado_en && i.editado_en > i.creado_en ? i.editado_en : i.creado_en) >= a.p_desde);
       else { const previos = a.p_antes ? vis.filter((i) => i.creado_en < a.p_antes) : vis; lista = previos.slice(-lim); mas = previos.length > lista.length; }
       return {
         id: p.id, consecutivo: p.consecutivo, estado: estado(p.id), pendientes: nombresAreas(p.id, true), cerrada: !!p.cerrado_en,
         cierre: p.cerrado_en ? { en: p.cerrado_en, por: nombreDe(p.cerrado_por), motivo: p.cierre_motivo } : null, actualizado_en: p.actualizado_en, ahora: ahora(),
+        ultimo_seq: p.ultimo_seq, leido_seq: T('pqrs_lecturas').find((l) => l.pqrs_id === p.id && l.perfil_id === yo())?.leido_seq ?? null, // null = nunca lo ha visto
         inicio: a.p_desde ? null : { autor: p.solicitante_nombre, rol: p.rol_solicitante, creado_en: p.creado_en, mia: p.solicitante_id === yo(), contenido: oculto ? null : p.descripcion,
           oculto_salud: oculto, adjuntos: oculto ? [] : adjuntosJson(p.id, null, true) },
         hay_anteriores: mas, mensajes: lista.map((i) => mensajeJson(i.id)),

@@ -69,6 +69,8 @@ const pant = {
   circularInst: () => import('./pantallas/circular_institucional.js'),
   espacios: () => import('./pantallas/espacios.js'),
   pqrs: () => import('./pantallas/pqrs.js'),
+  album: () => import('./pantallas/album.js'),
+  salas: () => import('./pantallas/salas.js'),
   planeaciones: () => import('./pantallas/planeaciones.js'),
   mensajeria: () => import('./pantallas/mensajeria.js'),
   aula: () => import('./pantallas/aula.js'),
@@ -218,6 +220,11 @@ const RUTAS = [
   ['proceso/:id/respuestas', async (p, m) => (await pant.procesos()).respuestas(m, p)],
   ['certificado/:tipo/:est', async (p, m) => (await pant.certificados()).certificado(m, p)],
   ['horario', async (p, m) => (await pant.horario()).horario(m, p)],
+  ['album', async (p, m) => (await pant.album()).album(m, p)],
+  ['album/:curso', async (p, m) => (await pant.album()).album(m, p)],
+  ['salas', async (_, m) => (await pant.salas()).salas(m)],
+  ['sala/:id', async (p, m) => (await pant.salas()).sala(m, p)],
+  ['aviso/:id', async (p, m) => (await pant.salas()).avisoDetalle(m, p)],
   ['espacios', async (p, m) => (await pant.espacios()).solicitud(m, p)],
   ['espacios-solicitudes', async (p, m) => (await pant.espacios()).solicitudesAdmin(m, p)],
   ['pqrs', async (p, m) => (await pant.pqrs()).inicio(m, p)],
@@ -346,14 +353,15 @@ function menuBase() {
   const hist = est ? [[`estudiante/${est}?tab=notas`, 'Historial de notas'], [`estudiante/${est}?tab=asistencia`, 'Asistencia']] : [];
   const tablero = { r: 'inicio', ic: '▦', t: 'Tablero' };
   const perfilG = (extra = []) => ({ t: 'Perfil', ic: '👤', items: [['info-personal', 'Información personal'], ...(E.rol === 'acudiente' || E.rol === 'estudiante' ? [['edocs', 'E-docs']] : []), ['perfil', 'Mi cuenta y ajustes'], ...extra, ['ayuda', 'Ayuda']] });
-  if (E.rol === 'admin') return [tablero, COMUNICACION,
+  const conSalas = (g) => ({ ...g, items: [...g.items, ['salas', 'Salas de sección']] }); // chats de sección y avisos (personal)
+  if (E.rol === 'admin') return [tablero, conSalas(COMUNICACION),
     { t: 'Comunidad', ic: '👥', items: [['calendario', 'Calendario'], ['personas', 'Personas'], ['seguimientos', 'Seguimientos'], ['compromisos', 'Compromisos'], ['ausencias', 'Ausencias reportadas'], ['procesos', 'Procesos en línea'], ['archivos', 'Archivos']] },
-    { t: 'Académico', ic: '🎓', items: [['estructura', 'Estructura del colegio'], ['horario', 'Horarios'], ['planeaciones', 'Planeaciones'], ['reportes', 'Reportes'], ['espacios-solicitudes', 'Solicitudes de espacios']] },
+    { t: 'Académico', ic: '🎓', items: [['estructura', 'Estructura del colegio'], ['horario', 'Horarios'], ['album', 'Álbum por curso'], ['planeaciones', 'Planeaciones'], ['reportes', 'Reportes'], ['espacios-solicitudes', 'Solicitudes de espacios']] },
     { t: 'Tesorería', ic: '💰', items: [['tesoreria?tab=cartera', 'Cartera'], ['tesoreria?tab=facturar', 'Facturar'], ['tesoreria?tab=pagos', 'Pagos'], ['tesoreria?tab=conceptos', 'Conceptos']] },
     perfilG([['ajustes-colegio', 'Ajustes del colegio']])];
-  if (E.rol === 'profesor') return [tablero, comunicacion(),
+  if (E.rol === 'profesor') return [tablero, conSalas(comunicacion()),
     { t: 'Comunidad', ic: '👥', items: [['calendario', 'Calendario'], ['seguimientos', 'Seguimientos'], ['compromisos', 'Compromisos'], ['salidas', 'Permisos de salida'], ['procesos', 'Procesos en línea'], ['archivos', 'Archivos globales']] },
-    { t: 'Docencia', ic: '🧑‍🏫', items: [['direccion', 'Dirección de grupo'], ['clases', 'Clases'], ['reportes', 'Reportes']] },
+    { t: 'Docencia', ic: '🧑‍🏫', items: [['direccion', 'Dirección de grupo'], ['clases', 'Clases'], ['album', 'Álbum por curso'], ['reportes', 'Reportes']] },
     { t: 'Academia', ic: '🎓', items: [['aula', 'Aula'], ['horario', 'Mi horario'], ['planeaciones', 'Planeaciones'], ['espacios', 'Solicitud de espacios']] },
     perfilG()];
   // Los estudiantes no presentan PQRS: la presenta su acudiente (Fabio, 2-nov-2026)
@@ -361,13 +369,13 @@ function menuBase() {
     { t: 'Comunidad', ic: '👥', items: [['calendario', 'Calendario'], [`estudiante/${E.yo.id}?tab=observador`, 'Seguimientos'], [`estudiante/${E.yo.id}?tab=compromisos`, 'Compromisos'], ['procesos', 'Procesos en línea'], ['archivos', 'Archivos']] },
     { t: 'Academia', ic: '🎓', items: [['aula', 'Aula'], ['planeacion', 'Planeación'], ['horario', 'Horario'], ...hist] },
     perfilG()];
-  if (E.rol === 'enfermeria') return [tablero, comunicacion(),
-    { t: 'Enfermería', ic: '🩺', items: [['salidas', 'Permisos de salida'], ['seguimientos', 'Prerreportes'], ['docentes', 'Docentes']] },
+  if (E.rol === 'enfermeria') return [tablero, conSalas(comunicacion()),
+    { t: 'Enfermería', ic: '🩺', items: [['salidas', 'Permisos de salida'], ['seguimientos', 'Prerreportes'], ['album', 'Álbum por curso'], ['docentes', 'Docentes']] },
     { t: 'Comunidad', ic: '👥', items: [['calendario', 'Calendario'], ['archivos', 'Archivos globales']] },
     perfilG()];
-  if (E.rol === 'director_seccion') return [tablero, comunicacion(),
+  if (E.rol === 'director_seccion') return [tablero, conSalas(comunicacion()),
     { t: 'Comunidad', ic: '👥', items: [['calendario', 'Calendario'], ['seguimientos', 'Seguimientos'], ['compromisos', 'Compromisos'], ['salidas', 'Permisos de salida'], ['archivos', 'Archivos globales']] },
-    { t: 'Académico', ic: '🎓', items: [['planeaciones', 'Planeaciones'], ['horario', 'Horarios'], ['reportes', 'Reportes'], ['docentes', 'Docentes']] },
+    { t: 'Académico', ic: '🎓', items: [['planeaciones', 'Planeaciones'], ['horario', 'Horarios'], ['album', 'Álbum por curso'], ['reportes', 'Reportes'], ['docentes', 'Docentes']] },
     perfilG()];
   // acudiente
   if (viendoHijo()) return [tablero,
@@ -406,7 +414,12 @@ function pintarArmazon(patron) {
         <div class="personas" id="personas" role="tablist" aria-label="Persona"></div>
         <main id="principal" tabindex="-1"></main>
       </div>`;
-    $('#btn-colegio').onclick = () => { if (E.colegios.length > 1 || E.roles.includes('admin')) { E.colegio = null; navegar(); } };
+    $('#btn-colegio').onclick = () => {
+      if (!(E.colegios.length > 1 || E.roles.includes('admin'))) return;
+      // Al cambiar de colegio: se cierra el canal en vivo del colegio anterior y se olvidan las fotos (cada colegio, sus permisos)
+      dejarNotas?.(); dejarNotas = null; notasDe = null; olvidarFotos(); pant.album().then((x) => x.olvidar()).catch(() => {}); pant.salas().then((x) => x.olvidar()).catch(() => {});
+      E.colegio = null; navegar();
+    };
     $('#btn-rol').onclick = elegirRol;
     $('#btn-exportar').onclick = exportarPantalla;
     $('#btn-menu').onclick = () => abrirMenu(!app.classList.contains('menu-abierto'));
@@ -867,7 +880,30 @@ async function pintarHuellas(m) {
   }));
 }
 
+// Borradores y mensajes sin enviar que ESTA persona dejó en el equipo (PQRS y circulares institucionales); los vacíos no cuentan
+function borradoresDe(uid) {
+  const ks = [];
+  const conAlgo = (v) => (Array.isArray(v) ? v.length > 0 : v && typeof v === 'object' ? Object.values(v).some((x) => (typeof x === 'string' ? x.trim().length > 0 : conAlgo(x))) : false);
+  try {
+    for (let i = 0; i < localStorage.length; i++) {
+      const k = localStorage.key(i);
+      if (!uid || !(k.startsWith('complexstg_pqrs_') && k.endsWith('_' + uid)) && !(k.startsWith('complexstg_circular_') && k.includes('_' + uid + '_'))) continue;
+      let v = null; try { v = JSON.parse(localStorage.getItem(k)); } catch {}
+      ks.push({ k, algo: conAlgo(v) });
+    }
+  } catch {}
+  return ks;
+}
 async function salir() {
+  // Lo que esta persona dejó sin enviar en el equipo: se avisa antes; si sale, se borra (no queda para quien entre después; 3-nov-2026)
+  const propios = borradoresDe(E.yo?.id);
+  const n = propios.filter((x) => x.algo).length;
+  if (n && !(await confirmar('¿Cerrar sesión?', `Tienes ${n === 1 ? 'un borrador o mensaje sin enviar' : n + ' borradores o mensajes sin enviar'} guardado en este equipo. Si cierras sesión se borra de aquí y no se envía.`, 'Cerrar sesión'))) return;
+  for (const x of propios) try { localStorage.removeItem(x.k); } catch {}
+  (await pant.mensajeria().catch(() => null))?.olvidarEnvios?.();
+  (await pant.pqrs().catch(() => null))?.olvidarTodo?.();
+  (await pant.album().catch(() => null))?.olvidar?.();
+  (await pant.salas().catch(() => null))?.olvidar?.();
   dejarDeEscuchar?.();
   dejarDeEscuchar = null;
   dejarNotas?.(); dejarNotas = null; notasDe = null;

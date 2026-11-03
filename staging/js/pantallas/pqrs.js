@@ -323,6 +323,7 @@ function tarjeta(x, vista) {
   const personal = vista !== 'mias';
   const badges = [
     personal && (vista === 'area' ? !x.visto_por_mi_area : !x.visto_por_mi) ? '<span class="pq-badge">Sin revisar</span>' : '',
+    x.visto_por_mi && x.nuevos > 0 ? `<span class="pq-badge info">${x.nuevos === 1 ? '1 mensaje nuevo' : x.nuevos + ' mensajes nuevos'}</span>` : '', // de otros, aún sin ver (3-nov-2026)
     x.aporte_pendiente ? '<span class="pq-badge info">Información nueva del solicitante</span>' : '',
     x.revisar ? '<span class="pq-badge suave">Revisar clasificación</span>' : '',
     personal && x.areas.some((a) => a.sin_responsables) ? '<span class="pq-badge suave">Área sin responsables</span>' : '',
@@ -366,6 +367,8 @@ const TEXTO_EVENTO = {
 // «No enviado» con el texto y Reintentar (mismo identificador: no se duplica). Los mensajes nuevos llegan por un aviso en vivo
 // privado (sin contenido) y, si ese canal falla, por consulta cada pocos segundos.
 const chats = new Map(); // estado por caso: mensajes confirmados, pendientes y borrador (sobrevive a repintar la pantalla)
+// Al cerrar sesión: nada de lo cargado o escrito queda en memoria para la siguiente cuenta de este equipo (3-nov-2026)
+export function olvidarTodo() { soltarChat?.(); soltarChat = null; chats.clear(); urls.clear(); }
 let soltarChat = null;   // deja de escuchar el caso al salir de la pantalla
 window.addEventListener('hashchange', () => { if (!/^#\/pqrs\/[0-9a-f-]{36}/.test(location.hash)) { soltarChat?.(); soltarChat = null; } });
 const ICONO = { pdf: '📄', docx: '📝', xlsx: '📊' };
@@ -426,7 +429,8 @@ export async function detalle(m, p) {
   const abajo = () => hiloEl.scrollHeight - hiloEl.scrollTop - hiloEl.clientHeight < 80;
   const pintar = ({ alFinal = false } = {}) => {
     const seguir = alFinal || abajo();
-    const confirmados = [...st.mensajes.values()].sort((x, y) => x.creado_en.localeCompare(y.creado_en) || x.id.localeCompare(y.id));
+    // orden de guardado del servidor (seq); sin seq (servidor anterior), por fecha e id como antes
+    const confirmados = [...st.mensajes.values()].sort((x, y) => (Number.isInteger(x.seq) && Number.isInteger(y.seq) ? x.seq - y.seq : 0) || x.creado_en.localeCompare(y.creado_en) || x.id.localeCompare(y.id));
     const yaConfirmadas = new Set(confirmados.map((x) => x.solicitud_id).filter(Boolean));
     for (const s of [...st.pendientes.keys()]) if (yaConfirmadas.has(s)) st.pendientes.delete(s); // llegó por otro lado (reintento, recarga)
     hiloEl.innerHTML = (st.hayAnteriores ? '<div class="pq-mas"><button type="button" class="btn btn-chico" data-anteriores>Ver mensajes anteriores</button></div>' : '')
@@ -438,9 +442,45 @@ export async function detalle(m, p) {
     if (seguir) hiloEl.scrollTop = hiloEl.scrollHeight;
     else raiz.querySelector('[data-ir-abajo]').hidden = false;
     guardarPend(d.id, st);
+    observar();
   };
+  // ---- Leído de verdad (3-nov-2026, A06): solo cuenta lo que estuvo EN PANTALLA con la pestaña visible (no abrir, ni una pestaña oculta,
+  // ni una precarga). Se manda «visto hasta el mensaje N» y el servidor solo avanza (otro equipo o un aviso atrasado no lo devuelven).
+  let marcando = null;
+  const marcar = () => {
+    clearTimeout(marcando);
+    marcando = setTimeout(async () => {
+      const hasta = st.verHasta ?? -1;
+      if (document.visibilityState !== 'visible' || !document.body.contains(hiloEl) || hasta < 0 || hasta <= (st.leido ?? -1)) return;
+      try {
+        const r = await rpc('pqrs_marcar_leido', { p_id: d.id, p_hasta: hasta });
+        st.leido = Math.max(st.leido ?? -1, r?.leido_seq ?? hasta);
+        if (!marcadoAqui) { marcadoAqui = true; if (personal) refrescarGestion(); } // «Visto por» ya incluye a quien lo está viendo
+      } catch { /* sin red o servidor anterior: se vuelve a intentar al ver otro mensaje */ }
+    }, 700);
+  };
+  let marcadoAqui = false;
+  // Repinta solo el contenido de «Gestión del caso» (los botones se atienden por delegación en el contenedor; queda abierto si lo estaba)
+  const refrescarGestion = async () => {
+    try {
+      const d2 = await rpc('pqrs_detalle', { p_id: d.id });
+      const g = raiz.querySelector('[data-gestion]');
+      if (g && document.body.contains(g)) g.innerHTML = g.querySelector('summary').outerHTML + gestionHTML(d2);
+    } catch { /* se verá al volver a abrir */ }
+  };
+  const visor = 'IntersectionObserver' in window ? new IntersectionObserver((vistos) => {
+    if (document.visibilityState !== 'visible') return;
+    for (const v of vistos) if (v.isIntersecting) st.verHasta = Math.max(st.verHasta ?? -1, Number(v.target.dataset.seq));
+    marcar();
+  }, { threshold: 0.5 }) : null; // respecto a la pantalla: si el hilo o la página tapan el mensaje, no cuenta
+  function observar() {
+    if (!visor) { if (document.visibilityState === 'visible') { st.verHasta = Math.max(-1, ...[...hiloEl.querySelectorAll('[data-seq]')].map((el) => Number(el.dataset.seq))); marcar(); } return; }
+    visor.disconnect();
+    hiloEl.querySelectorAll('[data-seq]').forEach((el) => visor.observe(el));
+  }
   const aplicar = (r, { inicial = false } = {}) => {
     if (r.inicio) st.inicio = r.inicio;
+    if (Number.isInteger(r.leido_seq)) st.leido = Math.max(st.leido ?? -1, r.leido_seq);
     if (inicial || r.inicio) st.hayAnteriores = r.hay_anteriores;
     for (const x of r.mensajes) if (x) st.mensajes.set(x.id, x);
     st.ultimo = r.ahora;
@@ -474,12 +514,12 @@ export async function detalle(m, p) {
   let enVivo = false, reloj = null;
   const programar = () => { clearTimeout(reloj); reloj = setTimeout(async () => { if (document.visibilityState === 'visible') await traerNuevos(); programar(); }, enVivo ? 60000 : 15000); };
   const dejar = E.db.escucharCanal ? E.db.escucharCanal(`${personal ? 'pqrs-personal' : 'pqrs'}:${d.id}`, () => traerNuevos(), (estado) => { enVivo = estado === 'SUBSCRIBED'; programar(); }) : () => {};
-  const alVolver = () => { if (document.visibilityState === 'visible') traerNuevos(); };
+  const alVolver = () => { if (document.visibilityState === 'visible') { traerNuevos(); observar(); } }; // al volver a la pestaña cuenta lo que se ve
   const alConectar = () => { estadoConexion(''); traerNuevos(); };
   document.addEventListener('visibilitychange', alVolver);
   window.addEventListener('online', alConectar);
   programar();
-  soltarChat = () => { dejar(); clearTimeout(reloj); document.removeEventListener('visibilitychange', alVolver); window.removeEventListener('online', alConectar); };
+  soltarChat = () => { dejar(); clearTimeout(reloj); clearTimeout(marcando); visor?.disconnect(); document.removeEventListener('visibilitychange', alVolver); window.removeEventListener('online', alConectar); };
 
   hiloEl.addEventListener('scroll', () => { if (abajo()) raiz.querySelector('[data-ir-abajo]').hidden = true; });
   raiz.querySelector('[data-ir-abajo]').onclick = () => { hiloEl.scrollTop = hiloEl.scrollHeight; raiz.querySelector('[data-ir-abajo]').hidden = true; };
@@ -605,10 +645,12 @@ export async function detalle(m, p) {
     if (b.dataset.abrirAdjunto) { e.preventDefault(); return abrirAdjunto(b.dataset.abrirAdjunto); }
     return accionGestion(b, d, recargar, conMotivo);
   });
-  const conMotivo = (titulo, html, etiqueta, fn, ok) => ventana({
+  // Si otra persona ya lo había hecho (pantalla desactualizada), el servidor responde «igual» y no guarda este motivo: se dice tal cual
+  // (3-nov-2026, A07: el usuario no ve un éxito que no ocurrió)
+  const conMotivo = (titulo, html, etiqueta, fn, ok) => { let res = null; return ventana({
     titulo, html: `${html}<label>${esc(etiqueta)}<textarea name="motivo" rows="3" maxlength="1000"></textarea></label>`,
-    botones: [{ texto: 'Cancelar', valor: null }, { texto: 'Guardar', antes: async (caja) => fn(caja.querySelector('[name=motivo]').value.trim(), caja) }],
-  }).then((r) => { if (r) { aviso(ok); olvidarChat(d.id); recargar(); } });
+    botones: [{ texto: 'Cancelar', valor: null }, { texto: 'Guardar', antes: async (caja) => (res = await fn(caja.querySelector('[name=motivo]').value.trim(), caja)) }],
+  }).then((r) => { if (r) { aviso(res?.igual ? 'Otra persona ya lo había hecho: se conserva lo suyo y tu texto no se guardó.' : ok, res?.igual ? 'error' : undefined); olvidarChat(d.id); recargar(); } }); };
 
   // Adjuntos: ver una imagen grande o descargar un documento (enlace firmado pedido en el momento)
   async function abrirAdjunto(id) {
@@ -648,7 +690,7 @@ const adjuntosHTML = (as) => (as?.length ? `<div class="pq-adjs">${as.map((a) =>
   : `<button type="button" class="pq-adj-doc" data-abrir-adjunto="${esc(a.id)}" aria-label="Descargar ${esc(a.nombre)}">${ICONO[a.extension] || '📎'} <span>${esc(a.nombre)}</span><small>${esc(tamanoTexto(a.tamano))} · descargar</small></button>`).join('')}</div>` : '');
 
 function burbujaInicio(x) {
-  return `<article class="pq-burbuja inicio ${x.mia ? 'mia' : ''}" data-inicio>
+  return `<article class="pq-burbuja inicio ${x.mia ? 'mia' : ''}" data-inicio data-seq="0">
     <header><b>${esc(x.autor)}</b> · ${esc(etiquetaRol(x.rol))} · <span class="pq-etq">Descripción original</span></header>
     <div class="texto" data-descripcion>${x.oculto_salud ? '<span class="pq-reservado">Reservada: tiene información de salud. Solo la ven Enfermería del caso y quienes tienen el permiso de salud.</span>' : esc(x.contenido)}</div>
     ${adjuntosHTML(x.adjuntos)}
@@ -658,7 +700,7 @@ function burbujaInicio(x) {
 
 function burbuja(i, { abierto }) {
   const etq = i.tipo === 'respuesta' ? `Respuesta al solicitante · ${esc(i.area || '')}` : i.tipo === 'comentario' ? `🔒 Comentario interno · ${esc(i.area || 'Administración general')}` : `Información del solicitante${i.rol ? ' · ' + esc(etiquetaRol(i.rol)) : ''}`;
-  return `<article class="pq-burbuja ${i.tipo} ${i.mia ? 'mia' : ''}" data-int="${esc(i.id)}">
+  return `<article class="pq-burbuja ${i.tipo} ${i.mia ? 'mia' : ''}" data-int="${esc(i.id)}"${Number.isInteger(i.seq) ? ` data-seq="${i.seq}"` : ''}>
     <header><b>${esc(i.autor)}</b> · <span class="pq-etq">${etq}</span></header>
     ${i.oculto_salud ? `<p class="pq-reservado">Contenido de salud reservado: solo lo ven Enfermería del caso y quienes tienen el permiso de salud.${i.adjuntos_ocultos ? ` (${i.adjuntos_ocultos} adjunto(s) reservado(s))` : ''}</p>` : `${i.contenido ? `<div class="texto">${esc(i.contenido)}</div>` : ''}${adjuntosHTML(i.adjuntos)}`}
     <footer><time datetime="${esc(i.creado_en)}" title="${esc(fechaHora(i.creado_en))}">${esc(horaCorta(i.creado_en))}</time>${i.mia ? ' · <span class="pq-ok">✓ Enviado</span>' : ''}${i.editado_en ? ` · <b>corregido</b>` : ''}

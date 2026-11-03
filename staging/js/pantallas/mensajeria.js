@@ -19,17 +19,39 @@ const cuerpoHTML = (t) => esc(t).replace(/\n/g, '<br>')
 // Mensajes que se están enviando (o que fallaron): aparecen ya en "Enviados", sin esperar al servidor.
 // El id se crea aquí, así el mensaje no se duplica si se reintenta o si la lista se recarga a mitad del envío.
 const enviando = [];
+// Al cerrar sesión: lo pendiente es de quien se fue (no lo ve la siguiente persona que entre en este equipo; 3-nov-2026)
+export const olvidarEnvios = () => { enviando.length = 0; };
+// ¿Ya quedó guardado lo que este equipo intentó? (la respuesta pudo perderse aunque el servidor sí lo guardara)
+const ya = async (tabla, eq) => (await E.db.fresco(tabla, { eq, limit: 1 }).catch(() => [])).length > 0;
+const repetido = (e) => /ya existe|already exists|duplicate/i.test(e?.message || '');
 const refrescarSi = (prefijo) => { if (location.hash.startsWith(prefijo)) window.dispatchEvent(new HashChangeEvent('hashchange')); };
 async function completarEnvio(pe) {
   pe.estado = 'enviando'; pe.error = null;
   try {
-    if (!pe.creado) { await E.db.insert('mensajes', [pe.fila]); pe.creado = true; }
-    if (!pe.conDestinos) { await E.db.insert('mensaje_destinatarios', pe.para.map((id) => ({ mensaje_id: pe.fila.id, colegio_id: pe.fila.colegio_id, perfil_id: id }))); pe.conDestinos = true; }
+    // Reintentos sin duplicar (3-nov-2026, A07): si un intento anterior sí quedó guardado (la respuesta se perdió), se sigue desde ahí
+    if (!pe.creado) {
+      try { await E.db.insert('mensajes', [pe.fila]); }
+      catch (e) { if (!repetido(e) || !(await ya('mensajes', { id: pe.fila.id, autor_id: E.yo.id }))) throw e; }
+      pe.creado = true;
+    }
+    if (!pe.conDestinos) {
+      const filas = pe.para.map((id) => ({ mensaje_id: pe.fila.id, colegio_id: pe.fila.colegio_id, perfil_id: id }));
+      try { await E.db.insert('mensaje_destinatarios', filas); }
+      catch (e) {
+        if (!repetido(e)) throw e;
+        const hay = new Set((await E.db.fresco('mensaje_destinatarios', { eq: { mensaje_id: pe.fila.id } })).map((x) => x.perfil_id));
+        const faltan = filas.filter((f) => !hay.has(f.perfil_id));
+        if (faltan.length) await E.db.insert('mensaje_destinatarios', faltan);
+      }
+      pe.conDestinos = true;
+    }
+    pe.totalArchivos ??= pe.archivos.length;
     while (pe.archivos.length) {
-      const a = pe.archivos[0];
-      const ruta = `${pe.fila.colegio_id}/${pe.fila.id}/${Date.now()}_${nombreSeguro(a.name)}`;
-      await E.db.subirArchivo(BUCKET, ruta, a);
-      await E.db.insert('mensaje_adjuntos', [{ colegio_id: pe.fila.colegio_id, mensaje_id: pe.fila.id, ruta, nombre: a.name, tipo: a.type || null, bytes: a.size }]);
+      const a = pe.archivos[0], n = pe.totalArchivos - pe.archivos.length;
+      const ruta = `${pe.fila.colegio_id}/${pe.fila.id}/${n + 1}_${nombreSeguro(a.name)}`; // ruta fija por posición: un reintento no crea otra copia
+      try { await E.db.subirArchivo(BUCKET, ruta, a); } catch (e) { if (!repetido(e)) throw e; }
+      try { await E.db.insert('mensaje_adjuntos', [{ colegio_id: pe.fila.colegio_id, mensaje_id: pe.fila.id, ruta, nombre: a.name, tipo: a.type || null, bytes: a.size }]); }
+      catch (e) { if (!repetido(e)) throw e; }
       pe.archivos.shift();
     }
     enviando.splice(enviando.indexOf(pe), 1);
@@ -48,7 +70,10 @@ async function misFilas() {
   return E.db.select('mensaje_destinatarios', { eq: { colegio_id: E.colegio.id, perfil_id: E.yo.id } });
 }
 
+// Lo cuenta el servidor (sin bajar todas las filas) con las mismas reglas que la bandeja: los vencidos no cuentan (3-nov-2026, A14).
+// Si el servidor aún no tiene la función (versión anterior), se cuenta como antes.
 export async function contarNoLeidos() {
+  try { const n = await E.db.rpc('mensajes_sin_leer', { p_colegio: E.colegio.id }); if (Number.isInteger(n)) return n; } catch {}
   try { return (await misFilas()).filter((d) => !d.leido_en && !d.eliminado && !d.archivado).length; } catch { return 0; }
 }
 

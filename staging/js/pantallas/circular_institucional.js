@@ -20,7 +20,8 @@ const nuevoId = () => crypto.randomUUID?.() || '10000000-1000-4000-8000-10000000
 const deFila = (f) => normal({ ...f.datos, consecutivo: f.consecutivo ?? f.datos?.consecutivo });
 
 // Copia en el equipo de lo que aún no se guarda en el servidor (una por borrador; "nueva" = el que aún no existe)
-const clave = (id) => `complexstg_circular_${E.colegio.id}_${id}`;
+// de cada persona (3-nov-2026): en un equipo compartido nadie recupera lo que otra persona dejó sin guardar
+const clave = (id) => `complexstg_circular_${E.colegio.id}_${E.yo.id}_${id}`;
 const leerLocal = (id) => { try { return JSON.parse(localStorage.getItem(clave(id)) || 'null'); } catch { return null; } };
 const guardarLocal = (id, v) => { try { localStorage.setItem(clave(id), JSON.stringify(v)); return true; } catch { return false; } };
 const borrarLocal = (id) => { try { localStorage.removeItem(clave(id)); } catch {} };
@@ -615,28 +616,40 @@ export async function editor(m, p) {
   });
   const btnPdf = $c('[data-pdf]');
   const pdfRevision = async () => {
-    const x = actual();
-    const v = datosParaServidor({ ...x, firmar: x.firmar && !firmaAjena && !!yo.firma }); // la firma, solo la propia
+    let x = actual();
+    let v = datosParaServidor({ ...x, firmar: x.firmar && !firmaAjena && !!yo.firma }); // la firma, solo la propia
     if (v.error) { aviso(v.error, 'error'); enfocar(v.campo); return; }
     if (E.db.modo === 'demo') {
       await ventana({ titulo: 'PDF de revisión', html: '<p>En el modo de prueba no hay servidor: el PDF de revisión se genera con la plantilla oficial del colegio cuando se usa la app con la cuenta del colegio.</p><p class="ayuda">Usa «Vista previa» para revisar el texto.</p>', botones: [{ texto: 'Entendido' }] });
       return;
     }
+    // §10.3 (3-nov-2026): el PDF de revisión es de una versión GUARDADA. Si hay cambios sin guardar, primero se guardan (si no se
+    // puede, no se genera nada); el servidor rechaza la versión si otra persona guardó después, así no se cruzan documentos.
+    if (!srv.id || !igual(x, srv.datos)) {
+      if (!(await guardar())) return;
+      x = srv.datos;
+      v = datosParaServidor({ ...x, firmar: x.firmar && !firmaAjena && !!yo.firma });
+      if (v.error) { aviso(v.error, 'error'); enfocar(v.campo); return; }
+    }
+    const version = srv.version;
     btnPdf.disabled = true;
     const antes = btnPdf.textContent;
     btnPdf.textContent = 'Generando…';
     try {
       if (!plantilla) throw new Error(plantillasTodas.length ? 'Tu área todavía no tiene un formato de PDF asignado: pídele al administrador que lo asigne.' : 'El colegio aún no tiene una plantilla institucional aprobada.');
       const t0 = performance.now();
-      const pdf = await E.db.funcion('circular-documentos', { accion: 'previsualizar', colegio_id: E.colegio.id, plantilla_id: plantilla.id, datos: v.datos });
+      const pdf = await E.db.funcion('circular-documentos', { accion: 'previsualizar', colegio_id: E.colegio.id, plantilla_id: plantilla.id, datos: v.datos, borrador_id: srv.id, version });
       if (!(pdf instanceof Blob) || !pdf.size) throw new Error('El servidor no devolvió el PDF. Intenta de nuevo.');
+      // huella de lo recibido (la misma que registra el servidor con la versión)
+      const huella = [...new Uint8Array(await crypto.subtle.digest('SHA-256', await pdf.arrayBuffer()))].map((b) => b.toString(16).padStart(2, '0')).join('');
       const seg = ((performance.now() - t0) / 1000).toFixed(1).replace('.', ',');
       const url = URL.createObjectURL(new Blob([pdf], { type: 'application/pdf' }));
-      const archivo = `Circular_revision_${v.datos.fecha_emision}.pdf`;
+      const archivo = `Circular_revision_${(srv.consecutivo || 'sin_numero').replace(/[^w-]+/g, '_')}_v${version}.pdf`;
       await ventana({
         titulo: 'PDF de revisión listo',
         html: `<p>Es una <b>vista previa</b> con el formato del colegio: no queda emitida y no se envía a nadie. ${srv.consecutivo ? `Lleva el consecutivo del borrador guardado (${esc(srv.consecutivo)}).` : 'Aún sin consecutivo: se asigna al guardar.'}${v.datos.firmar ? ' Lleva tu firma encima de tu nombre.' : ''}</p>
           <p class="ayuda">${Math.max(1, Math.round(pdf.size / 1024))} KB · generado en ${seg} s · plantilla rev. ${esc(plantilla.revision)}</p>
+          <p class="ayuda" data-pdf-version>Corresponde a la <b>versión ${version}</b> guardada del borrador · huella <code>${esc(huella.slice(0, 16))}…</code>. Si cambias algo, el próximo PDF se genera de la nueva versión guardada.</p>
           <div class="circ-acciones"><a class="btn btn-primario" href="${url}" target="_blank" rel="noopener">Abrir</a><a class="btn" href="${url}" download="${esc(archivo)}">Descargar</a></div>`,
         botones: [{ texto: 'Cerrar' }],
       });
