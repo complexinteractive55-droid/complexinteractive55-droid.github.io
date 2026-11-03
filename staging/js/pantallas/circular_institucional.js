@@ -4,12 +4,15 @@
 // y se pide el PDF de REVISIÓN al servidor (Edge Function circular-documentos, acción "previsualizar"), con la misma
 // estructura del memo del colegio (Fabio, 27-oct). El consecutivo lo asigna la base al guardar por PRIMERA vez (Fabio, 28-oct):
 // se crea con crear_circular_borrador y una solicitud_id propia de este documento, así un doble clic, un reintento o
-// recargar la página traen el mismo borrador y el mismo número. Después no cambia. No publica ni envía nada.
+// recargar la página traen el mismo borrador y el mismo número. Después no cambia.
 // Lo escrito también se guarda en el equipo mientras tanto (no se pierde por red o al salir).
-import { E, perfiles, logoHTML } from '../estado.js';
-import { esc, aviso, ventana, confirmar, leerForm, nombre, vacio, fechaHora } from '../ui.js';
+// Pantalla en tres pasos, como el «Redactar» de Phidias (Fabio, 3-nov-2026: «muy fácil de enviar»): arriba ¿PARA QUIÉN? (casillas
+// de Estudiantes, Docentes…: a quiénes se envía y lo que dice el «Para» del documento), luego LA CIRCULAR con el formato del
+// documento, y abajo «Ver PDF» y «Enviar» (Administración). Lo que llega a cada bandeja es el PDF institucional.
+import { E, perfiles, logoHTML, base } from '../estado.js';
+import { esc, aviso, ventana, confirmar, leerForm, nombre, nombreLista, vacio, fechaHora } from '../ui.js';
 import { cabecera } from './comun.js';
-import { AREAS, CARGO_DE_AREA, CATEGORIAS, LIMITES, hoyBogota, fechaLarga, textoDestinatarios, saludoSugerido, textoPlano, contenidoHTML, leerEditor, datosParaServidor, numeracion } from '../circular_contenido.js';
+import { AREAS, CARGO_DE_AREA, LIMITES, hoyBogota, fechaLarga, textoDestinatarios, saludoSugerido, textoPlano, contenidoHTML, leerEditor, datosParaServidor, numeracion } from '../circular_contenido.js';
 import { perfilCircular, urlFirma } from '../firma_circular.js';
 
 const VOLVER = '#/circulares-institucionales';
@@ -26,7 +29,18 @@ const leerLocal = (id) => { try { return JSON.parse(localStorage.getItem(clave(i
 const guardarLocal = (id, v) => { try { localStorage.setItem(clave(id), JSON.stringify(v)); return true; } catch { return false; } };
 const borrarLocal = (id) => { try { localStorage.removeItem(clave(id)); } catch {} };
 
-const nuevaCircular = () => ({ fecha_emision: hoyBogota(), consecutivo: '', dependencia: 'Rectoría', destinatarios: [], destinatarios_otros: '', titulo: '', contenido: { version: 1, bloques: [] }, responsable: '', cargo: CARGO_DE_AREA['Rectoría'], firmar: false });
+// ¿Para quién? Los grupos son los roles del colegio (el servidor resuelve las personas: audiencia_previa / circular_enviar)
+const GRUPOS = { estudiante: 'Estudiantes', profesor: 'Docentes', acudiente: 'Acudientes', director_seccion: 'Directores de sección', enfermeria: 'Enfermería', admin: 'Administración' };
+const ALCANCES = { colegio: 'Todo el colegio', sede: 'Algunas sedes', grado: 'Algunos grados', curso: 'Algunos cursos' };
+const DE_CURSO = ['estudiante', 'profesor', 'acudiente']; // los que se eligen por sede, grado o curso (el personal de apoyo, por persona)
+const sinEnvio = () => ({ roles: [], alcance: 'colegio', ids: [], personas: [] });
+const normalEnvio = (e) => ({
+  roles: Object.keys(GRUPOS).filter((r) => Array.isArray(e?.roles) && e.roles.includes(r)),
+  alcance: ALCANCES[e?.alcance] ? e.alcance : 'colegio',
+  ids: Array.isArray(e?.ids) ? [...new Set(e.ids.filter((x) => typeof x === 'string'))] : [],
+  personas: Array.isArray(e?.personas) ? [...new Set(e.personas.filter((x) => typeof x === 'string'))] : [],
+});
+const nuevaCircular = () => ({ fecha_emision: hoyBogota(), consecutivo: '', dependencia: 'Rectoría', destinatarios: [], destinatarios_otros: '', titulo: '', contenido: { version: 1, bloques: [] }, responsable: '', cargo: CARGO_DE_AREA['Rectoría'], firmar: false, envio: sinEnvio() });
 // Una nueva lleva los datos de quien la prepara: su área y cargo designados y, si ya cargó su firma, su nombre y su firma
 const nuevaDeMi = (yo) => {
   const n = nuevaCircular();
@@ -37,18 +51,23 @@ const nuevaDeMi = (yo) => {
 // Siempre los mismos campos y en el mismo orden (así se comparan dos versiones con JSON)
 const normal = (d = {}) => {
   const n = nuevaCircular();
+  // Borradores de antes del 3-nov (sin «envio»): sus casillas del «Para» (Profesores, Administrativos…) pasan a «Otros» con el
+  // mismo texto en el documento; a quién se envía se elige ahora arriba. El «Para» de los nuevos sale de los grupos elegidos.
+  const textos = (v) => (Array.isArray(v) ? v : typeof v === 'string' ? [v] : []).filter((x) => typeof x === 'string' && x.trim());
+  const legado = d.envio ? [] : textos(d.destinatarios);
   return {
     fecha_emision: /^\d{4}-\d{2}-\d{2}$/.test(d.fecha_emision || '') ? d.fecha_emision : n.fecha_emision,
     consecutivo: d.consecutivo || '',
     dependencia: d.dependencia ?? n.dependencia,
-    destinatarios: Array.isArray(d.destinatarios) ? d.destinatarios.filter((x) => CATEGORIAS.includes(x)) : [],
-    destinatarios_otros: d.destinatarios_otros || '',
+    destinatarios: d.envio ? textos(d.destinatarios) : [],
+    destinatarios_otros: [...legado, d.destinatarios_otros || ''].map((s) => s.trim()).filter(Boolean).join(', '),
     titulo: d.titulo || '',
     contenido: d.contenido?.bloques ? { version: 1, bloques: d.contenido.bloques } : n.contenido,
     responsable: d.responsable || '',
     cargo: d.cargo ?? n.cargo,
     firmar: d.firmar === true,
     plantilla_id: typeof d.plantilla_id === 'string' ? d.plantilla_id : '',
+    envio: normalEnvio(d.envio),
   };
 };
 const igual = (a, b) => JSON.stringify(a) === JSON.stringify(b);
@@ -79,8 +98,8 @@ export async function lista(m) {
         <small>${linea}${marca}</small></span>
     </a>`;
   m.innerHTML = cabecera('Circulares institucionales', { volver: '#/circulares', acciones: '<a class="btn btn-primario" href="#/circular-institucional/nueva">＋ Nueva</a>' }) + `
-    <div class="aviso-caja"><p><b>Formato institucional en PDF.</b> ${admin ? 'Aquí se preparan, se guardan y se revisan en PDF.' : 'Aquí preparas TUS circulares, las guardas y las revisas en PDF (Administración también las ve).'}</p>
-      <p class="ayuda">Nada se publica ni se envía. Complex asigna el consecutivo al guardar cada circular por primera vez y no lo vuelve a cambiar.</p>
+    <div class="aviso-caja"><p><b>Formato institucional en PDF.</b> ${admin ? 'Toca «Nueva», elige para quién es, llénala, mira el PDF y envíala: llega como PDF a la bandeja de cada persona.' : 'Aquí preparas TUS circulares y las revisas en PDF; Administración las envía (y también las ve).'}</p>
+      <p class="ayuda">Complex asigna el consecutivo al guardar cada circular por primera vez y no lo vuelve a cambiar.</p>
       ${yo.firma || yo.sin_firmas ? '' : '<p class="ayuda">Para que tu firma vaya encima de tu nombre en el PDF, cárgala en <a href="#/perfil">Mi cuenta y ajustes → Mi firma</a>.</p>'}</div>
     ${sinGuardar || filas.length ? `<div class="lista">
       ${sinGuardar ? fila('#/circular-institucional/nueva', normal({ ...sinGuardar.datos, consecutivo: '' }), 'Sin guardar · solo en este equipo · aún sin consecutivo') : ''}
@@ -312,32 +331,39 @@ export async function editor(m, p) {
   if (recuperado) { d = normal({ ...local.datos, consecutivo: srv.consecutivo }); srv.version = local.version ?? srv.version; } // se guarda sobre la versión que tenía este equipo
   else if (local && srv.id) borrarLocal(llave);
 
-  m.innerHTML = cabecera(nueva ? 'Nueva circular institucional' : 'Circular institucional', { volver: VOLVER }) + `
+  const bas = await base().catch(() => ({ sedes: [], grados: [], cursos: [] }));
+  m.innerHTML = cabecera(nueva ? 'Nueva circular' : 'Circular institucional', { volver: VOLVER }) + `
     <div data-circ data-id="${esc(p.id)}">
     ${recuperado ? `<div class="aviso-caja" data-recuperado><p><b>Se recuperó lo que escribiste en este equipo</b> y no alcanzaste a guardar.</p>
       <button class="btn btn-chico" data-descartar>${srv.datos ? 'Descartar y ver lo guardado' : 'Empezar en blanco'}</button></div>` : ''}
     <form class="form circ-form" data-form autocomplete="off" novalidate>
-      <section class="tarjeta">
-        <h2>Encabezado</h2>
-        <div class="circ-datos">
-          <div><span>Fecha</span><b data-fecha-txt></b><small class="ayuda">Hora de Colombia. Queda fija en el borrador. <button type="button" class="btn-link" data-hoy hidden>Usar la de hoy</button></small></div>
+      <section class="tarjeta circ-paso" data-para>
+        <h2><span class="circ-num">1</span> ¿Para quién es?</h2>
+        <div class="circ-grupos" role="group" aria-label="Para quién es la circular">
+          ${Object.entries(GRUPOS).map(([k, t]) => `<label class="circ-grupo"><input type="checkbox" name="grupo" value="${k}"><span>${esc(t)}</span></label>`).join('')}
         </div>
-        <label>Consecutivo<input data-consec readonly aria-readonly="true" placeholder="Se asigna al guardar"></label>
-        <div class="circ-consec"><small class="ayuda" data-consec-ayuda></small></div>
-        <small class="ayuda">Referencia interna del borrador: <span data-ref>${esc(referencia(srv.id))}</span></small>
-        <label>Área que emite<input name="dependencia" list="circ-areas" maxlength="${LIMITES.dependencia}" placeholder="Ej.: Rectoría"><datalist id="circ-areas">${[...new Set([...areasCfg.map((a) => a.nombre), ...AREAS])].map((a) => `<option value="${esc(a)}">`).join('')}</datalist></label>
-        <div class="circ-datos" data-formato-fila><div><span>Formato del PDF</span><b data-formato-txt></b><small class="ayuda">${yo.emisor?.area ? 'Es el formato de tu área: lo asigna el administrador.' : 'Lo define el área que emite (el administrador asigna el formato de cada área).'}</small></div></div>
+        <div class="circ-alcance">
+          <label>¿De qué parte del colegio?<select name="alcance">${Object.entries(ALCANCES).map(([k, t]) => `<option value="${k}">${esc(t)}</option>`).join('')}</select></label>
+          <div class="circ-items" data-items hidden></div>
+          <p class="ayuda" data-nota-alcance hidden>Por sedes, grados o cursos van estudiantes, docentes y acudientes de allí; al personal de apoyo agrégalo por persona.</p>
+        </div>
+        <details class="circ-personas" data-personas><summary>Agregar personas una por una</summary>
+          <input type="search" data-buscar-persona placeholder="Buscar por nombre…" aria-label="Buscar persona">
+          <div class="lista" data-resultados></div>
+        </details>
+        <p class="circ-elegidas" data-elegidas></p>
+        <label>Agregar al «Para» del documento (opcional)<input name="destinatarios_otros" maxlength="300" placeholder="Ej.: Monitoras de transporte"></label>
+        ${yo.admin ? '<p class="circ-llegara" data-llegara role="status" aria-live="polite"></p>' : '<p class="ayuda">Tú la preparas; Administración la envía a estas personas.</p>'}
       </section>
-      <section class="tarjeta">
-        <h2>Para</h2>
-        <fieldset class="circ-para"><legend>Marca uno o varios</legend>
-          ${CATEGORIAS.map((c) => `<label class="check"><input type="checkbox" name="destinatarios" data-multi="1" value="${esc(c)}"> ${esc(c)}</label>`).join('')}
-          <label>Otros (opcional)<input name="destinatarios_otros" maxlength="300" placeholder="Ej.: Familias de transición"></label>
-        </fieldset>
-        <p class="ayuda">En la circular dirá: <b data-para-txt>—</b>. No se envía a nadie.</p>
-      </section>
-      <section class="tarjeta">
-        <h2>Asunto y contenido</h2>
+      <section class="tarjeta circ-paso circ-hoja">
+        <h2><span class="circ-num">2</span> La circular</h2>
+        <div class="circ-cuadro-form">
+          <div><span>Fecha</span><b data-fecha-txt></b><small class="ayuda">Hora de Colombia. <button type="button" class="btn-link" data-hoy hidden>Usar la de hoy</button></small></div>
+          <label><span>De (área que emite)</span><input name="dependencia" list="circ-areas" maxlength="${LIMITES.dependencia}" placeholder="Ej.: Rectoría"><datalist id="circ-areas">${[...new Set([...areasCfg.map((a) => a.nombre), ...AREAS])].map((a) => `<option value="${esc(a)}">`).join('')}</datalist></label>
+          <label><span>Consecutivo</span><input data-consec readonly aria-readonly="true" placeholder="Se asigna al guardar"><small class="ayuda" data-consec-ayuda></small></label>
+          <div><span>Para</span><b data-para-txt>—</b><small class="ayuda">Sale de lo que marcaste arriba.</small></div>
+        </div>
+        <p class="ayuda" data-formato-fila>Formato del PDF: <b data-formato-txt></b> · ${yo.emisor?.area ? 'es el de tu área (lo asigna el administrador).' : 'lo define el área que emite.'}</p>
         <label>Asunto<input name="titulo" maxlength="${LIMITES.titulo}" placeholder="Ej.: Protocolo de salidas pedagógicas"></label>
         <div class="circ-herr" role="toolbar" aria-label="Formato del contenido">
           <button type="button" class="btn btn-chico" data-cmd="bold" aria-label="Negrita" title="Negrita"><b>N</b></button>
@@ -349,29 +375,26 @@ export async function editor(m, p) {
         </div>
         <div class="circ-editor" data-editor contenteditable="true" role="textbox" aria-multiline="true" aria-label="Contenido de la circular" spellcheck="true" data-ph="Escribe aquí el contenido de la circular…"></div>
         <small class="ayuda" data-cuenta></small>
-      </section>
-      <section class="tarjeta">
-        <h2>Firma</h2>
-        <label class="check" data-firmar-fila hidden><input type="checkbox" name="firmar"> <span><b>Firmar con mi firma</b> (va encima de mi nombre en el PDF)</span></label>
-        <p class="ayuda" data-firmar-ayuda hidden></p>
-        <label>Nombre de quien firma<input name="responsable" maxlength="${LIMITES.responsable}" placeholder="Nombre y apellidos"></label>
-        <label>Cargo<input name="cargo" maxlength="${LIMITES.cargo}" placeholder="Ej.: Rector(a)"></label>
-        <p class="ayuda">Como en el memo del colegio: «Cordialmente,», la firma (si la marcas), el nombre en mayúsculas, el cargo y el nombre del colegio.</p>
+        <div class="circ-firma-form">
+          <h3>Firma</h3>
+          <label class="check" data-firmar-fila hidden><input type="checkbox" name="firmar"> <span><b>Firmar con mi firma</b> (va encima de mi nombre en el PDF)</span></label>
+          <p class="ayuda" data-firmar-ayuda hidden></p>
+          <label>Nombre de quien firma<input name="responsable" maxlength="${LIMITES.responsable}" placeholder="Nombre y apellidos"></label>
+          <label>Cargo<input name="cargo" maxlength="${LIMITES.cargo}" placeholder="Ej.: Rector(a)"></label>
+          <p class="ayuda">Como en el memo del colegio: «Cordialmente,», la firma (si la marcas), el nombre en mayúsculas, el cargo y el nombre del colegio.</p>
+        </div>
       </section>
     </form>
-    <section class="tarjeta">
-      <h2>Enviar</h2>
-      ${yo.admin ? `<button type="button" class="btn btn-primario" data-enviar-circ>📨 Enviar a la bandeja de…</button>
-      <p class="ayuda">Llega como PDF a la Bandeja de entrada de cada destinatario. Al enviarla queda emitida con su número oficial (la serie debe estar validada) y su contenido ya no cambia.</p>`
-        : '<p class="ayuda">Cuando esté lista, Administración la envía a la Bandeja de entrada de los destinatarios como PDF.</p>'}
+    <div class="circ-mas">
+      <small class="ayuda">Referencia interna del borrador: <span data-ref>${esc(referencia(srv.id))}</span>${yo.admin ? ' · Al enviarla queda emitida con su número oficial (la serie debe estar validada) y su contenido ya no cambia.' : ''}</small>
       <button class="btn btn-peligro btn-chico" data-eliminar ${srv.id ? '' : 'hidden'}>Eliminar borrador</button>
-    </section>
+    </div>
     <div class="pie-fijo circ-pie">
       <p class="circ-estado" data-estado role="status" aria-live="polite"></p>
       <div class="circ-acciones">
-        <button type="button" class="btn" data-vista>Vista previa</button>
-        <button type="button" class="btn" data-pdf>PDF de revisión</button>
-        <button type="button" class="btn btn-primario" data-guardar>Guardar</button>
+        <button type="button" class="btn" data-guardar>Guardar borrador</button>
+        <button type="button" class="btn ${yo.admin ? '' : 'btn-primario'}" data-vista data-pdf>👁 Ver PDF</button>
+        ${yo.admin ? '<button type="button" class="btn btn-primario" data-enviar-circ>📨 Enviar</button>' : ''}
       </div>
     </div>
     </div>`;
@@ -381,6 +404,37 @@ export async function editor(m, p) {
   const ed = caja.querySelector('[data-editor]');
   const $c = (sel) => caja.querySelector(sel);
   form.addEventListener('submit', (e) => e.preventDefault());
+  const emitida = !!fila?.estado && fila.estado !== 'borrador';
+
+  // ----- 1. ¿Para quién? Grupos, alcance (sedes, grados o cursos) y personas una por una. El «Para» del documento sale de aquí.
+  const elegidas = new Map(); // perfil_id → contacto
+  const contactos = new Map();
+  if (yo.admin) (E.db.rpcTodo || E.db.rpc).call(E.db, 'mis_contactos', { p_colegio: E.colegio.id })
+    .then((l) => { for (const c of l || []) if (!contactos.has(c.perfil_id)) contactos.set(c.perfil_id, c); for (const id of elegidas.keys()) elegidas.set(id, contactos.get(id) || elegidas.get(id)); pintarElegidas(); })
+    .catch(() => { /* sin la lista se envía por grupos */ });
+  const listaDe = (a) => (a === 'sede' ? bas.sedes : a === 'grado' ? bas.grados : a === 'curso' ? bas.cursos : []) || [];
+  const pintarItems = (sel = [...form.querySelectorAll('[name=item]:checked')].map((x) => x.value)) => {
+    const a = form.elements.alcance.value, items = $c('[data-items]');
+    items.hidden = a === 'colegio'; $c('[data-nota-alcance]').hidden = a === 'colegio';
+    items.innerHTML = listaDe(a).map((x) => `<label class="check"><input type="checkbox" name="item" value="${esc(x.id)}" ${sel.includes(x.id) ? 'checked' : ''}> ${esc(x.nombre)}</label>`).join('') || '<p class="ayuda">No hay opciones.</p>';
+    form.querySelectorAll('[name=grupo]').forEach((r) => { const off = a !== 'colegio' && !DE_CURSO.includes(r.value); r.disabled = off; if (off) r.checked = false; r.closest('.circ-grupo').classList.toggle('apagado', off); });
+  };
+  const pintarElegidas = () => {
+    $c('[data-elegidas]').innerHTML = elegidas.size ? 'Además: ' + [...elegidas.entries()].map(([id, c]) => `<span class="chip">${esc(c?.nombres ? nombreLista(c) : 'Persona elegida')} <button type="button" data-quitar="${esc(id)}" aria-label="Quitar">×</button></span>`).join(' ') : '';
+  };
+  const envioActual = () => {
+    const alcance = form.elements.alcance.value;
+    return { roles: [...form.querySelectorAll('[name=grupo]:checked')].map((x) => x.value), alcance,
+      ids: alcance === 'colegio' ? [] : [...form.querySelectorAll('[name=item]:checked')].map((x) => x.value), personas: [...elegidas.keys()] };
+  };
+  // «Estudiantes y Docentes de Segundo A»; solo personas elegidas: sus nombres (hasta 3) o cuántas son
+  const paraDe = (env) => {
+    const t = textoDestinatarios(env.roles.map((r) => GRUPOS[r]));
+    const lugares = env.ids.map((id) => listaDe(env.alcance).find((x) => x.id === id)?.nombre).filter(Boolean);
+    if (t) return lugares.length ? `${t} de ${textoDestinatarios(lugares)}` : t;
+    const nombres = env.personas.map((id) => elegidas.get(id)).filter((c) => c?.nombres).map((c) => `${c.nombres} ${c.apellidos || ''}`.trim());
+    return env.personas.length ? (nombres.length === env.personas.length && nombres.length <= 3 ? textoDestinatarios(nombres) : `${env.personas.length} personas`) : '';
+  };
 
   // ----- Firma: SIEMPRE la de quien genera el PDF (el servidor no pone la de otro). Si este borrador lo firma otra persona,
   // aquí no se marca y el PDF que se genere aquí sale sin firma (la marca de esa persona queda como estaba).
@@ -404,7 +458,12 @@ export async function editor(m, p) {
     for (const k of ['dependencia', 'destinatarios_otros', 'titulo', 'responsable', 'cargo']) form.elements[k].value = x[k];
     // Quien fue designado en un área emite como esa área: el «De:» no se cambia (el servidor también lo fija)
     if (yo.emisor?.area?.nombre) form.elements.dependencia.value = yo.emisor.area.nombre;
-    for (const cb of form.querySelectorAll('[name=destinatarios]')) cb.checked = x.destinatarios.includes(cb.value);
+    form.elements.alcance.value = x.envio.alcance;
+    pintarItems(x.envio.ids);
+    for (const cb of form.querySelectorAll('[name=grupo]')) cb.checked = !cb.disabled && x.envio.roles.includes(cb.value);
+    elegidas.clear();
+    for (const id of x.envio.personas) elegidas.set(id, contactos.get(id) || null);
+    pintarElegidas();
     form.elements.firmar.checked = x.firmar && !ajeno(x);
     ed.innerHTML = contenidoHTML(x.contenido);
     ponerFormato();
@@ -417,11 +476,30 @@ export async function editor(m, p) {
   // ----- Leer el formulario
   const actual = () => {
     const f = leerForm(form);
+    const envio = envioActual(), para = paraDe(envio);
     // el formato ya no se elige (es el del área): lo guardado en el borrador no cambia y no cuenta como cambio
-    return normal({ ...f, plantilla_id: d.plantilla_id, firmar: firmaAjena ? d.firmar : f.firmar === true && !!yo.firma, consecutivo: srv.consecutivo, fecha_emision: d.fecha_emision, contenido: leerEditor(ed) });
+    return normal({ ...f, envio, destinatarios: para ? [para] : [], plantilla_id: d.plantilla_id, firmar: firmaAjena ? d.firmar : f.firmar === true && !!yo.firma, consecutivo: srv.consecutivo, fecha_emision: d.fecha_emision, contenido: leerEditor(ed) });
   };
 
   let guardando = false, localT = null;
+  // «Llegará a N personas»: lo calcula el servidor con la misma regla del envío (cada persona una vez; los excluidos con su causa)
+  let conteoT = null, conteoClave = '';
+  const contar = (env) => {
+    const el = $c('[data-llegara]'), k = JSON.stringify(env);
+    if (!el || k === conteoClave) return;
+    conteoClave = k; clearTimeout(conteoT);
+    if (!env.roles.length && !env.personas.length) { el.textContent = 'Marca para quién es.'; return; }
+    if (env.alcance !== 'colegio' && !env.ids.length) { el.textContent = 'Elige las sedes, grados o cursos.'; return; }
+    el.textContent = 'Calculando a cuántas personas llega…';
+    conteoT = setTimeout(async () => {
+      try {
+        const pv = await E.db.rpc('audiencia_previa', { p_colegio: E.colegio.id, p_criterios: env });
+        if (k !== conteoClave) return;
+        const grupos = Object.entries(pv.por_grupo || {}).map(([g, n]) => `${esc(GRUPOS[g] || (g === 'individual' ? 'Elegidas una por una' : g))} ${n}`).join(' · ');
+        el.innerHTML = `Llegará a <b>${pv.total}</b> persona${pv.total === 1 ? '' : 's'}${grupos ? ' · ' + grupos : ''}${pv.excluidos ? ` · ${pv.excluidos} no la recibirán (${Object.entries(pv.motivos || {}).map(([mm, n]) => `${esc(mm)}: ${n}`).join(', ')})` : ''}`;
+      } catch (e) { if (k === conteoClave) el.textContent = 'No se pudo calcular a cuántas personas llega: ' + e.message; }
+    }, 450);
+  };
   // Vista previa del número (solo lectura): se pide al abrir y al cambiar el área
   const previsualizar = async () => {
     if ((!num && !yo.emisor) || srv.consecutivo) { prevista = null; return; }
@@ -454,7 +532,7 @@ export async function editor(m, p) {
     $c('[data-cuenta]').textContent = `${plano.length.toLocaleString('es-CO')} de ${LIMITES.cuerpo.toLocaleString('es-CO')} caracteres`;
     // Saludo según las casillas: se ofrece al empezar, y si el primer párrafo es un saludo sugerido que ya no
     // coincide con las casillas marcadas ("Estimados profesores:" → "Estimados profesores y monitoras:"), se ofrece cambiarlo
-    const saludo = saludoSugerido(x.destinatarios, x.destinatarios_otros);
+    const saludo = saludoSugerido(x.envio.roles.map((r) => GRUPOS[r]), x.destinatarios_otros);
     const b0 = x.contenido.bloques[0];
     const primero = b0?.tipo === 'parrafo' ? b0.segmentos.map((s) => s.texto).join('') : '';
     const cambiar = !!saludo && /^Estimados [^\n]*:$/.test(primero) && primero !== saludo && ed.firstElementChild?.tagName === 'P';
@@ -462,7 +540,10 @@ export async function editor(m, p) {
     btnS.dataset.modo = cambiar ? 'cambiar' : 'insertar';
     btnS.hidden = !saludo || (!cambiar && /^\s*(estimad|apreciad|querid|señor|respetad)/i.test(plano));
     btnS.textContent = !saludo ? '' : cambiar ? `Cambiar el saludo a «${saludo}»` : `Empezar con «${saludo}»`;
-    const cambios = !srv.datos || !igual(x, srv.datos);
+    // emitida: el documento ya no cambia; elegir a quién más enviarla no es un cambio del borrador
+    const comparable = (y) => (emitida ? { ...y, envio: null, destinatarios: null } : y);
+    const cambios = !srv.datos || !igual(comparable(x), comparable(srv.datos));
+    if (yo.admin) contar(x.envio);
     $c('[data-estado]').textContent = guardando ? 'Guardando…'
       : !srv.id ? (textoPlano(x.contenido).trim() || x.titulo ? 'Aún no se guarda en el servidor (lo escrito queda en este equipo).' : 'Nueva circular: aún sin guardar.')
       : cambios ? 'Cambios sin guardar (a salvo en este equipo).'
@@ -481,6 +562,15 @@ export async function editor(m, p) {
   previsualizar();
   form.addEventListener('input', cambio);
   form.addEventListener('change', cambio);
+  form.elements.alcance.addEventListener('change', () => { pintarItems([]); cambio(); });
+  $c('[data-buscar-persona]').addEventListener('input', (e) => {
+    const q = e.target.value.trim().toLowerCase();
+    const res = q.length < 2 ? [] : [...contactos.values()].filter((c) => `${c.nombres} ${c.apellidos} ${c.grupo} ${c.detalle || ''}`.toLowerCase().includes(q)).slice(0, 20);
+    $c('[data-resultados]').innerHTML = res.map((c) => `<button type="button" class="fila fila-boton" data-persona="${esc(c.perfil_id)}"><span><b>${esc(nombreLista(c))}</b><small>${esc(c.grupo)}</small></span></button>`).join('')
+      || (q.length >= 2 ? `<p class="ayuda">${contactos.size ? 'Nadie con ese nombre.' : 'No se pudo cargar la lista de personas.'}</p>` : '');
+  });
+  $c('[data-resultados]').addEventListener('click', (e) => { const b = e.target.closest('[data-persona]'); if (!b) return; elegidas.set(b.dataset.persona, contactos.get(b.dataset.persona)); pintarElegidas(); cambio(); });
+  $c('[data-elegidas]').addEventListener('click', (e) => { const b = e.target.closest('[data-quitar]'); if (!b) return; elegidas.delete(b.dataset.quitar); pintarElegidas(); cambio(); });
 
   // El área sugiere el cargo (si el cargo está vacío o era la sugerencia del área anterior)
   let areaAntes = d.dependencia;
@@ -514,7 +604,7 @@ export async function editor(m, p) {
     if (!b) return;
     if (b.dataset.saludo !== undefined) {
       const x = actual();
-      const saludo = saludoSugerido(x.destinatarios, x.destinatarios_otros);
+      const saludo = saludoSugerido(x.envio.roles.map((r) => GRUPOS[r]), x.destinatarios_otros);
       if (b.dataset.modo === 'cambiar') ed.firstElementChild.textContent = saludo;
       else ed.insertAdjacentHTML('afterbegin', `<p>${esc(saludo)}</p>`);
       cambio();
@@ -603,27 +693,23 @@ export async function editor(m, p) {
     }
   };
 
-  // ----- Vista previa rápida (en pantalla) y PDF de revisión (servidor, formato oficial)
-  $c('[data-vista]').addEventListener('click', async () => {
+  // ----- Ver PDF: con la cuenta del colegio, el PDF de revisión del SERVIDOR (formato oficial, de la versión guardada); en el modo
+  // demo (sin servidor) la vista con la misma estructura del formato del colegio
+  const vistaRapida = async () => {
     const x = actual();
     const falta = datosParaServidor(x).error;
-    const r = await ventana({
+    await ventana({
       titulo: 'Vista previa',
       html: `${falta ? `<div class="aviso-caja"><p>${esc(falta)}</p></div>` : ''}${vistaHTML(x, plantilla, x.firmar && !firmaAjena && yo.firma ? await urlFirma(yo.firma).catch(() => null) : null)}
-        <p class="ayuda">Vista rápida para revisar el texto. El PDF de revisión usa el formato oficial del colegio (membrete, marca de agua y pie).</p>`,
-      botones: [{ texto: 'Cerrar' }, { texto: 'PDF de revisión', valor: 'pdf' }],
+        <p class="ayuda">Modo demo: así queda la circular. Con la cuenta del colegio, «Ver PDF» muestra el PDF oficial (membrete, marca de agua y pie).</p>`,
+      botones: [{ texto: 'Cerrar' }],
     });
-    if (r === 'pdf') pdfRevision();
-  });
+  };
   const btnPdf = $c('[data-pdf]');
   const pdfRevision = async () => {
     let x = actual();
     let v = datosParaServidor({ ...x, firmar: x.firmar && !firmaAjena && !!yo.firma }); // la firma, solo la propia
     if (v.error) { aviso(v.error, 'error'); enfocar(v.campo); return; }
-    if (E.db.modo === 'demo') {
-      await ventana({ titulo: 'PDF de revisión', html: '<p>En el modo de prueba no hay servidor: el PDF de revisión se genera con la plantilla oficial del colegio cuando se usa la app con la cuenta del colegio.</p><p class="ayuda">Usa «Vista previa» para revisar el texto.</p>', botones: [{ texto: 'Entendido' }] });
-      return;
-    }
     // §10.3 (3-nov-2026): el PDF de revisión es de una versión GUARDADA. Si hay cambios sin guardar, primero se guardan (si no se
     // puede, no se genera nada); el servidor rechaza la versión si otra persona guardó después, así no se cruzan documentos.
     if (!srv.id || !igual(x, srv.datos)) {
@@ -651,6 +737,7 @@ export async function editor(m, p) {
         html: `<p>Es una <b>vista previa</b> con el formato del colegio: no queda emitida y no se envía a nadie. ${srv.consecutivo ? `Lleva el consecutivo del borrador guardado (${esc(srv.consecutivo)}).` : 'Aún sin consecutivo: se asigna al guardar.'}${v.datos.firmar ? ' Lleva tu firma encima de tu nombre.' : ''}</p>
           <p class="ayuda">${Math.max(1, Math.round(pdf.size / 1024))} KB · generado en ${seg} s · plantilla rev. ${esc(plantilla.revision)}</p>
           <p class="ayuda" data-pdf-version>Corresponde a la <b>versión ${version}</b> guardada del borrador · huella <code>${esc(huella.slice(0, 16))}…</code>. Si cambias algo, el próximo PDF se genera de la nueva versión guardada.</p>
+          ${matchMedia('(max-width: 899px), (pointer: coarse)').matches ? '' : `<iframe class="visor-pdf circ-visor" src="${url}" title="PDF de revisión"></iframe>`}
           <div class="circ-acciones"><a class="btn btn-primario" href="${url}" target="_blank" rel="noopener">Abrir</a><a class="btn" href="${url}" download="${esc(archivo)}">Descargar</a></div>`,
         botones: [{ texto: 'Cerrar' }],
       });
@@ -661,10 +748,10 @@ export async function editor(m, p) {
       btnPdf.disabled = false; btnPdf.textContent = antes;
     }
   };
-  btnPdf.addEventListener('click', pdfRevision);
+  btnPdf.addEventListener('click', () => (E.db.modo === 'demo' ? vistaRapida() : pdfRevision()));
 
   const enfocar = (campo) => {
-    const el = campo === 'contenido' ? ed : campo === 'destinatarios' ? form.querySelector('[name=destinatarios]') : form.elements[campo];
+    const el = campo === 'contenido' ? ed : campo === 'destinatarios' ? form.querySelector('[name=grupo]:not(:disabled)') : form.elements[campo];
     el?.scrollIntoView({ block: 'center', behavior: 'smooth' });
     el?.focus({ preventScroll: true });
   };
@@ -680,13 +767,20 @@ export async function editor(m, p) {
     } catch (e) { aviso(e.message, 'error'); }
   });
 
-  // ----- Enviar a la Bandeja de entrada (solo Administración, 3-nov-2026): siempre de la versión GUARDADA; si hay cambios sin
-  // guardar, primero se guardan (si no se puede, no se envía nada)
+  // ----- Enviar a la Bandeja de entrada (solo Administración, 3-nov-2026) a quienes se marcaron arriba: siempre de la versión
+  // GUARDADA; si hay cambios sin guardar, primero se guardan (si no se puede, no se envía nada). Ya emitida: a más personas.
   $c('[data-enviar-circ]')?.addEventListener('click', async () => {
-    if (!srv.id || !igual(actual(), srv.datos)) { if (!(await guardar())) return; }
+    const x = actual(), env = x.envio;
+    if (!env.roles.length && !env.personas.length) { aviso('Marca para quién es la circular.', 'error'); enfocar('destinatarios'); return; }
+    if (env.alcance !== 'colegio' && !env.ids.length) { aviso('Elige al menos una sede, un grado o un curso.', 'error'); $c('[data-items]').scrollIntoView({ block: 'center', behavior: 'smooth' }); return; }
+    if (!emitida) {
+      const v = datosParaServidor({ ...x, firmar: x.firmar && !firmaAjena && !!yo.firma });
+      if (v.error) { aviso(v.error, 'error'); enfocar(v.campo); return; }
+      if (!srv.id || !igual(x, srv.datos)) { if (!(await guardar())) return; }
+    }
     const { enviarCircular } = await import('./circular_envio.js');
-    const r = await enviarCircular({ borrador: { id: srv.id, version: srv.version, consecutivo: srv.consecutivo, datos: srv.datos, autor_id: fila?.autor_id || E.yo.id }, plantilla });
-    if (r) editor(m, { id: srv.id });
+    const r = await enviarCircular({ borrador: { id: srv.id, version: srv.version, consecutivo: srv.consecutivo, datos: srv.datos, autor_id: fila?.autor_id || E.yo.id }, plantilla, criterios: env });
+    if (r) { caja.remove(); editor(m, { id: srv.id }); }
   });
   if (srv.id && yo.admin) import('./circular_envio.js').then((x) => x.revisarEnvioPendiente(srv.id)).catch(() => {});
   // Emitida (enviada) o anulada: su contenido y número ya no cambian; se puede volver a enviar a más personas

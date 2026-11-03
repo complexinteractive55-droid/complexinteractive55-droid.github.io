@@ -494,8 +494,12 @@ export function crearDbDemo() {
     if (!b.consecutivo) err('La circular aún no tiene su número: guárdala con su área y serie antes de enviarla.');
     if (localStorage.getItem('complexstg_demo_pdf_falla') === '1') err('No se pudo componer la circular con la plantilla y las fuentes oficiales. No se envió nada.'); // A01: falla simulada
     const { pdfDemo } = await import('./pdf_demo.js');
+    // Como el servidor: lo guardado (formato del editor) se traduce con datosParaServidor; si falta algo, no se prepara nada
+    const { datosParaServidor } = await import('./circular_contenido.js');
+    const conv = datosParaServidor({ ...b.datos, consecutivo: b.consecutivo, ...(Array.isArray(b.datos?.destinatarios) ? {} : { destinatarios: [], destinatarios_otros: typeof b.datos?.destinatarios === 'string' ? b.datos.destinatarios : '' }) });
+    if (conv.error) err('La circular guardada está incompleta: ' + conv.error);
     const omitida = !!b.datos?.firmar && b.autor_id !== usuario();
-    const { bytes } = pdfDemo({ ...b.datos, ...(omitida ? { firmar: false } : {}) }, b.consecutivo, tabla('colegios').find((c) => c.id === a.colegio_id)?.nombre);
+    const { bytes } = pdfDemo({ ...conv.datos, ...(omitida ? { firmar: false } : {}) }, b.consecutivo, tabla('colegios').find((c) => c.id === a.colegio_id)?.nombre);
     const huella = [...new Uint8Array(await crypto.subtle.digest('SHA-256', bytes))].map((x) => x.toString(16).padStart(2, '0')).join('');
     const nom = String(b.consecutivo).replace(/[^A-Za-z0-9._-]+/g, '_').replace(/^[._-]+/, '').slice(0, 100) + '_v' + b.version + '_' + huella.slice(0, 8) + '.pdf';
     const ruta = a.colegio_id + '/' + a.envio_id + '/' + nom;
