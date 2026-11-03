@@ -22,7 +22,9 @@ export async function lista(m) {
   const leidas = new Set((await E.db.select('circular_lecturas', { eq: { perfil_id: E.yo.id } })).map((l) => l.circular_id));
   // La entrada a las circulares institucionales: Administración y quien el administrador designó (2-nov-2026)
   const prepara = admin || (['profesor', 'director_seccion', 'enfermeria'].includes(E.rol) && (await (await import('../firma_circular.js')).perfilCircular().catch(() => ({}))).puede_preparar === true);
-  m.innerHTML = cabecera('Circulares', { acciones: admin ? '<button class="btn btn-primario" data-nueva>＋ Nueva</button>' : '' }) + (prepara ? `
+  // «Nueva» abre la circular institucional: para quién, el documento, Ver PDF y Enviar (Fabio, 3-nov-2026: «la otra sobra»).
+  // Las circulares de texto que ya existen se siguen viendo, editando y publicando desde su detalle.
+  m.innerHTML = cabecera('Circulares', { acciones: prepara ? '<a class="btn btn-primario" data-nueva href="#/circular-institucional/nueva">＋ Nueva</a>' : '' }) + (prepara ? `
     <a class="tarjeta fila fila-boton circ-entrada" href="#/circulares-institucionales"><span class="avatar">📄</span><span class="crece"><b>Circulares institucionales (PDF)</b><small>Formato oficial del colegio: borradores y PDF de revisión</small></span><span aria-hidden="true">›</span></a>` : '') + (circ.length ? `
     <div class="lista">${circ.map((c) => `
       <a class="fila fila-boton ${!admin && !leidas.has(c.id) ? 'sin-leer' : ''}" href="#/circular/${c.id}">
@@ -30,7 +32,6 @@ export async function lista(m) {
         <span class="crece"><b>${c.numero ? `<span class="num-circ">N.º ${c.numero}</span> ` : ""}${esc(c.titulo)}</b><small>${c.publicada_en ? fechaHora(c.publicada_en) : 'Borrador'}${admin ? ' · ' + esc(destino(b, c)) : ''}</small></span>
         ${!admin && !leidas.has(c.id) ? '<span class="punto" aria-label="Sin leer"></span>' : ''}
       </a>`).join('')}</div>` : vacio(admin ? 'Aún no has escrito circulares.' : 'No tienes circulares.'));
-  m.querySelector('[data-nueva]')?.addEventListener('click', () => editarCircular(b, null));
 }
 
 // Circulares publicadas que me llegan (en el demo filtramos aquí como lo haría la RLS)

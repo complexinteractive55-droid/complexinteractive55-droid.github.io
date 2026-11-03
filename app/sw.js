@@ -1,6 +1,6 @@
 // Service worker de Complex_: guarda la app para abrirla rápido y sin internet.
 // Los datos (Supabase) siempre van a la red.
-const VERSION = 'complexapp-20261103113334';
+const VERSION = 'complexapp-20261103130022';
 // Solo se borran las versiones viejas de ESTA app: en fabiandres55.github.io viven también Relax y Complex_ (app2),
 // y la caché del navegador es una sola por dominio (antes se borraba todo lo que no fuera esta versión).
 const PREFIJO = VERSION.replace(/[^-]+$/, '');
