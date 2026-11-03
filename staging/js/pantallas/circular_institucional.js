@@ -360,9 +360,10 @@ export async function editor(m, p) {
       </section>
     </form>
     <section class="tarjeta">
-      <h2>Emitir</h2>
-      <button class="btn" disabled>Emitir con número oficial</button>
-      <p class="ayuda">El consecutivo ya queda reservado al guardar el borrador. Emitir (dejarla oficial y definitiva) se habilita cuando se confirme la convención de numeración. Mientras tanto nada se publica ni se envía.</p>
+      <h2>Enviar</h2>
+      ${yo.admin ? `<button type="button" class="btn btn-primario" data-enviar-circ>📨 Enviar a la bandeja de…</button>
+      <p class="ayuda">Llega como PDF a la Bandeja de entrada de cada destinatario. Al enviarla queda emitida con su número oficial (la serie debe estar validada) y su contenido ya no cambia.</p>`
+        : '<p class="ayuda">Cuando esté lista, Administración la envía a la Bandeja de entrada de los destinatarios como PDF.</p>'}
       <button class="btn btn-peligro btn-chico" data-eliminar ${srv.id ? '' : 'hidden'}>Eliminar borrador</button>
     </section>
     <div class="pie-fijo circ-pie">
@@ -678,6 +679,23 @@ export async function editor(m, p) {
       location.hash = VOLVER;
     } catch (e) { aviso(e.message, 'error'); }
   });
+
+  // ----- Enviar a la Bandeja de entrada (solo Administración, 3-nov-2026): siempre de la versión GUARDADA; si hay cambios sin
+  // guardar, primero se guardan (si no se puede, no se envía nada)
+  $c('[data-enviar-circ]')?.addEventListener('click', async () => {
+    if (!srv.id || !igual(actual(), srv.datos)) { if (!(await guardar())) return; }
+    const { enviarCircular } = await import('./circular_envio.js');
+    const r = await enviarCircular({ borrador: { id: srv.id, version: srv.version, consecutivo: srv.consecutivo, datos: srv.datos, autor_id: fila?.autor_id || E.yo.id }, plantilla });
+    if (r) editor(m, { id: srv.id });
+  });
+  if (srv.id && yo.admin) import('./circular_envio.js').then((x) => x.revisarEnvioPendiente(srv.id)).catch(() => {});
+  // Emitida (enviada) o anulada: su contenido y número ya no cambian; se puede volver a enviar a más personas
+  if (fila?.estado && fila.estado !== 'borrador') {
+    btnGuardar.disabled = true;
+    $c('[data-eliminar]').hidden = true;
+    caja.insertAdjacentHTML('afterbegin', `<p class="aviso-caja" data-emitida>${fila.estado === 'emitida' ? '✅ Emitida' : '⛔ Anulada'}${fila.emitida_en ? ` el ${esc(fechaHora(fila.emitida_en))}` : ''}: su contenido y su número ya no cambian.${fila.estado === 'emitida' && yo.admin ? ' Puedes enviarla a más personas con «Enviar».' : ''}</p>`);
+    if (fila.estado === 'anulada') $c('[data-enviar-circ]')?.remove();
+  }
 }
 
 // Vista rápida con la misma estructura del memo del colegio: cuadro Fecha | De / Consecutivo | Para, asunto a la derecha,

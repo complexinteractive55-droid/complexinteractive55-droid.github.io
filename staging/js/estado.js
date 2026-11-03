@@ -63,6 +63,23 @@ export async function elegirColegio(id) {
   E.perfiles = new Map([[E.yo.id, E.yo]]);
 }
 
+// Membresías de nuevo desde el servidor (al volver a la app, al reconectarse y cada pocos minutos): si a la persona le quitaron
+// un rol o el colegio, la app deja de mostrarlo sin cerrar sesión (input 3-nov-2026, A08). Devuelve qué cambió (null: nada).
+export async function refrescarMembresias() {
+  if (!E.yo || !E.db?.fresco) return null;
+  const activos = (await E.db.fresco('miembros', { eq: { perfil_id: E.yo.id } })).filter((m) => m.activo);
+  const clave = (l) => l.map((m) => m.colegio_id + ':' + m.rol).sort().join(',');
+  if (clave(activos) === clave(E.membresias || [])) return null;
+  E.membresias = activos;
+  E.colegios = (E.colegios || []).filter((c) => activos.some((m) => m.colegio_id === c.id));
+  if (!E.colegio) return { cambio: true };
+  if (!activos.some((m) => m.colegio_id === E.colegio.id)) { E.colegio = null; E.roles = []; E.rol = null; return { cambio: true, sinColegio: true }; }
+  const antes = E.rol;
+  E.roles = ORDEN_ROLES.filter((r) => activos.some((m) => m.colegio_id === E.colegio.id && m.rol === r));
+  if (!E.roles.includes(E.rol)) E.rol = E.roles[0];
+  return { cambio: true, rolCambio: antes !== E.rol };
+}
+
 export function cambiarRol(r) {
   if (!E.roles.includes(r)) return;
   E.rol = r;

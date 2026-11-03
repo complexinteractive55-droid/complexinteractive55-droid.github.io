@@ -1,7 +1,7 @@
 // Complex_ — arranque, enrutador y armazón de la app.
 import { crearDbSupabase, crearDbDemo, cargarSemillaDemo, huellaEnEsteEquipo } from './db.js';
-import { E, pref, base, cargarYo, elegirColegio, cambiarRol, cargarPersonas, elegirPersona, personaActiva, viendoHijo, logoHTML, aplicarMarca, fotos, olvidarFoto, olvidarFotos } from './estado.js';
-import { esc, $, aviso, ventana, leerForm, confirmar, ROL, nombre, iniciales, etiquetarTablas, fecha, fechaHora } from './ui.js';
+import { E, pref, base, cargarYo, elegirColegio, cambiarRol, refrescarMembresias, cargarPersonas, elegirPersona, personaActiva, viendoHijo, logoHTML, aplicarMarca, fotos, olvidarFoto, olvidarFotos } from './estado.js';
+import { esc, $, aviso, ventana, leerForm, confirmar, ROL, nombre, iniciales, etiquetarTablas, fecha, fechaHora, vacio } from './ui.js';
 import { APP_VERSION } from './config.js';
 import { enIngles, preferenciaIdioma, idiomaDispositivo, elegirIdioma, activarTraduccion } from './i18n.js';
 
@@ -236,6 +236,15 @@ const RUTAS = [
   ['perfil', (_, m) => perfil(m)],
 ];
 
+// Pantallas del personal que un ESTUDIANTE no abre ni escribiendo la dirección (Fabio, 3-nov-2026: el estudiante tiene sus propios
+// permisos, no los del docente). La base de datos ya lo impide (RLS); así tampoco ve los botones de gestión. Las circulares de
+// texto que ya recibió siguen abriendo desde sus avisos (#/circular/…), solo para leer.
+const SOLO_PERSONAL = new Set(['estructura', 'personas', 'curso/:id', 'ajustes-colegio', 'clases', 'grupo/:asig', 'direccion', 'consolidado/:asig', 'salidas',
+  'docentes', 'docente/:id', 'notas/:asig', 'observaciones-boletin/:asig', 'remediales/:asig', 'seguimientos', 'asistencia/:asig', 'circulares-institucionales',
+  'circular-institucional/:id', 'planeaciones', 'tesoreria', 'ausencias', 'album', 'album/:curso', 'salas', 'sala/:id', 'aviso/:id', 'espacios',
+  'espacios-solicitudes', 'reportes', 'certificado/:tipo/:est', 'bandeja-hijo', 'obligaciones']);
+export const rutaPermitida = (patron) => !(E.rol === 'estudiante' && SOLO_PERSONAL.has(patron));
+
 function resolver(hash) {
   const [ruta, qs] = hash.replace(/^#\/?/, '').split('?');
   const partes = ruta.split('/');
@@ -263,6 +272,7 @@ async function navegar() {
   if (E._personasDe !== E.colegio.id + E.rol) { await cargarPersonas(); E._personasDe = E.colegio.id + E.rol; }
   escucharNotas(); // si cambió de colegio, escucha las notas del nuevo
   const r = resolver(location.hash || '#/inicio') || resolver('#/inicio');
+  if (!rutaPermitida(r.patron)) r.fn = (_, m) => { m.innerHTML = vacio('Esta sección no es para tu perfil. Si la necesitas, pídesela a Administración.'); };
   pintarArmazon(r.patron);
   // Cada navegación pinta en su PROPIO #principal (uno nuevo en el mismo lugar): si una pantalla anterior termina de cargar
   // después (p. ej. el Tablero, que es lento), escribe en el que ya salió de la página y no tapa la nueva (2-nov-2026: el menú
@@ -364,8 +374,9 @@ function menuBase() {
     { t: 'Docencia', ic: '🧑‍🏫', items: [['direccion', 'Dirección de grupo'], ['clases', 'Clases'], ['album', 'Álbum por curso'], ['reportes', 'Reportes']] },
     { t: 'Academia', ic: '🎓', items: [['aula', 'Aula'], ['horario', 'Mi horario'], ['planeaciones', 'Planeaciones'], ['espacios', 'Solicitud de espacios']] },
     perfilG()];
-  // Los estudiantes no presentan PQRS: la presenta su acudiente (Fabio, 2-nov-2026)
-  if (E.rol === 'estudiante') return [tablero, { ...COMUNICACION, items: COMUNICACION.items.filter(([r]) => r !== 'pqrs') },
+  // Los estudiantes no presentan PQRS: la presenta su acudiente (Fabio, 2-nov-2026). Tampoco tienen el módulo de Circulares: la
+  // circular les llega a la Bandeja de entrada como PDF (Fabio, 3-nov-2026)
+  if (E.rol === 'estudiante') return [tablero, { ...COMUNICACION, items: COMUNICACION.items.filter(([r]) => r !== 'pqrs' && r !== 'circulares') },
     { t: 'Comunidad', ic: '👥', items: [['calendario', 'Calendario'], [`estudiante/${E.yo.id}?tab=observador`, 'Seguimientos'], [`estudiante/${E.yo.id}?tab=compromisos`, 'Compromisos'], ['procesos', 'Procesos en línea'], ['archivos', 'Archivos']] },
     { t: 'Academia', ic: '🎓', items: [['aula', 'Aula'], ['planeacion', 'Planeación'], ['horario', 'Horario'], ...hist] },
     perfilG()];
@@ -519,7 +530,7 @@ async function elegirRol() {
     html: `<div class="lista">${E.roles.map((r) => `<button class="fila fila-boton" data-r="${r}"><b>${ROL[r]}</b>${r === E.rol ? '<span class="ok">✓</span>' : ''}</button>`).join('')}</div>`,
     alAbrir: (caja, cerrar) => caja.querySelectorAll('[data-r]').forEach((b) => (b.onclick = () => cerrar(b.dataset.r))),
   });
-  if (r) { cambiarRol(r); ir('#/inicio'); }
+  if (r) { cambiarRol(r); E.db.olvidar?.(); ir('#/inicio'); } // otro rol: nada de lo consultado con el anterior
 }
 
 // ---------------------------------------------------------------- Inicio por rol
@@ -939,15 +950,60 @@ function escucharMensajes() {
   dejarDeEscuchar?.();
   dejarDeEscuchar = null;
   if (!E.sesion || !E.yo || E.db.modo !== 'real') return;
+  // Llegadas (INSERT) y cambios de estado (leído o archivado en otro equipo, UPDATE). Un aviso repetido (reconexión) no se cuenta
+  // dos veces; muchos seguidos se juntan en un solo repintado y un solo aviso (3-nov-2026, A07).
+  const vistos = new Set();
+  let nuevos = 0, juntar = null;
   dejarDeEscuchar = E.db.escuchar('mensaje_destinatarios', `perfil_id=eq.${E.yo.id}`, (p) => {
-    if (p.eventType !== 'INSERT') return;
-    E.db.olvidar();
-    window.dispatchEvent(new Event('complex:mensajes'));
-    if (/^#\/(bandeja|inicio|cartelera)?(\?|$)/.test(location.hash || '#/')) navegar();
-    aviso('📩 Te llegó un mensaje nuevo');
+    const id = p.new?.mensaje_id;
+    if (p.eventType === 'INSERT') {
+      if (id && vistos.has(id)) return;
+      if (id) { vistos.add(id); if (vistos.size > 500) vistos.delete(vistos.values().next().value); }
+      nuevos++;
+      medirLlegada(id);
+    }
+    clearTimeout(juntar);
+    juntar = setTimeout(() => {
+      E.db.olvidar();
+      refrescarVista();
+      if (nuevos) aviso(nuevos > 1 ? `📩 Te llegaron ${nuevos} mensajes nuevos` : '📩 Te llegó un mensaje nuevo');
+      nuevos = 0;
+    }, 400);
   });
   escucharNotas();
 }
+// Repinta solo las pantallas de lectura (bandeja, tablero, cartelera, enviados, un mensaje); en las demás solo los contadores,
+// para no tocar lo que la persona está escribiendo (un borrador nunca se pierde por una actualización).
+function refrescarVista() {
+  if (/^#\/(bandeja|inicio|cartelera|enviados|mensaje\/[^?]+)?(\?|$)/.test(location.hash || '#/')) window.dispatchEvent(new Event('complex:datos-nuevos'));
+  else window.dispatchEvent(new Event('complex:mensajes'));
+}
+// Medición (input 3-nov-2026 §6.4): instante en que llega cada entrega a este equipo (lo lee la prueba de latencia; no sale del equipo)
+function medirLlegada(id) {
+  if (!id) return;
+  const l = (window.__complexLlegadas ||= []);
+  l.push({ id, en: Date.now() });
+  if (l.length > 200) l.shift();
+}
+// Al volver a la app o reconectarse: lo que pudo cambiar mientras tanto (mensajes que llegaron sin conexión, leídos en otro equipo,
+// permisos quitados) se pide de nuevo, como máximo una vez cada 8 s (sin tormenta de consultas) y cada 5 min si sigue abierta.
+let recuperadoEn = 0;
+async function recuperar() {
+  if (!E.sesion || !E.colegio || !desbloqueada || Date.now() - recuperadoEn < 8000) return;
+  recuperadoEn = Date.now();
+  E.db.olvidar?.();
+  // primero los permisos (si cambiaron, no se repinta nada con los de antes); después lo que haya llegado
+  let c = null;
+  try { c = await refrescarMembresias(); } catch { /* sin conexión: se intenta en la próxima */ }
+  if (!c) return refrescarVista();
+  E.db.olvidar?.(); E.base = null; E._personasDe = null; circ = { clave: null, puede: false };
+  if (c.sinColegio) { aviso('Ya no tienes acceso a ese colegio.', 'error'); return navegar(); }
+  if (c.rolCambio) aviso('Tus permisos en el colegio cambiaron.');
+  ir(c.rolCambio ? '#/inicio' : location.hash || '#/inicio');
+}
+window.addEventListener('online', recuperar);
+document.addEventListener('visibilitychange', () => { if (document.visibilityState === 'visible') recuperar(); });
+setInterval(() => { if (document.visibilityState === 'visible') recuperar(); }, 5 * 60000);
 
 // Notas en tiempo real: cuando un docente pone o cambia una nota del colegio, la pantalla se actualiza sola
 // (la RLS decide qué notas le llegan a cada quien: la familia solo las de sus hijos)
