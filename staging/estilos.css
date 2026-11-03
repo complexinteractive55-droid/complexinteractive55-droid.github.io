@@ -89,7 +89,11 @@ small { color: var(--texto-2); font-size: .82em; }
 .menu-cab small { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .menu a, .menu-boton { display: flex; align-items: center; gap: 14px; padding: 12px; border-radius: 10px; color: var(--texto); font-size: 16px; font-weight: 500; background: none; border: 0; width: 100%; text-align: left; cursor: pointer; }
 .menu a:hover, .menu-boton:hover { background: var(--superficie-2); }
-.menu .ic { font-size: 20px; width: 26px; text-align: center; line-height: 1; }
+.menu .ic { font-size: 20px; width: 26px; text-align: center; line-height: 1; display: inline-grid; place-items: center; flex: none; }
+.menu .ic .ico { width: 22px; height: 22px; }
+.menu .ic-sub { color: var(--texto-2); }
+.menu .ic-sub .ico { width: 18px; height: 18px; }
+.menu a.activo .ic-sub { color: inherit; }
 .menu a.activo { background: var(--primario-suave); color: var(--primario); font-weight: 700; }
 .menu-pie { margin-top: auto; padding-top: 12px; border-top: 1px solid var(--borde); }
 
@@ -129,7 +133,10 @@ small { color: var(--texto-2); font-size: .82em; }
 .fila { display: flex; align-items: center; gap: 12px; padding: 10px 8px; border-radius: 10px; min-height: 52px; color: inherit; }
 .fila > span:has(> b), .fila .crece { display: flex; flex-direction: column; min-width: 0; flex: 1; }
 .fila b { font-weight: 600; overflow-wrap: break-word; }
-.fila > span:not(:has(> b)):not(.avatar):not(.num):not(.chip):not(.chips):not(.paso):not(.insignia):not(.punto):not(.botones-fila):not(.crece) { flex: none; font-size: 20px; width: 28px; text-align: center; }
+.fila > span:not(:has(> b)):not(.avatar):not(.num):not(.chip):not(.chips):not(.paso):not(.insignia):not(.punto):not(.botones-fila):not(.crece):not(.acciones-grupo) { flex: none; font-size: 20px; width: 28px; text-align: center; }
+/* Botones al final de una fila (Editar · Validar de las series): su ancho real; en pantallas angostas bajan de línea (3-nov-2026) */
+.fila:has(> .acciones-grupo) { flex-wrap: wrap; }
+.fila > .acciones-grupo { flex: none; margin: 0 0 0 auto; }
 .fila-boton { width: 100%; background: none; border: 0; text-align: left; cursor: pointer; }
 .fila-boton:hover, .fila-boton:focus-visible { background: var(--superficie-2); }
 .fila.inactivo { opacity: .55; }
@@ -175,6 +182,19 @@ small { color: var(--texto-2); font-size: .82em; }
 .btn-link:disabled { color: inherit; cursor: default; font-weight: 600; }
 .btn-icono { width: 42px; height: 42px; flex: none; display: inline-grid; place-items: center; border-radius: 10px; border: 0; background: transparent; cursor: pointer; font-size: 18px; color: var(--texto); }
 .btn-icono:hover { background: var(--superficie-2); }
+/* Iconos (§17): SVG del color del texto, al lado de la etiqueta (el botón ya separa con gap) */
+.ico { width: 1.15em; height: 1.15em; flex: none; vertical-align: -0.2em; }
+.btn .ico { width: 18px; height: 18px; }
+.btn-chico .ico { width: 16px; height: 16px; }
+.btn-icono .ico { width: 22px; height: 22px; }
+/* Botón que es SOLO icono (la tuerca de Ajustes): nombre en aria-label y área táctil de 44 px */
+.btn-solo-icono { min-width: 44px; min-height: 44px; padding: 8px 10px; }
+.btn-solo-icono .ico { width: 22px; height: 22px; }
+.avatar-ico .ico { width: 22px; height: 22px; }
+.cabecera .titulo .ico { width: .85em; height: .85em; margin-right: 8px; vertical-align: -0.08em; color: var(--texto-2); }
+/* Con una ventana abierta, la página de atrás no se desplaza ni recibe el desplazamiento que llega al final de la ventana */
+html.con-ventana { overflow: hidden; } /* solo html: si también body, la página salta arriba (body pasa a ser el que se desplaza) */
+.ventana-cuerpo { overscroll-behavior: contain; }
 :focus-visible { outline: 3px solid color-mix(in srgb, var(--primario) 55%, transparent); outline-offset: 2px; }
 
 .form { display: flex; flex-direction: column; gap: 14px; }
@@ -304,7 +324,14 @@ input.nota:disabled { background: transparent; border-color: transparent; color:
 .circ-elegidas:empty { display: none; }
 .circ-elegidas .chip button { border: 0; background: none; color: inherit; cursor: pointer; padding: 0 0 0 4px; font-size: 14px; }
 .circ-llegara { margin: 0; padding: 10px 12px; border-radius: 10px; background: var(--superficie-2); font-size: 15px; }
-.circ-hoja { border-top: 4px solid var(--primario); }
+/* §5 (3-nov-2026 noche): el paso «2 · La circular» es parte de la INTERFAZ y sigue el tema (claro u oscuro) con sus tokens. Antes
+   llevaba también la clase del papel (.circ-hoja, blanca siempre) y en modo oscuro quedaba un bloque blanco con campos oscuros.
+   El papel blanco sigue solo en la vista del documento; el PDF no cambia con el tema. */
+.circ-paso-doc { border-top: 4px solid var(--primario); }
+.circ-num-estado { font-weight: 700; color: var(--texto-2); }
+.circ-num-estado:empty { display: none; }
+.circ-inst { margin-bottom: 18px; }
+.circ-inst > .sub:first-child { margin-top: 4px; }
 .circ-cuadro-form { display: grid; grid-template-columns: 1fr; border: 1px solid var(--borde); border-radius: 10px; overflow: hidden; }
 .circ-cuadro-form > * { display: flex; flex-direction: column; gap: 4px; padding: 10px 12px; margin: 0; border-bottom: 1px solid var(--borde); }
 .circ-cuadro-form > :last-child { border-bottom: 0; }
@@ -319,6 +346,11 @@ input.nota:disabled { background: transparent; border-color: transparent; color:
 .circ-firma-form h3 { margin: 0; font-size: 16px; }
 .circ-mas { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 8px 16px; margin: 4px 2px 0; }
 .circ-visor { height: 62vh; margin: 8px 0; }
+/* §13 Ver PDF: la ventana no se desplaza; el visor ocupa todo el espacio que queda y es la ÚNICA zona de desplazamiento (rueda,
+   trackpad o teclado sobre el documento o sus márgenes grises mueven el PDF; el fondo de la app queda quieto) */
+.ventana-pdf .ventana-cuerpo { max-width: 1100px; display: flex; flex-direction: column; gap: 6px; overflow: hidden; padding: 10px 12px; }
+.ventana-pdf .ventana-cuerpo > p { margin: 0; font-size: 14px; }
+.ventana-pdf .circ-visor { flex: 1 1 auto; min-height: 0; height: auto; margin: 0; }
 /* La hoja simula el papel: blanca también en modo oscuro */
 .circ-hoja { --papel: #fff; --tinta: #1b1b1b; --linea: #9aa3b2; background: var(--papel); color: var(--tinta); border-radius: 6px; padding: 22px 20px; box-shadow: var(--sombra); font-family: Arial, Helvetica, sans-serif; font-size: 14px; line-height: 1.5; }
 .circ-membrete { display: flex; align-items: center; gap: 10px; border-bottom: 2px solid var(--linea); padding-bottom: 10px; margin-bottom: 14px; }

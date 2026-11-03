@@ -2,7 +2,9 @@
 // supabase/migrations/20261029130000_circular_series_area.sql (configurar áreas y series, validar, vista previa, emitir, anular).
 // 2-nov-2026 (20261102140000_circular_firmas_emisores): quién prepara circulares (además de Administración), con su cargo y
 // área, y la firma propia de cada persona (imagen PNG que solo ve su dueño).
-export function crearCircularesDemo({ tabla, usuario, guardar, ahora, err, esAdmin, consecutivoCircular, formatoCirc, emisorCirc, puedePreparar, existeArchivo }) {
+// 5-nov-2026 (20261105100000_circular_series_varias_numero_envio): varias series por área y período, la serie elegida en la circular
+// y el número oficial al confirmar el envío (circular_asignar_numero); el selector pide circular_series_disponibles.
+export function crearCircularesDemo({ tabla, usuario, guardar, ahora, err, esAdmin, consecutivoCircular, numeroDeSerie, vigentesDe, hoyLocal, formatoCirc, emisorCirc, puedePreparar, existeArchivo }) {
   const soloAdmin = (c) => { if (!usuario() || !esAdmin(c)) err('Solo el administrador del colegio configura y emite las circulares.'); };
   const historia = (c, objeto, id, accion, antes, despues) => tabla('circular_config_historial').push({ id: Date.now() + Math.random(), colegio_id: c, actor_id: usuario(), objeto, objeto_id: id, accion,
     antes: antes ? JSON.parse(JSON.stringify(antes)) : null, despues: despues ? JSON.parse(JSON.stringify(despues)) : null, creado_en: ahora() });
@@ -43,22 +45,22 @@ export function crearCircularesDemo({ tabla, usuario, guardar, ahora, err, esAdm
       soloAdmin(a.p_colegio);
       const c = a.p_colegio, area = a.p_area || null, suf = a.p_sufijo || null, ultimo = Number(a.p_ultimo_usado);
       if (area && !tabla('circular_areas').some((x) => x.id === area && x.colegio_id === c)) err('Esa área no es de este colegio.');
-      if (!a.p_prefijo || a.p_prefijo.length > 30) err('Escribe el prefijo (hasta 30 caracteres), p. ej. «Memo E2-».');
+      if (!String(a.p_prefijo || '').trim() || a.p_prefijo.length > 30) err('Escribe el código de la serie (hasta 30 caracteres), p. ej. «Memo E2-» o «CT Q-».');
       if (!/^[0-9]{4}(-[0-9]{4})?$/.test(a.p_periodo || '')) err('El período va como 2026 o 2026-2027.');
       if (!(a.p_ancho >= 1 && a.p_ancho <= 6)) err('El ancho del número va de 1 a 6 cifras.');
       if (!Number.isInteger(ultimo) || ultimo < 0) err('Indica el último número oficialmente usado (0 si la serie empieza).');
       if (a.p_vigente_desde && a.p_vigente_hasta && a.p_vigente_hasta < a.p_vigente_desde) err('La vigencia termina antes de empezar.');
+      // Duplicado real: el mismo código (sin mayúsculas ni espacios de los extremos) en el mismo período del colegio
+      const norm = (t) => String(t || '').trim().toLowerCase();
+      const otra = tabla('circular_series').find((x) => x.colegio_id === c && norm(x.prefijo) === norm(a.p_prefijo) && x.periodo === a.p_periodo && x.id !== a.p_id);
+      if (otra) err(`Ya existe la serie «${otra.prefijo.trim()}» del período ${otra.periodo} (${tabla('circular_areas').find((x) => x.id === otra.area_id)?.nombre || 'del colegio, sin área'}). Usa otro código o período (no se repiten: darían los mismos números).`);
       const molde = { prefijo: a.p_prefijo, periodo: a.p_periodo, ancho: Number(a.p_ancho), sufijo: suf, area_id: area || 'x' };
       const sig = formatoCirc(molde, ultimo + 1);
       if (existe(c, sig, a.p_id)) err(`${sig} ya existe en el colegio: revisa el último número usado.`);
       let s;
       if (!a.p_id) {
-        const vig = tabla('circular_series').find((x) => x.colegio_id === c && (x.area_id || null) === area && x.vigente);
-        if (vig) {
-          if (!a.p_reemplazar) err('Esa área ya tiene una serie vigente. Para abrir una nueva (p. ej. otro año), confirma que reemplaza a la anterior.');
-          vig.vigente = false; historia(c, 'serie', vig.id, 'reemplazada', vig, null);
-        }
-        if (tabla('circular_series').some((x) => x.colegio_id === c && x.prefijo === a.p_prefijo && x.periodo === a.p_periodo)) err('Ya existe una serie con ese prefijo y período en el colegio.');
+        // Varias series vigentes por área (5-nov): reemplazar solo si se pide (las demás de esa área dejan de estar vigentes)
+        if (a.p_reemplazar) for (const vig of vigentesDe(c, area)) { vig.vigente = false; historia(c, 'serie', vig.id, 'reemplazada', vig, null); }
         s = { id: crypto.randomUUID(), colegio_id: c, area_id: area, prefijo: a.p_prefijo, periodo: a.p_periodo, ancho: Number(a.p_ancho), sufijo: suf, ultimo, vigente: true, provisional: true,
           vigente_desde: a.p_vigente_desde || null, vigente_hasta: a.p_vigente_hasta || null, validada_por: null, validada_en: null, nota: (a.p_nota || '').trim() || null, creado_en: ahora() };
         tabla('circular_series').push(s); historia(c, 'serie', s.id, 'creada', null, s);
@@ -117,9 +119,38 @@ export function crearCircularesDemo({ tabla, usuario, guardar, ahora, err, esAdm
       if (!puedePreparar(a.p_colegio)) err('Solo Administración o quien el administrador designe preparan circulares institucionales.');
       if (emisorCirc(a.p_colegio) || !esAdmin(a.p_colegio)) a = { ...a, p_area: emisorCirc(a.p_colegio)?.area_id || null }; // numera en su área designada
       const modo = tabla('circular_ajustes').find((x) => x.colegio_id === a.p_colegio)?.asignar_numero || 'guardar';
-      const s = tabla('circular_series').find((x) => x.colegio_id === a.p_colegio && (x.area_id || null) === (a.p_area || null) && x.vigente);
+      const vs = vigentesDe(a.p_colegio, a.p_area || null), s = vs[0];
       if (!s) return { hay_serie: false, asignar_numero: modo };
-      return { hay_serie: true, asignar_numero: modo, serie_id: s.id, provisional: s.provisional, siguiente: texto(s, s.ultimo + 1), agotada: !!s.area_id && String(s.ultimo + 1).length > s.ancho };
+      return { hay_serie: true, asignar_numero: modo, serie_id: s.id, provisional: s.provisional, varias: vs.length > 1, siguiente: texto(s, s.ultimo + 1), agotada: !!s.area_id && String(s.ultimo + 1).length > s.ancho };
+    },
+    // Selector de «Consecutivo»: las series vigentes del área que emite (quien fue designado: las de SU área), con el próximo ESTIMADO
+    circular_series_disponibles(a) {
+      if (!puedePreparar(a.p_colegio)) err('Solo Administración o quien el administrador designe preparan circulares institucionales.');
+      const area = emisorCirc(a.p_colegio) || !esAdmin(a.p_colegio) ? emisorCirc(a.p_colegio)?.area_id || null : a.p_area || null;
+      const hoy = hoyLocal(), nomArea = (id) => tabla('circular_areas').find((x) => x.id === id)?.nombre || null;
+      return {
+        asignar_numero: tabla('circular_ajustes').find((x) => x.colegio_id === a.p_colegio)?.asignar_numero || 'guardar', area_id: area, area: nomArea(area),
+        series: vigentesDe(a.p_colegio, area).sort((x, y) => x.prefijo.trim().toLowerCase().localeCompare(y.prefijo.trim().toLowerCase()) || x.periodo.localeCompare(y.periodo)).map((s) => ({
+          id: s.id, prefijo: s.prefijo, periodo: s.periodo, sufijo: s.sufijo ?? null, ancho: s.ancho, area_id: s.area_id || null, area: nomArea(s.area_id), provisional: s.provisional,
+          vigente_desde: s.vigente_desde || null, vigente_hasta: s.vigente_hasta || null, vigente_hoy: (!s.vigente_desde || hoy >= s.vigente_desde) && (!s.vigente_hasta || hoy <= s.vigente_hasta),
+          agotada: String(s.ultimo + 1).length > s.ancho, siguiente: String(s.ultimo + 1).length > s.ancho ? null : texto({ ...s, area_id: s.area_id || 'x' }, s.ultimo + 1) })),
+      };
+    },
+    // Número oficial al confirmar el envío: una vez por circular (reintentos y otras pestañas reciben el mismo)
+    circular_asignar_numero(a) {
+      const b = tabla('circular_borradores').find((x) => x.id === a.p_borrador);
+      if (!b || !esAdmin(b.colegio_id)) err('Solo Administración envía circulares a la comunidad del colegio.');
+      if (b.estado === 'anulada') err('Esa circular está anulada: no se envía.');
+      const r = (repetido) => ({ id: b.id, version: b.version, serie_id: b.serie_id, numero: b.numero, consecutivo: b.consecutivo, estado: b.estado || 'borrador', repetido });
+      if (b.numero) {
+        if ((b.estado || 'borrador') === 'borrador' && tabla('circular_series').find((s) => s.id === b.serie_id)?.provisional) err(`El número ${b.consecutivo} viene de una serie provisional: valida la serie con los registros del colegio antes de emitir.`);
+        return r(true);
+      }
+      if (b.version !== a.p_version) err(`La circular cambió mientras la enviabas (versión ${a.p_version} → ${b.version}): ábrela otra vez y revisa antes de enviar.`);
+      const n = b.serie_id ? numeroDeSerie(b.colegio_id, b.serie_id, b.area_id || null, true) : consecutivoCircular(b.colegio_id, b.area_id || null, true);
+      tabla('circular_borrador_versiones').push({ borrador_id: b.id, version: b.version, datos: b.datos, guardado_por: b.actualizado_por || null, guardado_en: b.actualizado_en || null });
+      Object.assign(b, n, { datos: { ...b.datos, consecutivo: n.consecutivo }, version: b.version + 1, actualizado_en: ahora(), actualizado_por: usuario() });
+      return r(false);
     },
     circular_mi_perfil(a) {
       const c = a.p_colegio, yo = usuario();
@@ -196,7 +227,7 @@ export function crearCircularesDemo({ tabla, usuario, guardar, ahora, err, esAdm
       if (b.estado === 'emitida') return { ...b, repetido: true };
       if (b.estado === 'anulada') err('Esa circular está anulada.');
       if (!b.numero) {
-        const n = consecutivoCircular(b.colegio_id, b.area_id || null, true);
+        const n = b.serie_id ? numeroDeSerie(b.colegio_id, b.serie_id, b.area_id || null, true) : consecutivoCircular(b.colegio_id, b.area_id || null, true);
         Object.assign(b, n, { datos: { ...b.datos, consecutivo: n.consecutivo } });
       } else if (tabla('circular_series').find((s) => s.id === b.serie_id)?.provisional !== false) {
         err(`El número ${b.consecutivo} viene de una serie provisional: valida la serie con los registros del colegio antes de emitir.`);

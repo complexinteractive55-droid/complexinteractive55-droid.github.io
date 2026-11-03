@@ -1,6 +1,8 @@
 /* ===================== REA Phidias: menú agrupado, personas, mensajería, aula, calendario ===================== */
 .contenedor-principal { min-width: 0; }
 .filtro-menu { margin: 4px 0 10px; min-height: 40px !important; font-size: 15px; }
+/* La lupa del filtro, del mismo juego de iconos (antes, el emoji 🔍 en el texto de ayuda) */
+.filtro-menu { padding-left: 38px !important; background: var(--superficie) url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%238a94a6' stroke-width='2' stroke-linecap='round'%3E%3Ccircle cx='11' cy='11' r='7'/%3E%3Cpath d='m20 20-4-4'/%3E%3C/svg%3E") no-repeat 12px 50% / 18px 18px; }
 .menu-grupo { border-radius: 10px; }
 .menu-grupo > summary { list-style: none; display: flex; align-items: center; gap: 14px; padding: 12px; border-radius: 10px; cursor: pointer; font-weight: 600; color: var(--texto); }
 .menu-grupo > summary::-webkit-details-marker { display: none; }
@@ -91,6 +93,10 @@
 }
 .menu a.sub { display: flex; align-items: center; gap: 8px; }
 .menu a.sub > span:first-child { flex: 1; min-width: 0; }
+/* Con icono (3-nov-2026, §17): el icono no crece y la etiqueta queda donde estaba (52 px, alineada con la del grupo) */
+.menu a.sub:has(> .ic-sub) { padding-left: 18px; }
+.menu a.sub > .ic-sub:first-child { flex: none; }
+.menu a.sub > .ic-sub + span { flex: 1; min-width: 0; }
 .menu a.sub .contador { flex: none; }
 .cal-nav h2.mes-titulo { text-transform: capitalize; }
 .cal-nav h2 { text-transform: none; }

@@ -9,18 +9,25 @@
 // Pantalla en tres pasos, como el «Redactar» de Phidias (Fabio, 3-nov-2026: «muy fácil de enviar»): arriba ¿PARA QUIÉN? (casillas
 // de Estudiantes, Docentes…: a quiénes se envía y lo que dice el «Para» del documento), luego LA CIRCULAR con el formato del
 // documento, y abajo «Ver PDF» y «Enviar» (Administración). Lo que llega a cada bandeja es el PDF institucional.
+// 3-nov-2026 noche (Fabio, «Correcciones de circulares»): los borradores se ven en la pantalla principal de Circulares (ya no hay
+// acceso aparte); la configuración vive en la tuerca «Ajustes» (#/circulares/ajustes); cada circular ELIGE su serie en
+// «Consecutivo» (varias por área y período) y, con «número al emitir», el número oficial se asigna al confirmar el envío.
 import { E, perfiles, logoHTML, base } from '../estado.js';
 import { esc, aviso, ventana, confirmar, leerForm, nombre, nombreLista, vacio, fechaHora } from '../ui.js';
 import { cabecera } from './comun.js';
 import { AREAS, CARGO_DE_AREA, LIMITES, hoyBogota, fechaLarga, textoDestinatarios, saludoSugerido, textoPlano, contenidoHTML, leerEditor, datosParaServidor, numeracion } from '../circular_contenido.js';
 import { perfilCircular, urlFirma } from '../firma_circular.js';
+import { icono } from '../iconos.js';
 
-const VOLVER = '#/circulares-institucionales';
+const VOLVER = '#/circulares';
+const AJUSTES = '#/circulares/ajustes';
 const SIN_NUMERO = 'Sin número definitivo'; // lo mismo que pone el servidor cuando no hay consecutivo
 // Identificador de la creación de un documento (el mismo en cada reintento)
 const nuevoId = () => crypto.randomUUID?.() || '10000000-1000-4000-8000-100000000000'.replace(/[018]/g, (c) => (c ^ (crypto.getRandomValues(new Uint8Array(1))[0] & (15 >> (c / 4)))).toString(16));
-// El consecutivo de un borrador guardado es el de la base (columna), no lo que diga el formulario
-const deFila = (f) => normal({ ...f.datos, consecutivo: f.consecutivo ?? f.datos?.consecutivo });
+// El consecutivo y la serie de un borrador guardado son los de la base (columnas), no lo que diga el formulario
+const deFila = (f) => normal({ ...f.datos, consecutivo: f.consecutivo ?? f.datos?.consecutivo, serie_id: f.serie_id || '' });
+// «CT Q-» · Rectoría · 2026-2027 (cómo se reconoce una serie en el selector y en los avisos)
+const nombreSerie = (s) => [s.prefijo?.trim(), s.area || 'Colegio (sin área)', s.periodo].filter(Boolean).join(' · ');
 
 // Copia en el equipo de lo que aún no se guarda en el servidor (una por borrador; "nueva" = el que aún no existe)
 // de cada persona (3-nov-2026): en un equipo compartido nadie recupera lo que otra persona dejó sin guardar
@@ -68,6 +75,7 @@ const normal = (d = {}) => {
     firmar: d.firmar === true,
     plantilla_id: typeof d.plantilla_id === 'string' ? d.plantilla_id : '',
     envio: normalEnvio(d.envio),
+    serie_id: typeof d.serie_id === 'string' ? d.serie_id : '', // la serie elegida en «Consecutivo» (la base la guarda en su columna)
   };
 };
 const igual = (a, b) => JSON.stringify(a) === JSON.stringify(b);
@@ -82,47 +90,54 @@ const formatoPermitido = (yo, x) => !yo.formatos || yo.formatos.todos || (Array.
 const referencia = (id) => (id ? id.slice(0, 8).toUpperCase() : 'se asigna al guardar');
 const soloAdmin = (m, titulo) => { m.innerHTML = cabecera(titulo, { volver: '#/circulares' }) + vacio('Solo Administración o quien el administrador designe prepara las circulares institucionales.'); };
 
-// ---------------------------------------------------------------- Lista de borradores
-export async function lista(m) {
-  const yo = await perfilCircular();
-  if (!yo.puede_preparar) return soloAdmin(m, 'Circulares institucionales');
-  const admin = yo.admin;
+// ---------------------------------------------------------------- Borradores (en la pantalla principal de Circulares)
+// 3-nov-2026 noche (Fabio): sin el acceso aparte «Circulares institucionales (PDF) · borradores y PDF de revisión»: los borradores,
+// las emitidas y lo que quedó sin guardar en el equipo se ven en Circulares, debajo de «Nueva circular». Nada se borra.
+export async function seccionBorradores(div) {
+  const yo = await perfilCircular().catch(() => ({}));
+  if (!yo.puede_preparar) { div.remove(); return; }
   const filas = await E.db.select('circular_borradores', { eq: { colegio_id: E.colegio.id }, order: 'actualizado_en desc' });
   await perfiles(filas.map((f) => f.actualizado_por || f.autor_id).filter(Boolean));
   const sinGuardar = leerLocal('nueva');
   const fila = (href, d, linea, marca = '') => `
     <a class="fila fila-boton" href="${href}">
-      <span class="avatar">📄</span>
+      <span class="avatar avatar-ico">${icono('circular')}</span>
       <span class="crece"><b>${esc(d.titulo || '(sin asunto)')}</b>
         <small>${esc([d.consecutivo, d.dependencia, textoDestinatarios(d.destinatarios, d.destinatarios_otros)].filter(Boolean).join(' · ') || '—')}</small>
         <small>${linea}${marca}</small></span>
     </a>`;
-  m.innerHTML = cabecera('Circulares institucionales', { volver: '#/circulares', acciones: '<a class="btn btn-primario" href="#/circular-institucional/nueva">＋ Nueva</a>' }) + `
-    <div class="aviso-caja"><p><b>Formato institucional en PDF.</b> ${admin ? 'Toca «Nueva», elige para quién es, llénala, mira el PDF y envíala: llega como PDF a la bandeja de cada persona.' : 'Aquí preparas TUS circulares y las revisas en PDF; Administración las envía (y también las ve).'}</p>
-      <p class="ayuda">Complex asigna el consecutivo al guardar cada circular por primera vez y no lo vuelve a cambiar.</p>
-      ${yo.firma || yo.sin_firmas ? '' : '<p class="ayuda">Para que tu firma vaya encima de tu nombre en el PDF, cárgala en <a href="#/perfil">Mi cuenta y ajustes → Mi firma</a>.</p>'}</div>
+  const estado = (f) => f.estado === 'emitida' ? '✅ Emitida' : f.estado === 'anulada' ? '⛔ Anulada' : f.consecutivo ? 'Borrador · número reservado' : 'Borrador · sin número definitivo (se asigna al enviar)';
+  div.innerHTML = `<h2 class="sub">Circulares institucionales (PDF)</h2>
+    ${yo.firma || yo.sin_firmas ? '' : '<p class="ayuda">Para que tu firma vaya encima de tu nombre en el PDF, cárgala en <a href="#/perfil">Mi cuenta y ajustes → Mi firma</a>.</p>'}
     ${sinGuardar || filas.length ? `<div class="lista">
       ${sinGuardar ? fila('#/circular-institucional/nueva', normal({ ...sinGuardar.datos, consecutivo: '' }), 'Sin guardar · solo en este equipo · aún sin consecutivo') : ''}
       ${filas.map((f) => fila(`#/circular-institucional/${f.id}`, deFila(f),
-        `${f.estado === 'emitida' ? '✅ Emitida' : f.estado === 'anulada' ? '⛔ Anulada' : 'Borrador'}${!f.consecutivo && (!f.estado || f.estado === 'borrador') ? ' · aún sin número' : ''} · guardado ${esc(fechaHora(f.actualizado_en))} por ${esc(nombre(E.perfiles.get(f.actualizado_por || f.autor_id)))}`,
+        `${estado(f)} · guardado ${esc(fechaHora(f.actualizado_en))} por ${esc(nombre(E.perfiles.get(f.actualizado_por || f.autor_id)))}`,
         leerLocal(f.id) ? ' · <b>con cambios sin guardar en este equipo</b>' : '')).join('')}
-    </div>` : vacio('Aún no hay circulares institucionales en borrador.')}
-    ${admin ? `<details class="tarjeta" data-emisores><summary><b>Quién prepara circulares</b> · además de Administración (Gerencia, direcciones de sección…) y su firma</summary><div data-emisores-cuerpo><p class="ayuda">Cargando…</p></div></details>
-    <details class="tarjeta" data-numeracion><summary><b>Numeración por área</b> · series de consecutivos (prefijo, número y sufijo)</summary><div data-numeracion-cuerpo><p class="ayuda">Cargando…</p></div></details>` : ''}`;
-  if (!admin) return;
-  // Los paneles siguen abiertos cuando la lista se vuelve a pintar (llegan datos nuevos tras guardar algo en ellos)
-  const det = m.querySelector('[data-numeracion]');
-  det.addEventListener('toggle', () => { numeracionAbierta = det.open; if (det.open) numeracion_(det.querySelector('[data-numeracion-cuerpo]')); });
-  if (numeracionAbierta) det.open = true;
-  const dEm = m.querySelector('[data-emisores]');
-  dEm.addEventListener('toggle', () => { emisoresAbierto = dEm.open; if (dEm.open) emisores_(dEm.querySelector('[data-emisores-cuerpo]')); });
-  if (emisoresAbierto) dEm.open = true;
+    </div>` : `<p class="ayuda">${yo.admin ? 'Aún no hay circulares institucionales. Toca «Nueva circular».' : 'Aún no has preparado circulares institucionales. Toca «Nueva circular».'}</p>`}`;
+}
+
+// La dirección de antes (#/circulares-institucionales) abre Circulares (app.js); se deja por si alguien la llama directo
+export async function lista(m) { return (await import('./circulares.js')).lista(m); }
+
+// ---------------------------------------------------------------- Ajustes (la tuerca junto a «Nueva circular»)
+// Solo Administración (el servidor también lo exige en cada operación: circular_solo_admin). Lo que antes estaba en dos paneles
+// plegados al final de «Circulares institucionales»: quién prepara circulares (y el formato de cada área), y la numeración
+// (cuándo queda el número, áreas y series). La firma de cada persona la carga ella misma en «Mi cuenta y ajustes».
+export async function ajustes(m) {
+  const yo = await perfilCircular().catch(() => ({}));
+  if (!yo.admin) { m.innerHTML = cabecera('Ajustes de circulares', { volver: VOLVER }) + vacio('Solo Administración configura las circulares del colegio.'); return; }
+  m.innerHTML = cabecera(`${icono('ajustes')} Ajustes de circulares`, { volver: VOLVER }) + `
+    <section class="tarjeta" data-ajustes-numeracion><h2>Numeración: series y consecutivos</h2><div data-numeracion-cuerpo><p class="ayuda">Cargando…</p></div></section>
+    <section class="tarjeta" data-ajustes-emisores><h2>Quién prepara circulares</h2><p class="ayuda">Además de Administración: Gerencia, direcciones de sección… con su cargo, su área y el formato del PDF de cada área.</p><div data-emisores-cuerpo><p class="ayuda">Cargando…</p></div></section>
+    <section class="tarjeta"><h2>Firma</h2><p class="ayuda">Cada persona carga su propia firma en <a href="#/perfil">Mi cuenta y ajustes → Mi firma</a>; nadie puede poner la firma de otra. ${yo.firma ? 'Tu firma ya está cargada.' : 'Tú aún no has cargado la tuya.'}</p></section>`;
+  numeracion_(m.querySelector('[data-numeracion-cuerpo]'));
+  emisores_(m.querySelector('[data-emisores-cuerpo]'));
 }
 
 // ---------------------------------------------------------------- Quién prepara circulares (2-nov-2026; migración 20261102140000)
 // El administrador designa a otras personas del personal (Gerencia, directores de sección…), con el cargo con el que firman
 // y el área en la que numeran (sin área: la serie del colegio). Cada una ve y edita solo SUS circulares y pone SU firma.
-let emisoresAbierto = false;
 const PERSONAL = ['admin', 'profesor', 'director_seccion', 'enfermeria'];
 const CARGOS = ['Rector(a)', 'Gerente', 'Director(a) de Sección Infantil', 'Director(a) de Sección Prejuvenil', 'Director(a) de Sección Juvenil', 'Coordinador(a) académico(a)', 'Coordinador(a) de convivencia'];
 async function emisores_(caja) {
@@ -144,7 +159,7 @@ async function emisores_(caja) {
 // Formato del PDF de cada área (2-nov-2026, Fabio: «en gerencia no debe pasar que pueda enviar el formato como de rectoría y
 // viceversa»; «esta opción no debe ser elegible»): el administrador asigna UN formato a cada área; quien emite por esa área usa ese
 async function formatosArea_(div, areas) {
-  if (!areas.length) { div.innerHTML = '<p class="ayuda"><b>Formato del PDF de cada área:</b> primero crea las áreas (Rectoría, Gerencia…) en «Numeración por área».</p>'; return; }
+  if (!areas.length) { div.innerHTML = '<p class="ayuda"><b>Formato del PDF de cada área:</b> primero crea las áreas (Rectoría, Gerencia…) en «Numeración: series y consecutivos».</p>'; return; }
   let [plantillas, asignados] = await Promise.all([
     E.db.modo === 'demo' ? PLANTILLAS_DEMO : E.db.select('circular_plantillas', { eq: { colegio_id: E.colegio.id, estado: 'aprobada' }, order: 'revision desc' }).catch(() => []),
     E.db.rpc('circular_formatos_por_area', { p_colegio: E.colegio.id }).catch(() => null),
@@ -190,7 +205,6 @@ async function designar(x, areas, lista) {
   return r === 'ok';
 }
 
-let numeracionAbierta = false;
 // ---------------------------------------------------------------- Numeración por área (29-oct-2026; migración 20261029130000)
 // Cada área tiene su serie y su contador. El campo pide el ÚLTIMO número oficialmente usado (el siguiente es +1).
 // Una serie nueva queda PROVISIONAL: sirve para borradores, pero solo se emite cuando el administrador la valida con los
@@ -201,14 +215,15 @@ async function numeracion_(caja) {
   catch (e) { caja.innerHTML = `<p class="ayuda">${/does not exist|no existe|function/i.test(e.message) ? 'La numeración por área aún no está instalada en la base de este colegio (migración pendiente).' : esc(e.message)}</p>`; return; }
   const otra = () => numeracion_(caja);
   const serieHTML = (s) => `<div class="fila" data-serie="${esc(s.id)}"><span class="crece">
-      <b>${esc(s.area || 'Colegio (sin área)')}</b> ${s.vigente ? '' : '<small>(ya no vigente)</small>'}
+      <b>${esc(nombreSerie(s))}</b> ${s.vigente ? '' : '<small>(ya no vigente)</small>'}
       <small>Último usado: <b>${esc(s.area_id ? s.ultimo_texto_area || 'ninguno' : s.ultimo_texto || 'ninguno')}</b> · Siguiente: <b data-siguiente>${esc(s.siguiente || 'la serie se agotó: crea una nueva')}</b></small>
       <small>${s.provisional ? '⚠ Provisional: sirve para borradores; para emitir hay que validarla' : `✅ Validada por ${esc(s.validada_por_nombre || '—')} el ${esc(fechaHora(s.validada_en))}`}${s.vigente_desde || s.vigente_hasta ? ` · vigencia ${esc(s.vigente_desde || '…')} a ${esc(s.vigente_hasta || '…')}` : ''}${s.anulados ? ` · ${s.anulados} número(s) anulado(s)` : ''}</small>
       ${s.ultimo_documento ? `<small>Último documento: ${esc(s.ultimo_documento.consecutivo || '')} · «${esc(s.ultimo_documento.titulo || '(sin asunto)')}» · ${esc(s.ultimo_documento.estado)} · versión ${s.ultimo_documento.version}</small>` : ''}
       ${s.nota ? `<small>Nota: ${esc(s.nota)}</small>` : ''}</span>
     ${s.vigente ? `<span class="acciones-grupo"><button class="btn btn-chico" data-editar-serie="${esc(s.id)}">Editar</button>${s.provisional ? `<button class="btn btn-chico" data-validar="${esc(s.id)}">Validar</button>` : ''}</span>` : ''}</div>`;
   caja.innerHTML = `
-    <p class="ayuda">Formato: <b>prefijo</b> + número con ceros (ancho) + <b>sufijo</b>. Ej.: «Memo E2-» + 008 + «-2026-2027». Solo sube el número; el prefijo y el sufijo no cambian dentro de la serie.
+    <p class="ayuda">Formato: <b>código</b> + número con ceros (ancho) + <b>sufijo</b>. Ej.: «Memo E2-» + 008 + «-2026-2027». Solo sube el número; el código y el sufijo no cambian dentro de la serie.
+      Una misma área puede tener <b>varias series</b> en el mismo período (p. ej. «CT MEMO-», «CT Q-», «CT K-»), cada una con su propio contador; lo que no se repite es el mismo código en el mismo período.
       No se reinicia sola al cambiar de año: abrir otra serie es una decisión explícita. <b>Los formatos oficiales de cada área están pendientes de confirmar con Gerencia.</b></p>
     <fieldset class="form" data-ajuste><legend><b>¿Cuándo queda definitivo el número?</b> (decisión pendiente)</legend>
       <label class="check"><input type="radio" name="asignar" value="guardar" ${n.asignar_numero === 'guardar' ? 'checked' : ''}> Al guardar el borrador por primera vez (como hoy)</label>
@@ -235,16 +250,16 @@ async function numeracion_(caja) {
     const vig = (areaId) => n.series.some((x) => x.vigente && (x.area_id || null) === (areaId || null) && x.id !== s?.id);
     const r = await ventana({ titulo: s ? 'Editar serie' : 'Nueva serie', html: `<div class="form">
       ${s ? `<p><b>${esc(s.area || 'Colegio (sin área)')}</b></p>` : `<label>Área<select name="area"><option value="">Colegio (sin área)</option>${n.areas.filter((a) => a.activo).map((a) => `<option value="${esc(a.id)}">${esc(a.nombre)}</option>`).join('')}</select></label>`}
-      <label>Prefijo (constante)<input name="prefijo" maxlength="30" value="${esc(s?.prefijo || '')}" placeholder="Ej.: Memo E2-"></label>
+      <label>Código de la serie (constante)<input name="prefijo" maxlength="30" value="${esc(s?.prefijo || '')}" placeholder="Ej.: Memo E2- · CT Q- · Z-"></label>
       <label>Ancho del número (cifras con ceros)<input name="ancho" type="number" min="1" max="6" value="${esc(s?.ancho ?? 3)}"></label>
       <label>Sufijo (constante; vacío = «-» + período)<input name="sufijo" maxlength="40" value="${esc(s?.sufijo || '')}" placeholder="Ej.: -2026-2027"></label>
-      <label>Período (año o año académico)<input name="periodo" maxlength="9" value="${esc(s?.periodo || '')}" placeholder="2026-2027"></label>
+      <label>Período (año o año académico)<input name="periodo" maxlength="9" inputmode="numeric" pattern="[0-9]{4}(-[0-9]{4})?" value="${esc(s?.periodo || '')}" placeholder="2026 o 2026-2027"></label>
       <label><b>Último número OFICIALMENTE usado</b> (0 si empieza; el siguiente será +1)<input name="ultimo" type="number" min="0" value="${esc(s?.ultimo ?? 0)}"></label>
       <p class="ayuda" data-ejemplo></p>
       <label>Vigente desde (opcional)<input name="desde" type="date" value="${esc(s?.vigente_desde || '')}"></label>
       <label>Vigente hasta (opcional)<input name="hasta" type="date" value="${esc(s?.vigente_hasta || '')}"></label>
       <label>Nota (opcional)<input name="nota" maxlength="500" value="${esc(s?.nota || '')}"></label>
-      <label class="check" data-reemplazar hidden><input type="checkbox" name="reemplazar"> Esta área ya tiene una serie vigente: abrir esta la reemplaza (la anterior conserva sus números)</label>
+      <label class="check" data-reemplazar hidden><input type="checkbox" name="reemplazar"> Además, dejar de usar las otras series vigentes de esta área (conservan sus números). No hace falta para crear otra serie.</label>
       <p class="ayuda">Al cambiar el formato o el último número, la serie queda provisional y hay que volver a validarla.</p></div>`,
       alAbrir: (c) => {
         const ver = () => {
@@ -255,6 +270,10 @@ async function numeracion_(caja) {
         c.addEventListener('input', ver); c.addEventListener('change', ver); ver();
       },
       botones: [{ texto: 'Cancelar' }, { texto: 'Guardar', antes: async (c) => { const d = leerForm(c);
+        // se revisa aquí lo que el servidor rechazaría, sin cerrar la ventana ni perder lo escrito
+        if (!String(d.prefijo || '').trim()) throw new Error('Escribe el código de la serie, p. ej. «CT Q-».');
+        if (!/^[0-9]{4}(-[0-9]{4})?$/.test(String(d.periodo || '').trim())) throw new Error('El período va como 2026 o 2026-2027.');
+        d.periodo = String(d.periodo).trim();
         return E.db.rpc('circular_serie_guardar', { p_colegio: E.colegio.id, p_id: s?.id || null, p_area: s ? s.area_id : d.area || null, p_prefijo: d.prefijo, p_periodo: d.periodo, p_ancho: Number(d.ancho),
           p_sufijo: d.sufijo || null, p_ultimo_usado: Number(d.ultimo), p_vigente_desde: d.desde || null, p_vigente_hasta: d.hasta || null, p_nota: d.nota || null, p_reemplazar: !!d.reemplazar }); } }] });
     if (r) { aviso(`Serie guardada · siguiente: ${r.siguiente}`); otra(); }
@@ -355,12 +374,16 @@ export async function editor(m, p) {
         <label>Agregar al «Para» del documento (opcional)<input name="destinatarios_otros" maxlength="300" placeholder="Ej.: Monitoras de transporte"></label>
         ${yo.admin ? '<p class="circ-llegara" data-llegara role="status" aria-live="polite"></p>' : '<p class="ayuda">Tú la preparas; Administración la envía a estas personas.</p>'}
       </section>
-      <section class="tarjeta circ-paso circ-hoja">
+      <section class="tarjeta circ-paso circ-paso-doc">
         <h2><span class="circ-num">2</span> La circular</h2>
         <div class="circ-cuadro-form">
           <div><span>Fecha</span><b data-fecha-txt></b><small class="ayuda">Hora de Colombia. <button type="button" class="btn-link" data-hoy hidden>Usar la de hoy</button></small></div>
           <label><span>De (área que emite)</span><input name="dependencia" list="circ-areas" maxlength="${LIMITES.dependencia}" placeholder="Ej.: Rectoría"><datalist id="circ-areas">${[...new Set([...areasCfg.map((a) => a.nombre), ...AREAS])].map((a) => `<option value="${esc(a)}">`).join('')}</datalist></label>
-          <label><span>Consecutivo</span><input data-consec readonly aria-readonly="true" placeholder="Se asigna al guardar"><small class="ayuda" data-consec-ayuda></small></label>
+          <div class="circ-consec-celda"><span id="circ-consec-tit">Consecutivo</span>
+            <select name="serie_id" data-serie aria-labelledby="circ-consec-tit" aria-describedby="circ-consec-ayuda" hidden></select>
+            <input data-consec readonly aria-readonly="true" aria-labelledby="circ-consec-tit" placeholder="Se asigna al guardar">
+            <small class="circ-num-estado" data-num-estado></small>
+            <small class="ayuda" id="circ-consec-ayuda" data-consec-ayuda></small></div>
           <div><span>Para</span><b data-para-txt>—</b><small class="ayuda">Sale de lo que marcaste arriba.</small></div>
         </div>
         <p class="ayuda" data-formato-fila>Formato del PDF: <b data-formato-txt></b> · ${yo.emisor?.area ? 'es el de tu área (lo asigna el administrador).' : 'lo define el área que emite.'}</p>
@@ -387,14 +410,14 @@ export async function editor(m, p) {
     </form>
     <div class="circ-mas">
       <small class="ayuda">Referencia interna del borrador: <span data-ref>${esc(referencia(srv.id))}</span>${yo.admin ? ' · Al enviarla queda emitida con su número oficial (la serie debe estar validada) y su contenido ya no cambia.' : ''}</small>
-      <button class="btn btn-peligro btn-chico" data-eliminar ${srv.id ? '' : 'hidden'}>Eliminar borrador</button>
+      <button class="btn btn-peligro btn-chico" data-eliminar ${srv.id ? '' : 'hidden'}>${icono('eliminar')}Eliminar borrador</button>
     </div>
     <div class="pie-fijo circ-pie">
       <p class="circ-estado" data-estado role="status" aria-live="polite"></p>
       <div class="circ-acciones">
-        <button type="button" class="btn" data-guardar>Guardar borrador</button>
-        <button type="button" class="btn ${yo.admin ? '' : 'btn-primario'}" data-vista data-pdf>👁 Ver PDF</button>
-        ${yo.admin ? '<button type="button" class="btn btn-primario" data-enviar-circ>📨 Enviar</button>' : ''}
+        <button type="button" class="btn" data-guardar>${icono('guardar')}Guardar borrador</button>
+        <button type="button" class="btn ${yo.admin ? '' : 'btn-primario'}" data-vista data-pdf>${icono('ver')}Ver PDF</button>
+        ${yo.admin ? `<button type="button" class="btn btn-primario" data-enviar-circ>${icono('enviar')}Enviar</button>` : ''}
       </div>
     </div>
     </div>`;
@@ -478,7 +501,8 @@ export async function editor(m, p) {
     const f = leerForm(form);
     const envio = envioActual(), para = paraDe(envio);
     // el formato ya no se elige (es el del área): lo guardado en el borrador no cambia y no cuenta como cambio
-    return normal({ ...f, envio, destinatarios: para ? [para] : [], plantilla_id: d.plantilla_id, firmar: firmaAjena ? d.firmar : f.firmar === true && !!yo.firma, consecutivo: srv.consecutivo, fecha_emision: d.fecha_emision, contenido: leerEditor(ed) });
+    const serie_id = srv.consecutivo || emitida || !disponibles ? (srv.datos?.serie_id ?? d.serie_id ?? '') : form.elements.serie_id.value;
+    return normal({ ...f, envio, destinatarios: para ? [para] : [], plantilla_id: d.plantilla_id, firmar: firmaAjena ? d.firmar : f.firmar === true && !!yo.firma, consecutivo: srv.consecutivo, fecha_emision: d.fecha_emision, contenido: leerEditor(ed), serie_id });
   };
 
   let guardando = false, localT = null;
@@ -500,6 +524,25 @@ export async function editor(m, p) {
       } catch (e) { if (k === conteoClave) el.textContent = 'No se pudo calcular a cuántas personas llega: ' + e.message; }
     }, 450);
   };
+  // ----- Serie y número (§7, 3-nov-2026 noche): las series vigentes que esta persona puede usar en el área que emite (el servidor
+  // decide cuáles: quien fue designado, solo las de su área). El número que se muestra es ESTIMADO: no queda reservado.
+  let disponibles = null; // { asignar_numero, area_id, series: [...] } | null (base sin la migración: vista previa de antes)
+  let serieDesaparecio = false;
+  const cargarSeries = async () => {
+    if (srv.consecutivo || emitida) { pintar(); return; }
+    const a = yo.admin ? areaDe(form.elements.dependencia.value) : yo.emisor?.area || null;
+    try { disponibles = await E.db.rpc('circular_series_disponibles', { p_colegio: E.colegio.id, p_area: a?.id || null }); }
+    catch (e) { disponibles = null; if (!/circular_series_disponibles|PGRST202|not find|Función desconocida/i.test(e.message || '')) aviso(e.message, 'error'); return previsualizar(); }
+    if (!caja.isConnected) return;
+    const sel = form.elements.serie_id, antes = sel.value || d.serie_id || '';
+    const lista = disponibles.series;
+    sel.innerHTML = (lista.length === 1 ? '' : `<option value="">${lista.length ? 'Elige la serie…' : 'Esta área no tiene series'}</option>`)
+      + lista.map((x) => `<option value="${esc(x.id)}">${esc(nombreSerie(x))}${x.provisional ? ' · provisional' : ''}</option>`).join('');
+    serieDesaparecio = !!antes && !lista.some((x) => x.id === antes);
+    sel.value = lista.some((x) => x.id === antes) ? antes : lista.length === 1 ? lista[0].id : '';
+    sel.disabled = !lista.length;
+    pintar();
+  };
   // Vista previa del número (solo lectura): se pide al abrir y al cambiar el área
   const previsualizar = async () => {
     if ((!num && !yo.emisor) || srv.consecutivo) { prevista = null; return; }
@@ -513,10 +556,31 @@ export async function editor(m, p) {
     $c('[data-fecha-txt]').textContent = fechaLarga(x.fecha_emision);
     $c('[data-hoy]').hidden = x.fecha_emision === hoyBogota();
     $c('[data-para-txt]').textContent = textoDestinatarios(x.destinatarios, x.destinatarios_otros) || '—';
-    // Consecutivo: solo lectura; lo pone la base al guardar por primera vez
+    // Consecutivo: solo lectura; lo pone la base (al guardar o al enviar, según Ajustes). Con el selector: la serie elegida.
+    const sel = form.elements.serie_id, libre = !!disponibles && !srv.consecutivo && !emitida;
+    const sinSeries = libre && !disponibles.series.length, conSelector = libre && !sinSeries;
+    sel.hidden = !conSelector; $c('[data-consec]').hidden = conSelector;
+    $c('[data-num-estado]').textContent = emitida && srv.consecutivo ? 'Número definitivo' : srv.consecutivo ? 'Número reservado' : conSelector ? 'Número estimado (no reservado)' : '';
+    const ajustesLink = yo.admin ? ` <a href="${AJUSTES}">Créala en Ajustes</a>.` : ' Pídele a Administración que la cree.';
+    if (sinSeries) {
+      // Sin series: el colegio sin área y con «número al guardar» recibe la serie provisional PROV- (como hasta hoy); un área, no
+      $c('[data-consec-ayuda]').innerHTML = !disponibles.area_id && disponibles.asignar_numero === 'guardar'
+        ? `El colegio aún no tiene series de consecutivos: al guardar por primera vez, Complex le da un número provisional (PROV-…). Para emitir, Administración debe crear y validar la serie${yo.admin ? ` en <a href="${AJUSTES}">Ajustes</a>` : ''}.`
+        : `Esta área no tiene series de consecutivos.${ajustesLink}`;
+    } else if (conSelector) {
+      const sx = disponibles.series.find((y) => y.id === sel.value);
+      $c('[data-consec-ayuda]').innerHTML = !sx ? (serieDesaparecio ? 'La serie que tenía esta circular ya no está disponible: elige otra. El borrador sigue guardado.' : 'Elige la serie de esta circular.')
+        : `Próximo: <b>${esc(sx.siguiente || '(la serie se agotó: crea otra)')}</b>. Es una estimación: ${disponibles.asignar_numero === 'emitir' ? 'el número definitivo se asigna al enviar la circular' : 'el número se reserva al guardar por primera vez'}; si otra circular toma ese número antes, recibe el siguiente.`
+          + (sx.provisional ? ` <span class="circ-alerta">Serie provisional: para enviar, Administración debe validarla en ${yo.admin ? `<a href="${AJUSTES}">Ajustes</a>` : 'Ajustes'}.</span>` : '')
+          + (sx.vigente_hoy === false ? ' <span class="circ-alerta">Hoy está fuera de su vigencia.</span>' : '');
+    } else if (srv.consecutivo) {
+      const su = series.find((y) => y.id === (fila?.serie_id || srv.datos?.serie_id));
+      $c('[data-consec-ayuda]').innerHTML = (emitida ? 'Quedó al emitir la circular y no cambia.' : 'Reservado para esta circular: no cambia al editar, previsualizar ni descargar; queda definitivo al enviarla.')
+        + (!emitida && su?.provisional ? ` <span class="circ-alerta">Su serie es provisional: para enviar, Administración debe validarla en ${yo.admin ? `<a href="${AJUSTES}">Ajustes</a>` : 'Ajustes'}.</span>` : '');
+    }
     $c('[data-consec]').value = srv.consecutivo;
-    $c('[data-consec]').placeholder = !srv.consecutivo && prevista?.siguiente ? 'Previsto: ' + prevista.siguiente : 'Se asigna al guardar';
-    if (!srv.consecutivo && prevista && (prevista.hay_serie || prevista.area)) {
+    $c('[data-consec]').placeholder = !srv.consecutivo && prevista?.siguiente ? 'Previsto: ' + prevista.siguiente : (disponibles || prevista)?.asignar_numero === 'emitir' ? 'Se asigna al enviar' : 'Se asigna al guardar';
+    if (libre || srv.consecutivo) { /* ya se escribió arriba */ } else if (prevista && (prevista.hay_serie || prevista.area)) {
       $c('[data-consec-ayuda]').textContent = prevista.hay_serie
         ? `Próximo previsto: ${prevista.siguiente || '(la serie se agotó: crea una nueva)'}. Es una vista previa, NO queda reservado: ${prevista.asignar_numero === 'emitir' ? 'el número definitivo se asigna al emitir' : 'se asigna al guardar por primera vez'}; si otra persona guarda antes, toma el siguiente.${prevista.provisional ? ' Serie provisional: para emitir hay que validarla.' : ''}`
         : `«${prevista.area.nombre}» no tiene serie de consecutivos: el borrador se guarda sin número y no se podrá emitir hasta configurarla y validarla (Numeración por área).`;
@@ -559,7 +623,14 @@ export async function editor(m, p) {
     }, 300);
   };
   pintar();
-  previsualizar();
+  cargarSeries();
+  // Al volver a esta pestaña o ventana, otra vez: una serie recién creada en Ajustes aparece sin recargar
+  const alVolver = () => {
+    if (!caja.isConnected) { window.removeEventListener('focus', alVolver); document.removeEventListener('visibilitychange', alVolver); return; }
+    if (!document.hidden) cargarSeries();
+  };
+  window.addEventListener('focus', alVolver);
+  document.addEventListener('visibilitychange', alVolver);
   form.addEventListener('input', cambio);
   form.addEventListener('change', cambio);
   form.elements.alcance.addEventListener('change', () => { pintarItems([]); cambio(); });
@@ -581,7 +652,7 @@ export async function editor(m, p) {
     areaAntes = area;
     ponerFormato();
     cambio();
-    previsualizar();
+    cargarSeries();
   });
   $c('[data-hoy]').addEventListener('click', () => { d = { ...d, fecha_emision: hoyBogota() }; cambio(); });
 
@@ -657,7 +728,7 @@ export async function editor(m, p) {
       else guardarLocal(llave, { datos: actual(), version: srv.version, en: Date.now() });
       $c('[data-eliminar]').hidden = false;
       $c('[data-recuperado]')?.remove();
-      aviso(primera ? `Borrador guardado con el consecutivo ${srv.consecutivo}` : 'Borrador guardado');
+      aviso(primera && srv.consecutivo ? `Borrador guardado con el consecutivo ${srv.consecutivo}` : primera ? 'Borrador guardado (sin número definitivo todavía)' : 'Borrador guardado');
       return true;
     } catch (e) {
       aviso(e.message, 'error');
@@ -666,7 +737,9 @@ export async function editor(m, p) {
       guardando = false; btnGuardar.disabled = false; pintar();
     }
   };
-  btnGuardar.addEventListener('click', guardar);
+  // §8 (3-nov-2026 noche): «Guardar borrador» confirma que quedó guardado y vuelve a Circulares, donde se ve el borrador. Si falla,
+  // se queda aquí con lo escrito y el error (también a salvo en este equipo). «Ver PDF» y «Enviar» guardan sin salir.
+  btnGuardar.addEventListener('click', async () => { if (await guardar()) location.hash = VOLVER; });
 
   const conflicto = async (mios) => {
     E.db.refrescar('circular_borradores');
@@ -732,13 +805,16 @@ export async function editor(m, p) {
       const seg = ((performance.now() - t0) / 1000).toFixed(1).replace('.', ',');
       const url = URL.createObjectURL(new Blob([pdf], { type: 'application/pdf' }));
       const archivo = `Circular_revision_${(srv.consecutivo || 'sin_numero').replace(/[^w-]+/g, '_')}_v${version}.pdf`;
+      // §13: con visor, el ÚNICO desplazamiento es el del documento (ocupa todo el espacio de la ventana; el fondo no se mueve)
+      const conVisor = !matchMedia('(max-width: 899px), (pointer: coarse)').matches;
       await ventana({
         titulo: 'PDF de revisión listo',
+        clase: conVisor ? 'ventana-pdf' : '',
         html: `<p>Es una <b>vista previa</b> con el formato del colegio: no queda emitida y no se envía a nadie. ${srv.consecutivo ? `Lleva el consecutivo del borrador guardado (${esc(srv.consecutivo)}).` : 'Aún sin consecutivo: se asigna al guardar.'}${v.datos.firmar ? ' Lleva tu firma encima de tu nombre.' : ''}</p>
           <p class="ayuda">${Math.max(1, Math.round(pdf.size / 1024))} KB · generado en ${seg} s · plantilla rev. ${esc(plantilla.revision)}</p>
           <p class="ayuda" data-pdf-version>Corresponde a la <b>versión ${version}</b> guardada del borrador · huella <code>${esc(huella.slice(0, 16))}…</code>. Si cambias algo, el próximo PDF se genera de la nueva versión guardada.</p>
-          ${matchMedia('(max-width: 899px), (pointer: coarse)').matches ? '' : `<iframe class="visor-pdf circ-visor" src="${url}" title="PDF de revisión"></iframe>`}
-          <div class="circ-acciones"><a class="btn btn-primario" href="${url}" target="_blank" rel="noopener">Abrir</a><a class="btn" href="${url}" download="${esc(archivo)}">Descargar</a></div>`,
+          <div class="circ-acciones"><a class="btn btn-primario" href="${url}" target="_blank" rel="noopener">${icono('abrir')}Abrir</a><a class="btn" href="${url}" download="${esc(archivo)}">${icono('descargar')}Descargar</a></div>
+          ${conVisor ? `<iframe class="visor-pdf circ-visor" src="${url}" title="PDF de revisión de la circular"></iframe>` : ''}`,
         botones: [{ texto: 'Cerrar' }],
       });
       setTimeout(() => URL.revokeObjectURL(url), 120000);
@@ -750,6 +826,16 @@ export async function editor(m, p) {
   };
   btnPdf.addEventListener('click', () => (E.db.modo === 'demo' ? vistaRapida() : pdfRevision()));
 
+  // La serie provisional NO se valida aquí (lo decide el colegio con sus registros): se explica qué falta y dónde se hace
+  const serieProvisional = async (sx) => {
+    const r = await ventana({
+      titulo: 'Falta validar la serie',
+      html: `<p>La serie <b>${esc(nombreSerie({ ...sx, area: sx.area ?? areasCfg.find((a) => a.id === sx.area_id)?.nombre }))}</b> todavía es <b>provisional</b>. Para emitir con ella, Administración debe validarla en <b>Ajustes → Numeración</b>, indicando con qué registro del colegio comprobó el formato y el último número usado.</p>
+        <p class="ayuda">La circular sigue guardada y no se gastó ningún número.${srv.consecutivo ? ' Ya tiene su número reservado en esa serie.' : ' También puedes elegir en «Consecutivo» otra serie ya validada.'}</p>`,
+      botones: [{ texto: 'Cerrar' }, ...(yo.admin ? [{ texto: 'Ir a Ajustes', valor: 'ajustes' }] : [])],
+    });
+    if (r === 'ajustes') location.hash = AJUSTES;
+  };
   const enfocar = (campo) => {
     const el = campo === 'contenido' ? ed : campo === 'destinatarios' ? form.querySelector('[name=grupo]:not(:disabled)') : form.elements[campo];
     el?.scrollIntoView({ block: 'center', behavior: 'smooth' });
@@ -778,8 +864,14 @@ export async function editor(m, p) {
       if (v.error) { aviso(v.error, 'error'); enfocar(v.campo); return; }
       if (!srv.id || !igual(x, srv.datos)) { if (!(await guardar())) return; }
     }
+    // §7/§9: lo que falta se explica ANTES de abrir el envío (serie por elegir, provisional o fuera de vigencia). No se gasta número.
+    const sx = !srv.consecutivo && disponibles ? disponibles.series.find((y) => y.id === srv.datos?.serie_id) : null;
+    const suSerie = srv.consecutivo ? series.find((y) => y.id === (fila?.serie_id || srv.datos?.serie_id)) : sx;
+    if (!emitida && !srv.consecutivo && disponibles && !sx) { aviso(disponibles.series.length ? 'Elige la serie de la circular en «Consecutivo».' : 'Esta área no tiene series de consecutivos: créala en Ajustes.', 'error'); enfocar('serie_id'); return; }
+    if (!emitida && suSerie?.provisional) { await serieProvisional(suSerie); return; }
+    if (!emitida && sx && sx.vigente_hoy === false) { aviso(`La serie «${sx.prefijo.trim()}» no está vigente hoy: elige otra serie o corrige su vigencia en Ajustes.`, 'error'); return; }
     const { enviarCircular } = await import('./circular_envio.js');
-    const r = await enviarCircular({ borrador: { id: srv.id, version: srv.version, consecutivo: srv.consecutivo, datos: srv.datos, autor_id: fila?.autor_id || E.yo.id }, plantilla, criterios: env });
+    const r = await enviarCircular({ borrador: { id: srv.id, version: srv.version, consecutivo: srv.consecutivo, datos: srv.datos, autor_id: fila?.autor_id || E.yo.id }, plantilla, criterios: env, serie: sx });
     if (r) { caja.remove(); editor(m, { id: srv.id }); }
   });
   if (srv.id && yo.admin) import('./circular_envio.js').then((x) => x.revisarEnvioPendiente(srv.id)).catch(() => {});

@@ -252,7 +252,7 @@ const RPC_LECTURA = new Set(['mis_contactos', 'personas_colegio', 'mi_intento'])
 // Lecturas que van siempre al servidor y no marcan lo demás «por revisar» (el hilo de una PQRS se consulta cada poco); también el
 // cursor de lectura de la PQRS (solo cambia «hasta dónde vi yo», nada que esté en la copia del equipo)
 const RPC_DIRECTA = new Set(['pqrs_mensajes', 'pqrs_marcar_leido', 'mensajes_sin_leer', 'hora_servidor', 'album_cursos', 'album_curso',
-  'salas_mias', 'sala_mensajes', 'sala_miembros_ver', 'sala_marcar_leido', 'avisos_ver', 'aviso_detalle', 'aviso_marcar_visto', 'pqrs_adjunto_estado', 'circular_previsualizar_numero', 'circular_numeracion', 'circular_mi_perfil', 'circular_emisores_ver', 'circular_formatos_por_area',
+  'salas_mias', 'sala_mensajes', 'sala_miembros_ver', 'sala_marcar_leido', 'avisos_ver', 'aviso_detalle', 'aviso_marcar_visto', 'pqrs_adjunto_estado', 'circular_previsualizar_numero', 'circular_numeracion', 'circular_mi_perfil', 'circular_emisores_ver', 'circular_formatos_por_area', 'circular_series_disponibles',
   // envío a la bandeja y mensajería del servidor (3-nov-2026): siempre lo vigente (audiencia, docentes, bandeja por páginas)
   'audiencia_previa', 'circular_envio_estado', 'bandeja_mia', 'enviados_mios', 'mensaje_lecturas', 'mis_docentes_diagnostico']);
 // Escrituras que también cambian otras tablas (triggers del servidor o lógica de la app)
@@ -264,7 +264,7 @@ const AFECTA = {
   agregar_miembro: ['miembros', 'perfiles'], crear_colegio: ['colegios', 'miembros'],
   calendario_importar: ['calendario_fuentes', 'calendario_dias'], calendario_anotar: ['calendario_anotaciones'],
   circular_serie_guardar: ['circular_series'], circular_serie_validar: ['circular_series'], circular_area_guardar: ['circular_areas'], circular_ajustes_guardar: ['circular_ajustes'],
-  circular_emitir: ['circular_borradores', 'circular_series'], circular_anular: ['circular_borradores', 'circular_numeros_anulados'],
+  circular_emitir: ['circular_borradores', 'circular_series'], circular_asignar_numero: ['circular_borradores', 'circular_series'], circular_anular: ['circular_borradores', 'circular_numeros_anulados'],
   circular_firma_guardar: ['circular_firmas'], circular_firma_borrar: ['circular_firmas'], circular_emisor_guardar: ['circular_emisores', 'circular_config_historial'],
   circular_area_formato_guardar: ['circular_area_formatos', 'circular_config_historial'],
   mensaje_enviar: ['mensajes', 'mensaje_destinatarios', 'tipos_mensaje'],
@@ -456,16 +456,38 @@ export function crearDbDemo() {
     if (n.length > s.ancho) err(`La serie «${s.prefijo}» llegó al máximo de ${s.ancho} cifras: crea una serie nueva (no se reinicia ni se recorta el número).`);
     return s.prefijo + n.padStart(s.ancho, '0') + (s.sufijo ?? '-' + s.periodo);
   };
-  const consecutivoCircular = (colegio, area = null, oficial = false) => {
-    let s = tabla('circular_series').find((x) => x.colegio_id === colegio && x.vigente && (x.area_id || null) === area);
-    if (!s && !area) tabla('circular_series').push((s = { id: crypto.randomUUID(), colegio_id: colegio, prefijo: 'PROV-', periodo: String(new Date().getFullYear()), ancho: 3, ultimo: 0, vigente: true, provisional: true, creado_en: ahora() }));
-    if (!s) err('Esa área no tiene una serie de consecutivos vigente: configúrala en «Numeración».');
+  // 5-nov (20261105100000_circular_series_varias_numero_envio): varias series vigentes por área; la circular guarda la serie
+  // ELEGIDA y el número se toma de esa serie (si el área tiene una sola y no se eligió, de esa, como antes)
+  const serieDeArea = (colegio, serie, area) => {
+    const s = tabla('circular_series').find((x) => x.id === serie && x.colegio_id === colegio);
+    if (!s) err('Esa serie no existe en este colegio: elige otra en «Consecutivo».');
+    if ((s.area_id || null) !== (area || null)) err(`La serie «${s.prefijo.trim()}» es de otra área: elige una serie del área que emite.`);
+    return s;
+  };
+  const numeroDeSerie = (colegio, serie, area = null, oficial = false) => {
+    const s = serieDeArea(colegio, serie, area);
+    if (!s.vigente) err(`La serie «${s.prefijo.trim()}» ya no está vigente: elige otra serie en «Consecutivo». El borrador sigue guardado.`);
     if (oficial && s.provisional) err(`La serie «${s.prefijo}» es provisional: para emitir oficialmente, el administrador debe validarla con los registros del colegio.`);
-    const c = formatoCirc(s, s.ultimo + 1);
+    const hoy = hoyLocal();
+    if (oficial && ((s.vigente_desde && hoy < s.vigente_desde) || (s.vigente_hasta && hoy > s.vigente_hasta))) err(`La serie «${s.prefijo}» no está vigente hoy.`);
+    const c = formatoCirc({ ...s, area_id: s.area_id || 'x' }, s.ultimo + 1); // como private.circular_formato (sin desbordar el ancho)
     const ya = (b) => b.colegio_id === colegio && String(b.consecutivo || '').toLowerCase() === c.toLowerCase();
-    if ((area || oficial) && (tabla('circular_borradores').some(ya) || tabla('circular_numeros_anulados').some(ya))) err(`El consecutivo ${c} ya existe en el colegio: revisa el inicio de la serie.`);
+    if (tabla('circular_borradores').some(ya) || tabla('circular_numeros_anulados').some(ya)) err(`El consecutivo ${c} ya existe en el colegio: revisa el inicio de la serie.`);
     s.ultimo += 1;
     return { serie_id: s.id, numero: s.ultimo, consecutivo: c };
+  };
+  const vigentesDe = (colegio, area) => tabla('circular_series').filter((x) => x.colegio_id === colegio && x.vigente && (x.area_id || null) === (area || null));
+  const consecutivoCircular = (colegio, area = null, oficial = false) => {
+    const vs = vigentesDe(colegio, area);
+    if (!vs.length && !area && !oficial) {
+      const s = { id: crypto.randomUUID(), colegio_id: colegio, prefijo: 'PROV-', periodo: String(new Date().getFullYear()), ancho: 3, ultimo: 0, vigente: true, provisional: true, creado_en: ahora() };
+      tabla('circular_series').push(s);
+      s.ultimo += 1;
+      return { serie_id: s.id, numero: s.ultimo, consecutivo: formatoCirc(s, s.ultimo) };
+    }
+    if (!vs.length) err('Esa área no tiene una serie de consecutivos vigente: créala en Ajustes → Series.');
+    if (vs.length > 1) err('Esa área tiene varias series vigentes: elige la serie de la circular en «Consecutivo».');
+    return numeroDeSerie(colegio, vs[0].id, area, oficial);
   };
   // Quién prepara circulares (20261102140000_circular_firmas_emisores): Administración o alguien designado que siga siendo
   // personal activo; quien no es administrador ve, edita y borra solo sus borradores y numera en el área que le designaron
@@ -473,7 +495,7 @@ export function crearDbDemo() {
   const emisorCirc = (c, p = usuario()) => tabla('circular_emisores').find((e) => e.colegio_id === c && e.perfil_id === p && e.activo
     && tabla('miembros').some((m) => m.colegio_id === c && m.perfil_id === p && m.activo !== false && PERSONAL.includes(m.rol))) || null;
   const puedePreparar = (c) => !!usuario() && (esAdmin(c) || !!emisorCirc(c));
-  const circDemo = async () => (circularesDemo ||= (await import('./circulares_demo.js')).crearCircularesDemo({ tabla, usuario, guardar, ahora, err, esAdmin, consecutivoCircular, formatoCirc, emisorCirc, puedePreparar, existeArchivo: (b, r) => !!leerArchivos()[b + '/' + r] }));
+  const circDemo = async () => (circularesDemo ||= (await import('./circulares_demo.js')).crearCircularesDemo({ tabla, usuario, guardar, ahora, err, esAdmin, consecutivoCircular, numeroDeSerie, vigentesDe, hoyLocal, formatoCirc, emisorCirc, puedePreparar, existeArchivo: (b, r) => !!leerArchivos()[b + '/' + r] }));
   // Adjuntos de un mensaje (bucket «mensajes»): su autor, sus destinatarios y la familia de un estudiante destinatario (como la RLS)
   const puedoVerAdjuntos = (mid) => {
     const yo = usuario(), m = tabla('mensajes').find((x) => x.id === mid);
@@ -516,24 +538,32 @@ export function crearDbDemo() {
     const area = r.area_id || r.datos?.area_id || null;
     if (area && !tabla('circular_areas').some((x) => x.id === area && x.colegio_id === r.colegio_id)) err('Esa área no es de este colegio.');
     const datos = { ...(r.datos || {}) };
-    delete datos.area_id;
+    const serie = datos.serie_id || null; // la serie elegida (va en su columna; el PDF no la ve)
+    delete datos.area_id; delete datos.serie_id;
     Object.assign(r, { area_id: area, estado: 'borrador' });
-    if (ajusteCirc(r.colegio_id) === 'guardar' && (!area || tabla('circular_series').some((x) => x.colegio_id === r.colegio_id && x.area_id === area && x.vigente))) {
-      Object.assign(r, consecutivoCircular(r.colegio_id, area));
-      datos.consecutivo = r.consecutivo;
-    } else { Object.assign(r, { serie_id: null, numero: null, consecutivo: null }); delete datos.consecutivo; }
+    if (serie) serieDeArea(r.colegio_id, serie, area);
+    const n = vigentesDe(r.colegio_id, area).length;
+    const num = ajusteCirc(r.colegio_id) !== 'guardar' ? null : serie ? numeroDeSerie(r.colegio_id, serie, area) : n === 1 || (!area && !n) ? consecutivoCircular(r.colegio_id, area) : null;
+    if (num) { Object.assign(r, num); datos.consecutivo = r.consecutivo; }
+    else { Object.assign(r, { serie_id: serie, numero: null, consecutivo: null }); delete datos.consecutivo; } // sin número todavía: queda la serie elegida
     r.datos = datos;
   };
   // Como el disparador: al editar no cambia lo de origen ni el número; queda la versión anterior; emitida o anulada no se edita
   const actualizarBorrador = (f, cambios) => {
     const datos = { ...(cambios.datos ?? f.datos) };
     const area = f.numero ? f.area_id || null : emisorCirc(f.colegio_id) || !esAdmin(f.colegio_id) ? emisorCirc(f.colegio_id)?.area_id || null : datos.area_id || f.area_id || null;
-    delete datos.area_id;
+    // la serie elegida también cambia mientras no tenga número (del colegio y del área que emite); si no se menciona, queda
+    let serie = f.serie_id || null;
+    if (!f.numero) {
+      if ('serie_id' in datos) { serie = datos.serie_id || null; if (serie) serieDeArea(f.colegio_id, serie, area); }
+      else if (serie && (tabla('circular_series').find((s) => s.id === serie)?.area_id || null) !== (area || null)) serie = null;
+    }
+    delete datos.area_id; delete datos.serie_id;
     if (f.consecutivo) datos.consecutivo = f.consecutivo; else delete datos.consecutivo;
     if ((f.estado || 'borrador') !== 'borrador' && JSON.stringify(datos) !== JSON.stringify(f.datos)) err('Una circular emitida o anulada no se edita (su contenido y número quedan como se emitieron).');
     if (JSON.stringify(datos) !== JSON.stringify(f.datos)) tabla('circular_borrador_versiones').push({ borrador_id: f.id, version: f.version, datos: f.datos, guardado_por: f.actualizado_por || null, guardado_en: f.actualizado_en || null });
     return { ...f, ...cambios, id: f.id, colegio_id: f.colegio_id, autor_id: f.autor_id, creado_en: f.creado_en, version: f.version + 1, actualizado_en: ahora(), actualizado_por: usuario(),
-      solicitud_id: f.solicitud_id, serie_id: f.serie_id, numero: f.numero, consecutivo: f.consecutivo, area_id: area, estado: f.estado || 'borrador', datos };
+      solicitud_id: f.solicitud_id, serie_id: serie, numero: f.numero, consecutivo: f.consecutivo, area_id: area, estado: f.estado || 'borrador', datos };
   };
   // Borradores guardados en este equipo antes del consecutivo automático: reciben número en orden de creación
   // (solo los de antes: los que ya tienen estado pudieron quedar sin número a propósito)
