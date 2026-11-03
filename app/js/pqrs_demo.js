@@ -22,6 +22,7 @@ export function crearPqrsDemo({ tabla, usuario, guardar, copia, ahora, err, arch
   const areaClave = (c, clave) => T('pqrs_areas').find((a) => a.colegio_id === c && a.clave === clave);
   const orden = (a) => a.orden;
   const responsables = (areaId) => T('pqrs_area_responsables').filter((r) => r.area_id === areaId).map((r) => r.perfil_id);
+  const lider = (areaId) => T('pqrs_area_responsables').find((r) => r.area_id === areaId && r.principal)?.perfil_id ?? null;
   const asign = (pid) => T('pqrs_asignaciones').filter((a) => a.pqrs_id === pid);
   const activas = (pid) => asign(pid).filter((a) => a.activa);
   const caso = (pid) => T('pqrs').find((p) => p.id === pid);
@@ -57,12 +58,18 @@ export function crearPqrsDemo({ tabla, usuario, guardar, copia, ahora, err, arch
     return p.solicitante_id === yo() || T('pqrs_permisos_salud').some((s) => s.colegio_id === p.colegio_id && s.perfil_id === yo())
       || activas(pid).some((a) => area(a.area_id)?.clave === 'enfermeria' && responsables(a.area_id).includes(yo()));
   };
+  // Gerencia = responsables del área Gerencia activa (igual que private.pqrs_es_gerencia y private.pqrs_area_gerencia)
+  const areaGerencia = (c) => T('pqrs_areas').find((x) => x.colegio_id === c && x.clave === 'gerencia' && x.activo) || null;
+  const respGerencia = (c, p) => { const g = areaGerencia(c); return !!g && responsables(g.id).includes(p); };
+  const esGerencia = (c, p = yo()) => miembroActivo(c, p) && respGerencia(c, p);
+  // ¿Lidero un área activa del caso? (igual que private.pqrs_lider_del_caso: el líder puede finalizarlo)
+  const liderDelCaso = (pid) => { const p = caso(pid); return !!p && miembroActivo(p.colegio_id, yo()) && activas(pid).some((a) => lider(a.area_id) === yo()); };
   const acceso = (pid) => {
     const p = caso(pid);
     if (!p || !yo() || !esMiembro(p.colegio_id)) return null;
-    const sol = p.solicitante_id === yo(), adm = esAdmin(p.colegio_id), areas = misAreas(pid);
-    if (!(sol || adm || areas.length)) return null;
-    return { solicitante: sol, admin: adm, areas, personal: adm || areas.length > 0, salud: veSalud(pid) };
+    const sol = p.solicitante_id === yo(), adm = esAdmin(p.colegio_id), ger = esGerencia(p.colegio_id), areas = misAreas(pid);
+    if (!(sol || adm || ger || areas.length)) return null;
+    return { solicitante: sol, admin: adm, gerencia: ger, areas, personal: adm || ger || areas.length > 0, salud: veSalud(pid) };
   };
   const estado = (pid) => estadoGeneral(caso(pid), asign(pid));
   const nombresAreas = (pid, soloPend = false) => activas(pid).filter((a) => !soloPend || a.estado !== 'respondida').map((a) => area(a.area_id)).sort((x, y) => orden(x) - orden(y)).map((a) => a.nombre);
@@ -99,7 +106,7 @@ export function crearPqrsDemo({ tabla, usuario, guardar, copia, ahora, err, arch
   };
   const enviar = (eventoId) => {
     const e = T('pqrs_eventos').find((x) => x.id === eventoId), p = caso(e.pqrs_id);
-    const pend = T('pqrs_avisos').filter((a) => a.evento_id === eventoId && a.estado !== 'enviado');
+    const pend = T('pqrs_avisos').filter((a) => a.evento_id === eventoId && a.estado !== 'enviado' && (a.canal || 'bandeja') === 'bandeja'); // solo la bandeja general
     for (const vista of [...new Set(pend.map((a) => a.vista))]) {
       const grupo = pend.filter((a) => a.vista === vista);
       try {
@@ -121,9 +128,14 @@ export function crearPqrsDemo({ tabla, usuario, guardar, copia, ahora, err, arch
     const admins = [...new Set(T('miembros').filter((m) => m.colegio_id === p.colegio_id && m.rol === 'admin' && m.activo !== false).map((m) => m.perfil_id))];
     const delArea = e.area_id ? responsables(e.area_id) : [];
     const sol = p.solicitante_id ? [p.solicitante_id] : [];
-    const dest = ['creada', 'comentario', 'aporte', 'resumen'].includes(e.tipo) ? [...staff, ...admins]
+    // Gerencia sabe de cada PQRS nueva y de su cierre o reapertura; del chat, solo si está asignada (como la base). Desde el 3-nov-2026
+    // lo sabe DENTRO del módulo PQRS (canal «modulo»): nunca como copia en su bandeja general, aunque además lidere un área (§5)
+    const ger = areaGerencia(p.colegio_id) ? responsables(areaGerencia(p.colegio_id).id) : [];
+    const dest = e.tipo === 'creada' ? [...staff, ...admins, ...ger]
+      : ['comentario', 'aporte', 'resumen'].includes(e.tipo) ? [...staff, ...admins]
       : ['asignada', 'retirada'].includes(e.tipo) ? [...delArea, ...admins]
-      : ['respuesta', 'respuesta_corregida', 'cerrada', 'reabierta'].includes(e.tipo) ? [...staff, ...admins, ...sol] : [];
+      : ['cerrada', 'reabierta'].includes(e.tipo) ? [...staff, ...admins, ...ger, ...sol]
+      : ['respuesta', 'respuesta_corregida'].includes(e.tipo) ? [...staff, ...admins, ...sol] : [];
     // Avisos sin saturar: por los mensajes del chat no se repite el aviso a quien tiene uno de este caso sin leer y no lo ha abierto
     const agrupar = ['respuesta', 'comentario', 'aporte'].includes(e.tipo) && limites(p.colegio_id).agrupar_avisos;
     const ultimaLectura = (d) => T('pqrs_lecturas').find((l) => l.pqrs_id === p.id && l.perfil_id === d)?.ultima_en || '';
@@ -134,8 +146,9 @@ export function crearPqrsDemo({ tabla, usuario, guardar, copia, ahora, err, arch
       if (!d || d === e.actor_id || !miembroActivo(p.colegio_id, d)) continue;
       if (T('pqrs_avisos').some((a) => a.evento_id === eventoId && a.perfil_id === d)) continue;
       if (agrupar && tieneSinLeer(d)) { agrupados++; continue; }
-      T('pqrs_avisos').push({ evento_id: eventoId, perfil_id: d, colegio_id: p.colegio_id, pqrs_id: p.id, vista: admins.includes(d) ? 'admin' : staff.includes(d) || delArea.includes(d) ? 'area' : 'solicitante',
-        estado: 'pendiente', mensaje_id: null, error: null, intentos: 0, creado_en: ahora(), enviado_en: null });
+      const modulo = ger.includes(d);
+      T('pqrs_avisos').push({ evento_id: eventoId, perfil_id: d, colegio_id: p.colegio_id, pqrs_id: p.id, vista: admins.includes(d) ? 'admin' : staff.includes(d) || delArea.includes(d) || ger.includes(d) ? 'area' : 'solicitante',
+        canal: modulo ? 'modulo' : 'bandeja', estado: modulo ? 'enviado' : 'pendiente', mensaje_id: null, error: null, intentos: 0, creado_en: ahora(), enviado_en: modulo ? ahora() : null });
     }
     if (agrupados) e.detalle = { ...e.detalle, avisos_agrupados: agrupados };
     enviar(eventoId);
@@ -187,8 +200,9 @@ export function crearPqrsDemo({ tabla, usuario, guardar, copia, ahora, err, arch
       areas: activas(pid).map((a) => ({ a, ar: area(a.area_id) })).sort((x, y) => orden(x.ar) - orden(y.ar)).map(({ a, ar }) => ({ id: ar.id, clave: ar.clave, nombre: ar.nombre, estado: a.estado,
         aporte_pendiente: a.aporte_pendiente, mia: acc.areas.includes(ar.id), sin_responsables: acc.personal && !responsables(ar.id).length })),
       visto_por_mi: T('pqrs_lecturas').some((l) => l.pqrs_id === pid && l.perfil_id === yo()),
+      nuevos: ((leido) => T('pqrs_intervenciones').filter((i) => i.pqrs_id === pid && (acc.personal || ['respuesta', 'aporte'].includes(i.tipo)) && i.autor_id !== yo() && i.seq > leido).length)(leidoDe(p, yo())), // el cursor, una vez por caso
       visto_por_mi_area: acc.personal && T('pqrs_lecturas').some((l) => l.pqrs_id === pid && acc.areas.some((ar) => responsables(ar).includes(l.perfil_id))),
-      aporte_pendiente: acc.personal && activas(pid).some((a) => a.aporte_pendiente && (acc.admin || acc.areas.includes(a.area_id))),
+      aporte_pendiente: acc.personal && activas(pid).some((a) => a.aporte_pendiente && (acc.admin || acc.gerencia || acc.areas.includes(a.area_id))),
       respuestas: T('pqrs_intervenciones').filter((i) => i.pqrs_id === pid && i.tipo === 'respuesta').length,
       ultima_respuesta_en: T('pqrs_intervenciones').filter((i) => i.pqrs_id === pid && i.tipo === 'respuesta').map((i) => i.creado_en).sort().pop() ?? null,
       revisar: acc.admin ? p.revisar_clasificacion : null,
@@ -196,8 +210,19 @@ export function crearPqrsDemo({ tabla, usuario, guardar, copia, ahora, err, arch
     };
   };
   const confirmacion = (pid) => { const p = caso(pid); return { id: p.id, consecutivo: p.consecutivo, creado_en: p.creado_en, estado: estado(pid), areas: nombresAreas(pid) }; };
+  // Secuencia por caso (como la base, 3-nov-2026): orden de guardado; lo que ya había en el demo se numera por fecha la primera vez
+  const numerar = (p) => {
+    if (Number.isInteger(p.ultimo_seq)) return;
+    const xs = T('pqrs_intervenciones').filter((i) => i.pqrs_id === p.id).sort((x, y) => x.creado_en.localeCompare(y.creado_en) || x.id.localeCompare(y.id));
+    xs.forEach((i, k) => { i.seq = k + 1; });
+    p.ultimo_seq = xs.length;
+    for (const l of T('pqrs_lecturas').filter((x) => x.pqrs_id === p.id && !Number.isInteger(x.leido_seq))) l.leido_seq = Math.max(0, ...xs.filter((i) => i.creado_en <= l.ultima_en).map((i) => i.seq));
+  };
+  const leidoDe = (p, d) => { numerar(p); return T('pqrs_lecturas').find((l) => l.pqrs_id === p.id && l.perfil_id === d)?.leido_seq ?? 0; };
   const nuevaIntervencion = (p, tipo, areaId, texto, salud, solicitud) => {
-    const i = { id: crypto.randomUUID(), colegio_id: p.colegio_id, pqrs_id: p.id, tipo, area_id: areaId, autor_id: yo(), autor_nombre: nombreDe(yo()) || '', contenido: texto, salud, solicitud_id: solicitud, version: 1, editado_en: null, editado_por: null, creado_en: ahora() };
+    numerar(p);
+    p.ultimo_seq += 1;
+    const i = { id: crypto.randomUUID(), seq: p.ultimo_seq, colegio_id: p.colegio_id, pqrs_id: p.id, tipo, area_id: areaId, autor_id: yo(), autor_nombre: nombreDe(yo()) || '', contenido: texto, salud, solicitud_id: solicitud, version: 1, editado_en: null, editado_por: null, creado_en: ahora() };
     T('pqrs_intervenciones').push(i);
     return i;
   };
@@ -258,13 +283,15 @@ export function crearPqrsDemo({ tabla, usuario, guardar, copia, ahora, err, arch
     if (p.cerrado_en) fallo(tipo === 'aporte' ? 'El caso está cerrado: si necesitas algo más, presenta una PQRS nueva.' : 'El caso está cerrado.');
     const con = (adjuntos?.length || 0) > 0, txt = String(a.p_contenido ?? '').trim();
     const area0 = tipo === 'aporte' ? null : a.p_area || null;
+    // Gerencia escribe en cualquier caso en nombre de Gerencia (aunque no esté asignada): no cambia el estado de las áreas
+    const ger = !!area0 && area0 === areaGerencia(p.colegio_id)?.id && esGerencia(p.colegio_id);
     if (tipo === 'respuesta') {
-      if (!misAreas(p.id).includes(area0)) fallo('Solo los responsables de esa área responden en su nombre.');
+      if (!misAreas(p.id).includes(area0) && !ger) fallo('Solo los responsables de esa área responden en su nombre.');
       if (txt.length < 1 && !con) fallo('Escribe la respuesta.');
       if (txt.length > 5000) fallo('La respuesta admite hasta 5000 caracteres.');
     } else if (tipo === 'comentario') {
       if (!area0) { if (!esAdmin(p.colegio_id)) fallo('Elige el área en cuyo nombre comentas.'); }
-      else if (!misAreas(p.id).includes(area0)) fallo('Solo los responsables de esa área comentan en su nombre.');
+      else if (!misAreas(p.id).includes(area0) && !ger) fallo('Solo los responsables de esa área comentan en su nombre.');
       if (txt.length < 1 && !con) fallo('Escribe el comentario.');
       if (txt.length > 5000) fallo('El comentario admite hasta 5000 caracteres.');
     } else if ((txt.length < 3 && !con) || txt.length > 5000) fallo('Escribe la información (de 3 a 5000 caracteres).');
@@ -275,13 +302,14 @@ export function crearPqrsDemo({ tabla, usuario, guardar, copia, ahora, err, arch
     const n = vincular(p, i.id, adjuntos);
     const det = n > 0 ? { adjuntos: n } : {};
     if (tipo === 'respuesta') {
-      Object.assign(asign(p.id).find((x) => x.area_id === area0), { estado: 'respondida', aporte_pendiente: false, estado_por: yo(), estado_en: ahora() });
+      const s0 = asign(p.id).find((x) => x.area_id === area0);
+      if (s0) Object.assign(s0, { estado: 'respondida', aporte_pendiente: false, estado_por: yo(), estado_en: ahora() });
       evento(p.id, 'respuesta', area0, i.id, det, true);
       return { id: i.id, repetido: false, estado: estado(p.id) };
     }
     if (tipo === 'comentario') {
       let paso = false;
-      if (area0) { const s = asign(p.id).find((x) => x.area_id === area0); if (s.estado === 'pendiente') { Object.assign(s, { estado: 'en_revision', estado_por: yo(), estado_en: ahora() }); paso = true; } }
+      if (area0) { const s = asign(p.id).find((x) => x.area_id === area0); if (s && s.estado === 'pendiente') { Object.assign(s, { estado: 'en_revision', estado_por: yo(), estado_en: ahora() }); paso = true; } }
       evento(p.id, 'comentario', area0, i.id, { paso_a_revision: paso, ...det }, false);
       return { id: i.id, repetido: false, estado: estado(p.id) };
     }
@@ -295,7 +323,8 @@ export function crearPqrsDemo({ tabla, usuario, guardar, copia, ahora, err, arch
     const acc = acceso(i.pqrs_id);
     if (!acc || !(acc.personal || ['respuesta', 'aporte'].includes(i.tipo))) return null;
     const p = caso(i.pqrs_id), oculto = i.salud && !acc.salud;
-    return { id: i.id, tipo: i.tipo, area: area(i.area_id)?.nombre ?? null, area_id: i.area_id, autor: i.autor_nombre, rol: i.tipo === 'aporte' ? p.rol_solicitante : null,
+    numerar(caso(i.pqrs_id));
+    return { id: i.id, seq: i.seq, tipo: i.tipo, area: area(i.area_id)?.nombre ?? null, area_id: i.area_id, autor: i.autor_nombre, rol: i.tipo === 'aporte' ? p.rol_solicitante : null,
       mia: i.autor_id === yo(), solicitud_id: i.autor_id === yo() ? i.solicitud_id : null, contenido: oculto ? null : i.contenido, oculto_salud: oculto, salud: i.salud,
       creado_en: i.creado_en, version: i.version, editado_en: i.editado_en, versiones: T('pqrs_intervencion_versiones').filter((v) => v.intervencion_id === i.id).length,
       adjuntos: oculto ? [] : adjuntosJson(i.pqrs_id, i.id, false), adjuntos_ocultos: oculto ? T('pqrs_adjuntos').filter((x) => x.intervencion_id === i.id && x.estado === 'listo').length : 0 };
@@ -309,6 +338,7 @@ export function crearPqrsDemo({ tabla, usuario, guardar, copia, ahora, err, arch
       preparar(a.p_colegio);
       return {
         admin: esAdmin(a.p_colegio),
+        gerencia: esGerencia(a.p_colegio),
         areas: T('pqrs_areas').filter((x) => x.colegio_id === a.p_colegio && x.activo && responsables(x.id).includes(yo())).sort((x, y) => orden(x) - orden(y)).map((x) => ({ id: x.id, clave: x.clave, nombre: x.nombre })),
         hijos: T('acudientes').filter((x) => x.colegio_id === a.p_colegio && x.acudiente_id === yo()).map((x) => ({ id: x.estudiante_id, nombre: nombreDe(x.estudiante_id) })).sort((x, y) => x.nombre.localeCompare(y.nombre)),
       };
@@ -329,6 +359,7 @@ export function crearPqrsDemo({ tabla, usuario, guardar, copia, ahora, err, arch
       const ORDEN_ROL = ['admin', 'profesor', 'acudiente', 'estudiante', 'enfermeria', 'director_seccion'];
       const rol = a.p_rol ? (roles.includes(a.p_rol) ? a.p_rol : null) : roles.sort((x, y) => ORDEN_ROL.indexOf(x) - ORDEN_ROL.indexOf(y))[0];
       if (!rol) fallo('No tienes ese perfil en el colegio.');
+      if (rol === 'estudiante') fallo('Los estudiantes no presentan PQRS: la presenta su acudiente.'); // Fabio, 2-nov-2026
       const hijos = T('acudientes').filter((x) => x.colegio_id === c && x.acudiente_id === yo()).map((x) => x.estudiante_id);
       let est = null;
       if (a.p_estudiante) { if (!(a.p_estudiante === yo() || hijos.includes(a.p_estudiante))) fallo('Solo puedes relacionar a un estudiante a tu cargo.'); est = a.p_estudiante; }
@@ -355,20 +386,16 @@ export function crearPqrsDemo({ tabla, usuario, guardar, copia, ahora, err, arch
     pqrs_listar(a) {
       if (!yo() || !esMiembro(a.p_colegio)) fallo('No perteneces a este colegio.');
       if (a.p_vista === 'supervision' && !esAdmin(a.p_colegio)) fallo('Solo el administrador general ve la supervisión de PQRS.');
+      if (a.p_vista === 'gerencia' && !esGerencia(a.p_colegio)) fallo('Solo Gerencia ve la bandeja de Gerencia.');
       return T('pqrs').filter((p) => p.colegio_id === a.p_colegio && (a.p_vista === 'mias' ? p.solicitante_id === yo()
-        : a.p_vista === 'area' ? activas(p.id).some((x) => responsables(x.area_id).includes(yo())) : a.p_vista === 'supervision'))
+        : a.p_vista === 'area' ? activas(p.id).some((x) => responsables(x.area_id).includes(yo())) : a.p_vista === 'supervision' || a.p_vista === 'gerencia'))
         .sort((x, y) => y.creado_en.localeCompare(x.creado_en)).slice(0, 500).map((p) => item(p.id)).filter(Boolean);
     },
     pqrs_detalle(a) {
       const acc = acceso(a.p_id);
       if (!acc) fallo('Esa PQRS no existe o no tienes acceso.');
       const p = caso(a.p_id), ocultar = p.sensible && !acc.salud;
-      let l = T('pqrs_lecturas').find((x) => x.pqrs_id === p.id && x.perfil_id === yo());
-      if (l) l.ultima_en = ahora();
-      else {
-        T('pqrs_lecturas').push((l = { pqrs_id: p.id, colegio_id: p.colegio_id, perfil_id: yo(), primera_en: ahora(), ultima_en: ahora() }));
-        if (acc.personal && !acc.solicitante) evento(p.id, 'leida', null, null, { areas: acc.areas.map((x) => area(x)).sort((x, y) => orden(x) - orden(y)).map((x) => x.nombre), admin: acc.admin }, false, false);
-      }
+      // (3-nov-2026) abrir ya NO cuenta como leído: lo marca pqrs_marcar_leido cuando el contenido se ve en pantalla (como la base)
       const nombreAreaDe = (id) => area(id)?.nombre ?? null;
       const cl = acc.admin ? (ocultar ? (({ motivos, puntos, ...r }) => r)(p.clasificacion) : p.clasificacion) : null;
       return copia({
@@ -385,19 +412,20 @@ export function crearPqrsDemo({ tabla, usuario, guardar, copia, ahora, err, arch
           motivo: !acc.personal ? null : ar.clave === 'enfermeria' && p.sensible && !acc.salud ? 'Información de salud (reservada)' : x.motivo,
           aporte_pendiente: x.aporte_pendiente, asignada_en: x.asignada_en, asignada_por: acc.personal ? nombreDe(x.asignada_por) : null,
           retirada_en: x.retirada_en, retirada_por: acc.personal ? nombreDe(x.retirada_por) : null, retiro_motivo: acc.personal ? x.retiro_motivo : null, mia: acc.areas.includes(ar.id),
-          responsables: acc.personal ? responsables(ar.id).map(nombreDe).sort() : null })),
+          responsables: acc.personal ? responsables(ar.id).map(nombreDe).sort() : null,
+          lider: acc.personal ? (lider(ar.id) ? nombreDe(lider(ar.id)) : null) : null })),
         intervenciones: T('pqrs_intervenciones').filter((i) => i.pqrs_id === p.id && (acc.personal || ['respuesta', 'aporte'].includes(i.tipo))).sort((x, y) => x.creado_en.localeCompare(y.creado_en)).map((i) => ({
           id: i.id, tipo: i.tipo, area: nombreAreaDe(i.area_id), area_id: i.area_id, autor: i.autor_nombre, mia: i.autor_id === yo(),
           contenido: i.salud && !acc.salud ? null : i.contenido, oculto_salud: i.salud && !acc.salud, salud: i.salud, creado_en: i.creado_en, version: i.version, editado_en: i.editado_en,
           versiones: T('pqrs_intervencion_versiones').filter((v) => v.intervencion_id === i.id).sort((x, y) => x.version - y.version).map((v) => ({ version: v.version, escrito_en: v.escrito_en, reemplazado_en: v.reemplazado_en, motivo: v.motivo, contenido: v.salud && !acc.salud ? null : v.contenido })) })),
         lecturas: acc.personal ? T('pqrs_lecturas').filter((x) => x.pqrs_id === p.id && x.perfil_id !== p.solicitante_id).sort((x, y) => x.primera_en.localeCompare(y.primera_en)).map((x) => ({
-          nombre: nombreDe(x.perfil_id), primera_en: x.primera_en, ultima_en: x.ultima_en, admin: esAdmin(p.colegio_id, x.perfil_id),
+          nombre: nombreDe(x.perfil_id), primera_en: x.primera_en, ultima_en: x.ultima_en, admin: esAdmin(p.colegio_id, x.perfil_id), gerencia: respGerencia(p.colegio_id, x.perfil_id),
           areas: activas(p.id).filter((s) => responsables(s.area_id).includes(x.perfil_id)).map((s) => area(s.area_id)).sort((u, v) => orden(u) - orden(v)).map((u) => u.nombre) })) : null,
         eventos: T('pqrs_eventos').filter((e) => e.pqrs_id === p.id && (acc.personal || e.publico)).sort((x, y) => x.id - y.id).map((e) => ({
           id: e.id, tipo: e.tipo, actor: e.actor_nombre, area: nombreAreaDe(e.area_id), creado_en: e.creado_en,
           detalle: acc.personal ? e.detalle : (({ motivo, razon, sin_responsables, salud, ...r }) => r)(e.detalle) })),
-        yo: { solicitante: acc.solicitante, admin: acc.admin, personal: acc.personal, salud: acc.salud, areas: acc.areas, puede_aportar: acc.solicitante && !p.cerrado_en,
-          puede_cerrar: acc.admin && !p.cerrado_en, puede_reabrir: acc.admin && !!p.cerrado_en, puede_asignar: acc.admin && !p.cerrado_en, puede_resumen: acc.personal && acc.salud && p.sensible && !p.cerrado_en },
+        yo: { solicitante: acc.solicitante, admin: acc.admin, gerencia: acc.gerencia, area_gerencia: acc.gerencia ? areaGerencia(p.colegio_id)?.id ?? null : null, personal: acc.personal, salud: acc.salud, areas: acc.areas, puede_aportar: acc.solicitante && !p.cerrado_en,
+          puede_cerrar: (acc.admin || acc.gerencia || liderDelCaso(p.id)) && !p.cerrado_en, puede_reabrir: acc.admin && !!p.cerrado_en, puede_asignar: acc.admin && !p.cerrado_en, puede_resumen: acc.personal && acc.salud && p.sensible && !p.cerrado_en },
       });
     },
     pqrs_responder(a) { return intervenir(a, 'respuesta'); },
@@ -480,18 +508,34 @@ export function crearPqrsDemo({ tabla, usuario, guardar, copia, ahora, err, arch
       const n = a.p_adjuntos?.length ? vincular(caso(r.id), null, a.p_adjuntos) : 0;
       return { ...r, adjuntos: n };
     },
+    // Visto HASTA un mensaje (el último que estuvo en pantalla): solo avanza y nunca pasa del último (como la base)
+    pqrs_marcar_leido(a) {
+      const acc = acceso(a.p_id);
+      if (!acc || !yo()) fallo('Esa PQRS no existe o no tienes acceso.');
+      const p = caso(a.p_id);
+      numerar(p);
+      const hasta = Math.min(Math.max(Number(a.p_hasta) || 0, 0), p.ultimo_seq);
+      let l = T('pqrs_lecturas').find((x) => x.pqrs_id === p.id && x.perfil_id === yo());
+      if (!l) {
+        T('pqrs_lecturas').push((l = { pqrs_id: p.id, colegio_id: p.colegio_id, perfil_id: yo(), primera_en: ahora(), ultima_en: ahora(), leido_seq: hasta }));
+        if (acc.personal && !acc.solicitante) evento(p.id, 'leida', null, null, { areas: acc.areas.map((x) => area(x)).sort((x, y) => orden(x) - orden(y)).map((x) => x.nombre), admin: acc.admin, gerencia: acc.gerencia }, false, false);
+      } else if (hasta > (l.leido_seq ?? 0)) Object.assign(l, { leido_seq: hasta, ultima_en: ahora() });
+      return { leido_seq: l.leido_seq, ultimo_seq: p.ultimo_seq };
+    },
     pqrs_mensajes(a) {
       const acc = acceso(a.p_id);
       if (!acc) fallo('Esa PQRS no existe o no tienes acceso.');
       const p = caso(a.p_id), oculto = p.sensible && !acc.salud, lim = Math.min(Math.max(a.p_limite || 50, 1), 200);
+      numerar(p);
       const vis = T('pqrs_intervenciones').filter((i) => i.pqrs_id === p.id && (acc.personal || ['respuesta', 'aporte'].includes(i.tipo)))
-        .sort((x, y) => x.creado_en.localeCompare(y.creado_en) || x.id.localeCompare(y.id));
+        .sort((x, y) => x.seq - y.seq); // orden de guardado
       let lista, mas = false;
       if (a.p_desde) lista = vis.filter((i) => (i.editado_en && i.editado_en > i.creado_en ? i.editado_en : i.creado_en) >= a.p_desde);
       else { const previos = a.p_antes ? vis.filter((i) => i.creado_en < a.p_antes) : vis; lista = previos.slice(-lim); mas = previos.length > lista.length; }
       return {
         id: p.id, consecutivo: p.consecutivo, estado: estado(p.id), pendientes: nombresAreas(p.id, true), cerrada: !!p.cerrado_en,
         cierre: p.cerrado_en ? { en: p.cerrado_en, por: nombreDe(p.cerrado_por), motivo: p.cierre_motivo } : null, actualizado_en: p.actualizado_en, ahora: ahora(),
+        ultimo_seq: p.ultimo_seq, leido_seq: T('pqrs_lecturas').find((l) => l.pqrs_id === p.id && l.perfil_id === yo())?.leido_seq ?? null, // null = nunca lo ha visto
         inicio: a.p_desde ? null : { autor: p.solicitante_nombre, rol: p.rol_solicitante, creado_en: p.creado_en, mia: p.solicitante_id === yo(), contenido: oculto ? null : p.descripcion,
           oculto_salud: oculto, adjuntos: oculto ? [] : adjuntosJson(p.id, null, true) },
         hay_anteriores: mas, mensajes: lista.map((i) => mensajeJson(i.id)),
@@ -543,7 +587,7 @@ export function crearPqrsDemo({ tabla, usuario, guardar, copia, ahora, err, arch
     },
     pqrs_cerrar(a) {
       const p = tomar(a.p_id);
-      soloAdmin(p.colegio_id, 'Solo el administrador general cierra las PQRS.');
+      if (!(esAdmin(p.colegio_id) || esGerencia(p.colegio_id) || liderDelCaso(p.id))) fallo('Solo el administrador general, Gerencia o el líder de un área del caso finalizan la PQRS.');
       if (p.cerrado_en) return { estado: 'cerrada', igual: true };
       const mot = String(a.p_motivo ?? '').trim();
       if (mot.length < 3) fallo('Escribe la constancia del cierre.');
@@ -601,7 +645,8 @@ export function crearPqrsDemo({ tabla, usuario, guardar, copia, ahora, err, arch
         .map((id) => ({ id, nombre: nombreDe(id), roles: T('miembros').filter((m) => m.colegio_id === c && m.perfil_id === id && m.activo !== false && PERSONAL.includes(m.rol)).map((m) => m.rol).sort() })).sort((x, y) => x.nombre.localeCompare(y.nombre));
       return copia({
         areas: T('pqrs_areas').filter((x) => x.colegio_id === c && x.activo).sort((x, y) => orden(x) - orden(y)).map((x) => ({ id: x.id, clave: x.clave, nombre: x.nombre, grados: x.grados,
-          responsables: responsables(x.id).map((id) => ({ id, nombre: nombreDe(id) })).sort((u, v) => u.nombre.localeCompare(v.nombre)) })),
+          cargo_lider: x.cargo_lider ?? null, correo_contacto: x.correo_contacto ?? null,
+          responsables: responsables(x.id).map((id) => ({ id, nombre: nombreDe(id), principal: lider(x.id) === id })).sort((u, v) => (v.principal - u.principal) || u.nombre.localeCompare(v.nombre)) })),
         grados: T('grados').filter((g) => g.colegio_id === c).sort((x, y) => x.orden - y.orden).map((g) => ({ id: g.id, nombre: g.nombre })),
         personal,
         permisos_salud: T('pqrs_permisos_salud').filter((s) => s.colegio_id === c).map((s) => ({ id: s.perfil_id, nombre: nombreDe(s.perfil_id), motivo: s.motivo, otorgado_por: nombreDe(s.otorgado_por), otorgado_en: s.otorgado_en })),
@@ -614,16 +659,51 @@ export function crearPqrsDemo({ tabla, usuario, guardar, copia, ahora, err, arch
       const ar = T('pqrs_areas').find((x) => x.id === a.p_area && x.colegio_id === a.p_colegio);
       if (!ar) fallo('Esa área no es de este colegio.');
       const lista = T('pqrs_area_responsables');
-      let cambio = false;
+      let cambio = false, eraLider = false;
       if (a.p_agregar) {
         if (!T('miembros').some((m) => m.colegio_id === a.p_colegio && m.perfil_id === a.p_perfil && m.activo !== false && PERSONAL.includes(m.rol))) fallo('Solo el personal activo del colegio puede ser responsable de un área.');
         if (!lista.some((r) => r.area_id === ar.id && r.perfil_id === a.p_perfil)) { lista.push({ colegio_id: a.p_colegio, area_id: ar.id, perfil_id: a.p_perfil, asignado_por: yo(), asignado_en: ahora() }); cambio = true; }
       } else {
         const i = lista.findIndex((r) => r.area_id === ar.id && r.perfil_id === a.p_perfil);
-        if (i >= 0) { lista.splice(i, 1); cambio = true; }
+        if (i >= 0) { eraLider = !!lista[i].principal; lista.splice(i, 1); cambio = true; }
       }
       if (cambio) T('pqrs_config_historial').push({ id: Date.now(), colegio_id: a.p_colegio, actor_id: yo(), accion: a.p_agregar ? 'responsable_agregado' : 'responsable_quitado', area_id: ar.id, perfil_id: a.p_perfil, detalle: {}, creado_en: ahora() });
+      // Si se quita al líder, el área queda sin líder y queda constancia
+      if (cambio && eraLider) T('pqrs_config_historial').push({ id: Date.now() + 1, colegio_id: a.p_colegio, actor_id: yo(), accion: 'lider_cambiado', area_id: ar.id, perfil_id: null, detalle: { antes: a.p_perfil, antes_nombre: nombreDe(a.p_perfil), ahora: null }, creado_en: ahora() });
       return { cambio };
+    },
+    // Cargo de la persona (el de las áreas que lidera): igual que public.pqrs_mi_cargo; solo para mostrarlo
+    pqrs_mi_cargo(a) {
+      if (!yo() || !esMiembro(a.p_colegio)) return null;
+      const c = T('pqrs_areas').filter((x) => x.colegio_id === a.p_colegio && x.activo && x.cargo_lider && lider(x.id) === yo()).sort((x, y) => orden(x) - orden(y)).map((x) => x.cargo_lider);
+      return c.length ? c.join(' · ') : null;
+    },
+    // Cargo y correo publicado del área: igual que public.pqrs_area_contacto
+    pqrs_area_contacto(a) {
+      soloAdmin(a.p_colegio, 'Solo el administrador general configura las áreas.');
+      const ar = T('pqrs_areas').find((x) => x.id === a.p_area && x.colegio_id === a.p_colegio);
+      if (!ar) fallo('Esa área no es de este colegio.');
+      const cargo = String(a.p_cargo ?? '').trim() || null, correo = String(a.p_correo ?? '').trim().toLowerCase() || null;
+      if (cargo && cargo.length > 80) fallo('El cargo admite hasta 80 caracteres.');
+      if (correo && (!/^[^@\s]+@[^@\s]+\.[^@\s]+$/i.test(correo) || correo.length > 120)) fallo('Escribe un correo válido (o déjalo vacío).');
+      if ((ar.cargo_lider ?? null) === cargo && (ar.correo_contacto ?? null) === correo) return { cambio: false };
+      T('pqrs_config_historial').push({ id: Date.now() + 3, colegio_id: a.p_colegio, actor_id: yo(), accion: 'contacto_area', area_id: ar.id, perfil_id: null,
+        detalle: { antes: { cargo: ar.cargo_lider ?? null, correo: ar.correo_contacto ?? null }, ahora: { cargo, correo } }, creado_en: ahora() });
+      Object.assign(ar, { cargo_lider: cargo, correo_contacto: correo });
+      return { cambio: true };
+    },
+    // Marcar (o quitar, con p_perfil null) al líder de un área: igual que public.pqrs_lider
+    pqrs_lider(a) {
+      soloAdmin(a.p_colegio, 'Solo el administrador general designa a los líderes.');
+      const ar = T('pqrs_areas').find((x) => x.id === a.p_area && x.colegio_id === a.p_colegio);
+      if (!ar) fallo('Esa área no es de este colegio.');
+      const antes = lider(ar.id), nuevo = a.p_perfil || null;
+      if (nuevo === antes) return { cambio: false };
+      const lista = T('pqrs_area_responsables');
+      if (nuevo && !lista.some((r) => r.area_id === ar.id && r.perfil_id === nuevo)) F.pqrs_responsable({ p_colegio: a.p_colegio, p_area: ar.id, p_perfil: nuevo, p_agregar: true });
+      for (const r of lista) if (r.area_id === ar.id) r.principal = !!nuevo && r.perfil_id === nuevo;
+      T('pqrs_config_historial').push({ id: Date.now() + 2, colegio_id: a.p_colegio, actor_id: yo(), accion: 'lider_cambiado', area_id: ar.id, perfil_id: nuevo, detalle: { antes, antes_nombre: antes ? nombreDe(antes) : null, ahora: nuevo }, creado_en: ahora() });
+      return { cambio: true };
     },
     pqrs_grados_seccion(a) {
       soloAdmin(a.p_colegio, 'Solo el administrador general configura las secciones.');

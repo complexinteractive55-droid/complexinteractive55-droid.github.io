@@ -3,7 +3,55 @@ import { crearDbSupabase, crearDbDemo, cargarSemillaDemo, huellaEnEsteEquipo } f
 import { E, pref, base, cargarYo, elegirColegio, cambiarRol, cargarPersonas, elegirPersona, personaActiva, viendoHijo, logoHTML, aplicarMarca, fotos, olvidarFoto, olvidarFotos } from './estado.js';
 import { esc, $, aviso, ventana, leerForm, confirmar, ROL, nombre, iniciales, etiquetarTablas, fecha, fechaHora } from './ui.js';
 import { APP_VERSION } from './config.js';
-import { idioma, elegirIdioma, activarTraduccion } from './i18n.js';
+import { enIngles, preferenciaIdioma, idiomaDispositivo, elegirIdioma, activarTraduccion } from './i18n.js';
+
+// ---------------------------------------------------------------- Cargo en vez del rol genérico (1-nov-2026)
+// Quien lidera un área con cargo (ej. Gerencia → «Gerente») ve su cargo en lugar de «Profesor»/«Docente». Solo es lo que se
+// muestra: los permisos siguen siendo los de su rol y sus áreas. Se pide una vez por colegio y persona.
+const ROLES_PERSONAL = ['profesor', 'director_seccion', 'enfermeria'];
+let cargo = { clave: null, texto: null };
+function etiquetaRol() {
+  return (ROLES_PERSONAL.includes(E.rol) && cargo.clave === E.colegio?.id + '|' + E.yo?.id && cargo.texto) || ROL[E.rol];
+}
+async function pintarCargo() {
+  const clave = E.colegio.id + '|' + E.yo.id;
+  if (cargo.clave !== clave) {
+    cargo = { clave, texto: null };
+    try { cargo.texto = (await E.db.rpc('pqrs_mi_cargo', { p_colegio: E.colegio.id })) || null; } catch { /* sin cargo: queda el rol */ }
+  }
+  E.cargo = ROLES_PERSONAL.includes(E.rol) ? cargo.texto : null;
+  const t = etiquetaRol(), b = $('#btn-rol'), s = $('#menu .menu-cab small');
+  if (b) b.textContent = t + (E.roles.length > 1 ? ' ▾' : '');
+  if (s) s.textContent = `${t} · ${E.colegio.nombre}`;
+}
+
+// ---------------------------------------------------------------- Contraseña con botón de ojo (1-nov-2026)
+// Oculta por defecto. El botón es type="button" (nunca envía el formulario), cambia su etiqueta según la acción disponible y deja
+// el texto, el foco y el cursor donde estaban. Al enviar, el campo vuelve a ocultarse para que el gestor de contraseñas lo reconozca.
+// No se lee ni se guarda el contenido del campo en ningún otro lado.
+const OJO = '<svg viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path d="M2 12s3.5-7 10-7 10 7 10 7-3.5 7-10 7S2 12 2 12Z" fill="none" stroke="currentColor" stroke-width="2"/><circle cx="12" cy="12" r="3" fill="none" stroke="currentColor" stroke-width="2"/></svg>';
+const OJO_TACHADO = '<svg viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path d="M2 12s3.5-7 10-7 10 7 10 7-3.5 7-10 7S2 12 2 12Z" fill="none" stroke="currentColor" stroke-width="2"/><circle cx="12" cy="12" r="3" fill="none" stroke="currentColor" stroke-width="2"/><path d="M4 20 20 4" stroke="currentColor" stroke-width="2"/></svg>';
+let nClave = 0;
+export function campoClave(etiqueta, atributos) {
+  const id = 'clave-' + ++nClave;
+  return `<div class="campo-clave"><label for="${id}">${etiqueta}</label><span class="clave-caja"><input id="${id}" type="password" ${atributos}>` +
+    `<button type="button" class="ver-clave" data-ver-clave aria-controls="${id}" aria-pressed="false" aria-label="Mostrar contraseña" title="Mostrar contraseña">${OJO}</button></span></div>`;
+}
+document.addEventListener('pointerdown', (e) => { if (e.target.closest?.('[data-ver-clave]')) e.preventDefault(); }); // el foco no salta al botón
+document.addEventListener('click', (e) => {
+  const b = e.target.closest?.('[data-ver-clave]');
+  const inp = b && document.getElementById(b.getAttribute('aria-controls'));
+  if (!inp) return;
+  const enCampo = document.activeElement === inp, ini = inp.selectionStart, fin = inp.selectionEnd, dir = inp.selectionDirection;
+  const mostrar = inp.type === 'password', texto = mostrar ? 'Ocultar contraseña' : 'Mostrar contraseña';
+  inp.type = mostrar ? 'text' : 'password';
+  b.setAttribute('aria-pressed', String(mostrar));
+  b.setAttribute('aria-label', texto);
+  b.title = texto;
+  b.innerHTML = mostrar ? OJO_TACHADO : OJO;
+  if (enCampo) { inp.focus(); try { inp.setSelectionRange(ini, fin, dir); } catch { /* algunos tipos no admiten selección */ } }
+});
+document.addEventListener('submit', (e) => { for (const b of e.target.querySelectorAll?.('[data-ver-clave][aria-pressed="true"]') || []) b.click(); }, true);
 
 // Cada pantalla se baja la primera vez que se abre (antes se bajaban las 25 antes de mostrar nada).
 // El service worker las deja guardadas después, así que las siguientes aperturas no esperan.
@@ -21,6 +69,8 @@ const pant = {
   circularInst: () => import('./pantallas/circular_institucional.js'),
   espacios: () => import('./pantallas/espacios.js'),
   pqrs: () => import('./pantallas/pqrs.js'),
+  album: () => import('./pantallas/album.js'),
+  salas: () => import('./pantallas/salas.js'),
   planeaciones: () => import('./pantallas/planeaciones.js'),
   mensajeria: () => import('./pantallas/mensajeria.js'),
   aula: () => import('./pantallas/aula.js'),
@@ -75,6 +125,35 @@ document.addEventListener('click', (e) => { if (e.target.closest('[data-instalar
 // (touch-action) lo frenan en Android; Safari del iPhone los ignora, así que aquí se cancela el gesto en sí.
 for (const ev of ['gesturestart', 'gesturechange', 'gestureend']) document.addEventListener(ev, (e) => e.preventDefault(), { passive: false });
 document.addEventListener('touchmove', (e) => { if (e.touches.length > 1) e.preventDefault(); }, { passive: false });
+// Con el menú abierto, deslizar fuera de él (o sobre él cuando no tiene más que mostrar) no mueve la página de atrás
+// (Fabio, 2-nov). El CSS la bloquea; Safari del iPhone no siempre lo respeta, así que también se cancela el gesto.
+document.addEventListener('touchmove', (e) => {
+  if (!document.documentElement.classList.contains('menu-bloqueo')) return;
+  const m = e.target.closest?.('.menu');
+  if (!m || m.scrollHeight <= m.clientHeight) e.preventDefault();
+}, { passive: false });
+// Barras de pestañas que se desplazan de lado (Fabio, 2-nov: «la barra de selección se debe quedar quieta en donde entre, no debe
+// volver a la izquierda»). Al tocar una pestaña la pantalla se dibuja de nuevo: la barra nueva conserva el desplazamiento que
+// tenía la misma barra y, si la pestaña elegida no se ve entera, se corre solo lo justo para mostrarla.
+const BARRAS = '.pestanas, .segmentos';
+const despBarra = new Map();
+const firmaBarra = (b) => [...b.children].map((x) => x.getAttribute('href') || x.textContent).join('|');
+document.addEventListener('scroll', (e) => { if (e.target instanceof Element && e.target.matches(BARRAS)) despBarra.set(firmaBarra(e.target), e.target.scrollLeft); }, true);
+function acomodarBarra(b) {
+  if (b.scrollWidth <= b.clientWidth) return;
+  const k = firmaBarra(b);
+  if (despBarra.has(k)) b.scrollLeft = despBarra.get(k);
+  const a = b.querySelector('.activo');
+  if (!a) return;
+  const r = a.getBoundingClientRect(), rb = b.getBoundingClientRect();
+  if (r.left < rb.left + 16) b.scrollLeft -= rb.left + 16 - r.left;
+  else if (r.right > rb.right - 16) b.scrollLeft += r.right - (rb.right - 16);
+  despBarra.set(k, b.scrollLeft);
+}
+// (antes de pintar: el observador corre antes de que se vea la barra nueva, así no se nota el salto)
+new MutationObserver((cambios) => {
+  for (const c of cambios) for (const n of c.addedNodes) if (n.nodeType === 1) (n.matches(BARRAS) ? [n] : n.querySelectorAll(BARRAS)).forEach(acomodarBarra);
+}).observe(document.body, { childList: true, subtree: true });
 // Botones de imprimir y de reintentar (antes con onclick="…" en el HTML; así la política de seguridad CSP puede prohibir scripts en línea)
 document.addEventListener('click', (e) => {
   if (e.target.closest('[data-imprimir]')) window.print();
@@ -90,66 +169,71 @@ export function aplicarTema() {
 
 // ---------------------------------------------------------------- Rutas
 const RUTAS = [
-  ['inicio', () => inicio()],
-  ['estructura', async (p) => (await pant.admin()).estructura(main(), p)],
-  ['personas', async (p) => (await pant.admin()).personas(main(), p)],
-  ['curso/:id', async (p) => (await pant.admin()).curso(main(), p)],
-  ['ajustes-colegio', async () => (await pant.admin()).ajustesColegio(main())],
-  ['clases', async () => (await pant.docencia()).clases(main())],
-  ['grupo/:asig', async (p) => (await pant.docencia()).grupo(main(), p)],
-  ['direccion', async () => (await pant.docencia()).direccion(main())],
-  ['consolidado/:asig', async (p) => (await pant.docencia()).consolidado(main(), p)],
-  ['info-personal', async (p) => (await pant.famPerfil()).infoPersonal(main(), p)],
-  ['salidas', async (p) => (await pant.enfermeria()).salidas(main(), p)],
-  ['compromisos', async (p) => (await pant.compromisosP()).lista(main(), p)],
-  ['docentes', async () => (await pant.docenteP()).lista(main())],
-  ['docente/:id', async (p) => (await pant.docenteP()).ficha(main(), p)],
-  ['planeacion', async () => (await pant.enfermeria()).planeacionFamilia(main())],
-  ['edocs', async () => (await pant.famPerfil()).edocs(main())],
-  ['obligaciones', async () => (await pant.famPerfil()).obligaciones(main())],
-  ['bandeja-hijo', async () => (await pant.famPerfil()).bandejaHijo(main())],
-  ['notas/:asig', async (p) => (await pant.planillaP()).planilla(main(), p)],
-  ['observaciones-boletin/:asig', async (p) => (await pant.boletinD()).observaciones(main(), p)],
-  ['remediales/:asig', async (p) => (await pant.boletinD()).remediales(main(), p)],
-  ['seguimientos', async () => (await pant.seguimientosP()).lista(main())],
-  ['seguimiento/:id', async (p) => (await pant.seguimientosP()).seguimiento(main(), p)],
-  ['asistencia/:asig', async (p) => (await pant.profe()).asistencia(main(), p)],
-  ['observador/:est', async (p) => (await pant.familia()).observador(main(), p)],
-  ['estudiante/:est', async (p) => (await pant.familia()).estudiante(main(), p)],
-  ['boletin/:est/:periodo', async (p) => (await pant.familia()).boletin(main(), p)],
-  ['circulares', async () => (await pant.circulares()).lista(main())],
-  ['circular/:id', async (p) => (await pant.circulares()).detalle(main(), p)],
-  ['circulares-institucionales', async () => (await pant.circularInst()).lista(main())],
-  ['circular-institucional/:id', async (p) => (await pant.circularInst()).editor(main(), p)],
-  ['planeaciones', async (p) => (await pant.planeaciones()).lista(main(), p)],
-  ['bandeja', async (p) => (await pant.mensajeria()).bandeja(main(), p)],
-  ['enviados', async () => (await pant.mensajeria()).enviados(main())],
-  ['redactar', async (p) => (await pant.mensajeria()).redactar(main(), p)],
-  ['mensaje/:id', async (p) => (await pant.mensajeria()).detalle(main(), p)],
-  ['cartelera', async () => (await pant.mensajeria()).cartelera(main())],
-  ['aula', async () => (await pant.aula()).aula(main())],
-  ['aula/:asig', async (p) => (await pant.aula()).materia(main(), p)],
-  ['tarea/:id', async (p) => (await pant.aula()).tarea(main(), p)],
-  ['calendario', async (p) => (await pant.calendario()).calendario(main(), p)],
-  ['tesoreria', async (p) => (await pant.tesoreria()).tesoreria(main(), p)],
-  ['estado-cuenta/:est', async (p) => (await pant.tesoreria()).estadoCuenta(main(), p)],
-  ['ausencias', async () => (await pant.comunidad()).ausencias(main())],
-  ['archivos', async (p) => (await pant.comunidad()).archivos(main(), p)],
-  ['pasarelas', async () => (await pant.comunidad()).pasarelas(main())],
-  ['procesos', async (p) => (await pant.procesos()).lista(main(), p)],
-  ['proceso/:id', async (p) => (await pant.procesos()).responder(main(), p)],
-  ['proceso/:id/respuestas', async (p) => (await pant.procesos()).respuestas(main(), p)],
-  ['certificado/:tipo/:est', async (p) => (await pant.certificados()).certificado(main(), p)],
-  ['horario', async (p) => (await pant.horario()).horario(main(), p)],
-  ['espacios', async (p) => (await pant.espacios()).solicitud(main(), p)],
-  ['espacios-solicitudes', async (p) => (await pant.espacios()).solicitudesAdmin(main(), p)],
-  ['pqrs', async (p) => (await pant.pqrs()).inicio(main(), p)],
-  ['pqrs/:id', async (p) => (await pant.pqrs()).detalle(main(), p)],
-  ['reportes', async (p) => (await pant.reportes()).reportes(main(), p)],
-  ['examen/:id', async (p) => (await pant.examenesP()).examen(main(), p)],
-  ['ayuda', async () => (await pant.ayudaP()).ayuda(main())],
-  ['carnet/:est', async (p) => (await pant.carnetP()).carnet(main(), p)],
-  ['perfil', () => perfil()],
+  ['inicio', (_, m) => inicio(m)],
+  ['estructura', async (p, m) => (await pant.admin()).estructura(m, p)],
+  ['personas', async (p, m) => (await pant.admin()).personas(m, p)],
+  ['curso/:id', async (p, m) => (await pant.admin()).curso(m, p)],
+  ['ajustes-colegio', async (_, m) => (await pant.admin()).ajustesColegio(m)],
+  ['clases', async (_, m) => (await pant.docencia()).clases(m)],
+  ['grupo/:asig', async (p, m) => (await pant.docencia()).grupo(m, p)],
+  ['direccion', async (_, m) => (await pant.docencia()).direccion(m)],
+  ['consolidado/:asig', async (p, m) => (await pant.docencia()).consolidado(m, p)],
+  ['info-personal', async (p, m) => (await pant.famPerfil()).infoPersonal(m, p)],
+  ['salidas', async (p, m) => (await pant.enfermeria()).salidas(m, p)],
+  ['compromisos', async (p, m) => (await pant.compromisosP()).lista(m, p)],
+  ['docentes', async (_, m) => (await pant.docenteP()).lista(m)],
+  ['docente/:id', async (p, m) => (await pant.docenteP()).ficha(m, p)],
+  ['planeacion', async (_, m) => (await pant.enfermeria()).planeacionFamilia(m)],
+  ['edocs', async (_, m) => (await pant.famPerfil()).edocs(m)],
+  ['obligaciones', async (_, m) => (await pant.famPerfil()).obligaciones(m)],
+  ['bandeja-hijo', async (_, m) => (await pant.famPerfil()).bandejaHijo(m)],
+  ['notas/:asig', async (p, m) => (await pant.planillaP()).planilla(m, p)],
+  ['observaciones-boletin/:asig', async (p, m) => (await pant.boletinD()).observaciones(m, p)],
+  ['remediales/:asig', async (p, m) => (await pant.boletinD()).remediales(m, p)],
+  ['seguimientos', async (_, m) => (await pant.seguimientosP()).lista(m)],
+  ['seguimiento/:id', async (p, m) => (await pant.seguimientosP()).seguimiento(m, p)],
+  ['asistencia/:asig', async (p, m) => (await pant.profe()).asistencia(m, p)],
+  ['observador/:est', async (p, m) => (await pant.familia()).observador(m, p)],
+  ['estudiante/:est', async (p, m) => (await pant.familia()).estudiante(m, p)],
+  ['boletin/:est/:periodo', async (p, m) => (await pant.familia()).boletin(m, p)],
+  ['circulares', async (_, m) => (await pant.circulares()).lista(m)],
+  ['circular/:id', async (p, m) => (await pant.circulares()).detalle(m, p)],
+  ['circulares-institucionales', async (_, m) => (await pant.circularInst()).lista(m)],
+  ['circular-institucional/:id', async (p, m) => (await pant.circularInst()).editor(m, p)],
+  ['planeaciones', async (p, m) => (await pant.planeaciones()).lista(m, p)],
+  ['bandeja', async (p, m) => (await pant.mensajeria()).bandeja(m, p)],
+  ['enviados', async (_, m) => (await pant.mensajeria()).enviados(m)],
+  ['redactar', async (p, m) => (await pant.mensajeria()).redactar(m, p)],
+  ['mensaje/:id', async (p, m) => (await pant.mensajeria()).detalle(m, p)],
+  ['cartelera', async (_, m) => (await pant.mensajeria()).cartelera(m)],
+  ['aula', async (_, m) => (await pant.aula()).aula(m)],
+  ['aula/:asig', async (p, m) => (await pant.aula()).materia(m, p)],
+  ['tarea/:id', async (p, m) => (await pant.aula()).tarea(m, p)],
+  ['calendario', async (p, m) => (await pant.calendario()).calendario(m, p)],
+  ['tesoreria', async (p, m) => (await pant.tesoreria()).tesoreria(m, p)],
+  ['estado-cuenta/:est', async (p, m) => (await pant.tesoreria()).estadoCuenta(m, p)],
+  ['ausencias', async (_, m) => (await pant.comunidad()).ausencias(m)],
+  ['archivos', async (p, m) => (await pant.comunidad()).archivos(m, p)],
+  ['pasarelas', async (_, m) => (await pant.comunidad()).pasarelas(m)],
+  ['procesos', async (p, m) => (await pant.procesos()).lista(m, p)],
+  ['proceso/:id', async (p, m) => (await pant.procesos()).responder(m, p)],
+  ['proceso/:id/respuestas', async (p, m) => (await pant.procesos()).respuestas(m, p)],
+  ['certificado/:tipo/:est', async (p, m) => (await pant.certificados()).certificado(m, p)],
+  ['horario', async (p, m) => (await pant.horario()).horario(m, p)],
+  ['album', async (p, m) => (await pant.album()).album(m, p)],
+  ['album/:curso', async (p, m) => (await pant.album()).album(m, p)],
+  ['salas', async (_, m) => (await pant.salas()).salas(m)],
+  ['sala/:id', async (p, m) => (await pant.salas()).sala(m, p)],
+  ['aviso/:id', async (p, m) => (await pant.salas()).avisoDetalle(m, p)],
+  ['espacios', async (p, m) => (await pant.espacios()).solicitud(m, p)],
+  ['espacios-solicitudes', async (p, m) => (await pant.espacios()).solicitudesAdmin(m, p)],
+  ['pqrs', async (p, m) => (await pant.pqrs()).inicio(m, p)],
+  ['pqrs/:id', async (p, m) => (await pant.pqrs()).detalle(m, p)],
+  ['reportes', async (p, m) => (await pant.reportes()).reportes(m, p)],
+  ['examen/:id', async (p, m) => (await pant.examenesP()).examen(m, p)],
+  ['ayuda', async (_, m) => (await pant.ayudaP()).ayuda(m)],
+  ['carnet/:est', async (p, m) => (await pant.carnetP()).carnet(m, p)],
+  ['perfil', (_, m) => perfil(m)],
 ];
 
 function resolver(hash) {
@@ -172,6 +256,7 @@ export const ir = (h) => { if (location.hash === h) navegar(); else location.has
 let navegando = 0;
 async function navegar() {
   const yo = ++navegando;
+  abrirMenu(false); // cambiar de pantalla (también cerrar sesión o el botón Atrás) cierra el menú y libera la página
   if (!E.sesion) return pantallaEntrar();
   if (!E.colegio) return pantallaColegios();
   precargarInicio();
@@ -179,14 +264,19 @@ async function navegar() {
   escucharNotas(); // si cambió de colegio, escucha las notas del nuevo
   const r = resolver(location.hash || '#/inicio') || resolver('#/inicio');
   pintarArmazon(r.patron);
-  main().innerHTML = '<div class="cargando" aria-label="Cargando"><span></span></div>';
+  // Cada navegación pinta en su PROPIO #principal (uno nuevo en el mismo lugar): si una pantalla anterior termina de cargar
+  // después (p. ej. el Tablero, que es lento), escribe en el que ya salió de la página y no tapa la nueva (2-nov-2026: el menú
+  // marcaba «Mi cuenta y ajustes» y se veía el Tablero)
+  const m = main().cloneNode(false);
+  main().replaceWith(m);
+  m.innerHTML = '<div class="cargando" aria-label="Cargando"><span></span></div>';
   try {
-    await r.fn(r.params);
+    await r.fn(r.params, m);
   } catch (err) {
     console.error(err);
-    if (yo === navegando) main().innerHTML = `<div class="vacio"><p>No se pudo cargar: ${esc(err.message)}</p><button class="btn" data-recargar>Reintentar</button></div>`;
+    if (yo === navegando) m.innerHTML = `<div class="vacio"><p>No se pudo cargar: ${esc(err.message)}</p><button class="btn" data-recargar>Reintentar</button></div>`;
   }
-  if (yo === navegando) { main().scrollTop = 0; window.scrollTo(0, 0); etiquetarTablas(main()); const bx = $('#btn-exportar'); if (bx) bx.hidden = !main().querySelector('table'); }
+  if (yo === navegando) { m.scrollTop = 0; window.scrollTo(0, 0); etiquetarTablas(m); const bx = $('#btn-exportar'); if (bx) bx.hidden = !m.querySelector('table'); }
 }
 
 // Llegaron datos más nuevos del servidor para la pantalla que se está viendo (db.js los pidió por detrás):
@@ -228,7 +318,7 @@ window.addEventListener('complex:datos-nuevos', async () => {
   const r = resolver(location.hash || '#/inicio') || resolver('#/inicio');
   const yo = ++navegando;
   const m = main(), y = m.scrollTop, wy = window.scrollY;
-  try { await r.fn(r.params); } catch (err) { console.warn(err); return; }
+  try { await r.fn(r.params, m); } catch (err) { console.warn(err); return; }
   if (yo !== navegando) return;
   m.scrollTop = y; window.scrollTo(0, wy);
   etiquetarTablas(m);
@@ -238,6 +328,18 @@ window.addEventListener('complex:datos-nuevos', async () => {
 // Menú lateral izquierdo agrupado (Tablero · Comunicación · Comunidad · Academia · Perfil),
 // con buscador "Filtrar menú" y, para acudientes, pestañas de persona (yo + cada hijo).
 const COMUNICACION = { t: 'Comunicación', ic: '💬', items: [['bandeja', 'Bandeja de entrada', 'noLeidos'], ['redactar', 'Redactar mensaje'], ['enviados', 'Enviados'], ['cartelera', 'Cartelera'], ['circulares', 'Circulares'], ['pqrs', 'PQRS']] };
+// Circulares institucionales de quien el administrador designó (Gerencia, directores de sección…; 2-nov-2026): las ve en su
+// menú. Administración entra como siempre por Circulares. Se pregunta una vez por colegio y persona (circular_mi_perfil).
+let circ = { clave: null, puede: false };
+const comunicacion = () => (circ.puede && circ.clave === E.colegio?.id + '|' + E.yo?.id
+  ? { ...COMUNICACION, items: COMUNICACION.items.flatMap((x) => (x[0] === 'circulares' ? [x, ['circulares-institucionales', 'Circulares institucionales']] : [x])) } : COMUNICACION);
+async function revisarCirculares(patron) {
+  const clave = E.colegio.id + '|' + E.yo.id;
+  if (circ.clave === clave || E.rol === 'admin' || !ROLES_PERSONAL.includes(E.rol)) return;
+  circ = { clave, puede: false };
+  try { circ.puede = (await (await import('./firma_circular.js')).perfilCircular()).puede_preparar === true; } catch { /* sin la migración: como antes */ }
+  if (circ.puede && circ.clave === E.colegio?.id + '|' + E.yo?.id) pintarArmazon(patron);
+}
 // Orden como Phidias: Tablero · Perfil · Comunicación · Comunidad · … · Pasarelas (al final)
 function menuDe() {
   const lista = menuBase();
@@ -251,27 +353,29 @@ function menuBase() {
   const hist = est ? [[`estudiante/${est}?tab=notas`, 'Historial de notas'], [`estudiante/${est}?tab=asistencia`, 'Asistencia']] : [];
   const tablero = { r: 'inicio', ic: '▦', t: 'Tablero' };
   const perfilG = (extra = []) => ({ t: 'Perfil', ic: '👤', items: [['info-personal', 'Información personal'], ...(E.rol === 'acudiente' || E.rol === 'estudiante' ? [['edocs', 'E-docs']] : []), ['perfil', 'Mi cuenta y ajustes'], ...extra, ['ayuda', 'Ayuda']] });
-  if (E.rol === 'admin') return [tablero, COMUNICACION,
+  const conSalas = (g) => ({ ...g, items: [...g.items, ['salas', 'Salas de sección']] }); // chats de sección y avisos (personal)
+  if (E.rol === 'admin') return [tablero, conSalas(COMUNICACION),
     { t: 'Comunidad', ic: '👥', items: [['calendario', 'Calendario'], ['personas', 'Personas'], ['seguimientos', 'Seguimientos'], ['compromisos', 'Compromisos'], ['ausencias', 'Ausencias reportadas'], ['procesos', 'Procesos en línea'], ['archivos', 'Archivos']] },
-    { t: 'Académico', ic: '🎓', items: [['estructura', 'Estructura del colegio'], ['horario', 'Horarios'], ['planeaciones', 'Planeaciones'], ['reportes', 'Reportes'], ['espacios-solicitudes', 'Solicitudes de espacios']] },
+    { t: 'Académico', ic: '🎓', items: [['estructura', 'Estructura del colegio'], ['horario', 'Horarios'], ['album', 'Álbum por curso'], ['planeaciones', 'Planeaciones'], ['reportes', 'Reportes'], ['espacios-solicitudes', 'Solicitudes de espacios']] },
     { t: 'Tesorería', ic: '💰', items: [['tesoreria?tab=cartera', 'Cartera'], ['tesoreria?tab=facturar', 'Facturar'], ['tesoreria?tab=pagos', 'Pagos'], ['tesoreria?tab=conceptos', 'Conceptos']] },
     perfilG([['ajustes-colegio', 'Ajustes del colegio']])];
-  if (E.rol === 'profesor') return [tablero, COMUNICACION,
+  if (E.rol === 'profesor') return [tablero, conSalas(comunicacion()),
     { t: 'Comunidad', ic: '👥', items: [['calendario', 'Calendario'], ['seguimientos', 'Seguimientos'], ['compromisos', 'Compromisos'], ['salidas', 'Permisos de salida'], ['procesos', 'Procesos en línea'], ['archivos', 'Archivos globales']] },
-    { t: 'Docencia', ic: '🧑‍🏫', items: [['direccion', 'Dirección de grupo'], ['clases', 'Clases'], ['reportes', 'Reportes']] },
+    { t: 'Docencia', ic: '🧑‍🏫', items: [['direccion', 'Dirección de grupo'], ['clases', 'Clases'], ['album', 'Álbum por curso'], ['reportes', 'Reportes']] },
     { t: 'Academia', ic: '🎓', items: [['aula', 'Aula'], ['horario', 'Mi horario'], ['planeaciones', 'Planeaciones'], ['espacios', 'Solicitud de espacios']] },
     perfilG()];
-  if (E.rol === 'estudiante') return [tablero, COMUNICACION,
+  // Los estudiantes no presentan PQRS: la presenta su acudiente (Fabio, 2-nov-2026)
+  if (E.rol === 'estudiante') return [tablero, { ...COMUNICACION, items: COMUNICACION.items.filter(([r]) => r !== 'pqrs') },
     { t: 'Comunidad', ic: '👥', items: [['calendario', 'Calendario'], [`estudiante/${E.yo.id}?tab=observador`, 'Seguimientos'], [`estudiante/${E.yo.id}?tab=compromisos`, 'Compromisos'], ['procesos', 'Procesos en línea'], ['archivos', 'Archivos']] },
     { t: 'Academia', ic: '🎓', items: [['aula', 'Aula'], ['planeacion', 'Planeación'], ['horario', 'Horario'], ...hist] },
     perfilG()];
-  if (E.rol === 'enfermeria') return [tablero, COMUNICACION,
-    { t: 'Enfermería', ic: '🩺', items: [['salidas', 'Permisos de salida'], ['seguimientos', 'Prerreportes'], ['docentes', 'Docentes']] },
+  if (E.rol === 'enfermeria') return [tablero, conSalas(comunicacion()),
+    { t: 'Enfermería', ic: '🩺', items: [['salidas', 'Permisos de salida'], ['seguimientos', 'Prerreportes'], ['album', 'Álbum por curso'], ['docentes', 'Docentes']] },
     { t: 'Comunidad', ic: '👥', items: [['calendario', 'Calendario'], ['archivos', 'Archivos globales']] },
     perfilG()];
-  if (E.rol === 'director_seccion') return [tablero, COMUNICACION,
+  if (E.rol === 'director_seccion') return [tablero, conSalas(comunicacion()),
     { t: 'Comunidad', ic: '👥', items: [['calendario', 'Calendario'], ['seguimientos', 'Seguimientos'], ['compromisos', 'Compromisos'], ['salidas', 'Permisos de salida'], ['archivos', 'Archivos globales']] },
-    { t: 'Académico', ic: '🎓', items: [['planeaciones', 'Planeaciones'], ['horario', 'Horarios'], ['reportes', 'Reportes'], ['docentes', 'Docentes']] },
+    { t: 'Académico', ic: '🎓', items: [['planeaciones', 'Planeaciones'], ['horario', 'Horarios'], ['album', 'Álbum por curso'], ['reportes', 'Reportes'], ['docentes', 'Docentes']] },
     perfilG()];
   // acudiente
   if (viendoHijo()) return [tablero,
@@ -310,7 +414,12 @@ function pintarArmazon(patron) {
         <div class="personas" id="personas" role="tablist" aria-label="Persona"></div>
         <main id="principal" tabindex="-1"></main>
       </div>`;
-    $('#btn-colegio').onclick = () => { if (E.colegios.length > 1 || E.roles.includes('admin')) { E.colegio = null; navegar(); } };
+    $('#btn-colegio').onclick = () => {
+      if (!(E.colegios.length > 1 || E.roles.includes('admin'))) return;
+      // Al cambiar de colegio: se cierra el canal en vivo del colegio anterior y se olvidan las fotos (cada colegio, sus permisos)
+      dejarNotas?.(); dejarNotas = null; notasDe = null; olvidarFotos(); pant.album().then((x) => x.olvidar()).catch(() => {}); pant.salas().then((x) => x.olvidar()).catch(() => {});
+      E.colegio = null; navegar();
+    };
     $('#btn-rol').onclick = elegirRol;
     $('#btn-exportar').onclick = exportarPantalla;
     $('#btn-menu').onclick = () => abrirMenu(!app.classList.contains('menu-abierto'));
@@ -339,8 +448,10 @@ function pintarArmazon(patron) {
   }
   aplicarMarca();
   pintarBarraColegio();
-  $('#btn-rol').textContent = ROL[E.rol] + (E.roles.length > 1 ? ' ▾' : '');
+  $('#btn-rol').textContent = etiquetaRol() + (E.roles.length > 1 ? ' ▾' : '');
   $('#btn-rol').disabled = E.roles.length < 2;
+  pintarCargo();
+  revisarCirculares(patron);
 
   // Pestañas de persona (acudiente)
   const pp = $('#personas');
@@ -355,7 +466,7 @@ function pintarArmazon(patron) {
   $('#menu').innerHTML = `
     <div class="menu-cab">
       <span class="avatar grande" data-foto-de="${E.yo.id}">${esc(iniciales(E.yo))}</span>
-      <span><b>${esc(nombre(E.yo))}</b><small>${ROL[E.rol]} · ${esc(E.colegio.nombre)}</small></span>
+      <span><b>${esc(nombre(E.yo))}</b><small>${esc(etiquetaRol())} · ${esc(E.colegio.nombre)}</small></span>
     </div>
     <input class="filtro-menu" type="search" placeholder="🔍 Filtrar menú" aria-label="Filtrar menú">
     ${menuDe().map((g) => g.r
@@ -397,6 +508,7 @@ async function pintarContadores() {
 function abrirMenu(si) {
   const app = $('#app');
   app.classList.toggle('menu-abierto', si);
+  document.documentElement.classList.toggle('menu-bloqueo', !!si); // la página de atrás no se desplaza
   $('#btn-menu')?.setAttribute('aria-expanded', si);
 }
 
@@ -427,13 +539,13 @@ function precargarInicio() {
   for (const n of lista) import(`./pantallas/${n}.js`).catch(() => {});
 }
 
-async function inicio() {
-  if (E.rol === 'admin') return (await pant.admin()).inicio(main());
-  if (E.rol === 'profesor') return (await pant.profe()).inicio(main());
-  if (E.rol === 'enfermeria') return (await pant.enfermeria()).inicioEnfermeria(main());
-  if (E.rol === 'director_seccion') return (await pant.enfermeria()).inicioSeccion(main());
-  if (viendoHijo()) return (await pant.familia()).estudiante(main(), { est: E.persona, inicio: 1 });
-  return (await pant.familia()).inicio(main());
+async function inicio(m = main()) {
+  if (E.rol === 'admin') return (await pant.admin()).inicio(m);
+  if (E.rol === 'profesor') return (await pant.profe()).inicio(m);
+  if (E.rol === 'enfermeria') return (await pant.enfermeria()).inicioEnfermeria(m);
+  if (E.rol === 'director_seccion') return (await pant.enfermeria()).inicioSeccion(m);
+  if (viendoHijo()) return (await pant.familia()).estudiante(m, { est: E.persona, inicio: 1 });
+  return (await pant.familia()).inicio(m);
 }
 
 // ---------------------------------------------------------------- Entrar
@@ -450,7 +562,7 @@ function pantallaEntrar(modo = 'entrar') {
             <label>Nombres<input name="nombres" autocomplete="given-name" required></label>
             <label>Apellidos<input name="apellidos" autocomplete="family-name" required></label>` : ''}
           <label>${registro ? 'Correo' : 'Correo o número de documento'}<input name="correo" type="${registro ? 'email' : 'text'}" autocomplete="username" ${registro ? 'inputmode="email"' : ''} autocapitalize="off" required></label>
-          <label>Contraseña<input name="clave" type="password" autocomplete="${registro ? 'new-password' : 'current-password'}" minlength="6" required></label>
+          ${campoClave('Contraseña', `name="clave" autocomplete="${registro ? 'new-password' : 'current-password'}" minlength="6" required`)}
           <button class="btn btn-primario btn-ancho" type="submit">${registro ? 'Crear cuenta' : 'Entrar'}</button>
           <p class="error" id="err-entrar" role="alert"></p>
         </form>
@@ -654,8 +766,7 @@ async function pantallaColegios() {
 }
 
 // ---------------------------------------------------------------- Perfil / Más
-async function perfil() {
-  const m = main();
+async function perfil(m = main()) {
   const tema = pref('tema') || 'auto';
   const tieneFoto = !!(await fotos([E.yo.id]).catch(() => new Map())).get(E.yo.id);
   m.innerHTML = `
@@ -673,6 +784,7 @@ async function perfil() {
     ${'avisos_correo' in E.yo || E.db.modo === 'demo' ? `<section class="tarjeta"><h2>Avisos por correo</h2>
       <label class="fila"><input type="checkbox" id="chk-avisos" ${E.yo.avisos_correo !== false ? 'checked' : ''}><span><b>Avisarme por correo</b><small>Te escribimos a ${esc(E.sesion?.user?.email?.endsWith('@usuarios.complex') ? 'tu correo (aún no tienes uno registrado)' : E.sesion?.user?.email || E.yo.correo || 'tu correo')} cuando te llegue un mensaje o una circular.</small></span></label>
     </section>` : ''}
+    <section class="tarjeta" id="sec-firma" hidden></section>
     <section class="tarjeta" id="sec-huella" hidden>
       <h2>Entrar con huella</h2>
       <p class="ayuda">Entra a Complex_ con la huella o el rostro de tu celular, sin escribir la contraseña. Tu huella no sale del celular: Complex_ solo guarda una llave de acceso.</p>
@@ -690,8 +802,11 @@ async function perfil() {
     <section class="tarjeta">
       <h2>Idioma</h2>
       <div class="segmentos" role="radiogroup" aria-label="Idioma" translate="no">
-        ${[['es', 'Español'], ['en', 'English (beta)']].map(([v, t]) => `<button role="radio" aria-checked="${idioma === v}" class="${idioma === v ? 'activo' : ''}" data-idioma="${v}">${t}</button>`).join('')}
+        ${[['auto', enIngles ? 'Automatic' : 'Automático'], ['es', 'Español'], ['en', 'English (beta)']].map(([v, t]) => `<button role="radio" aria-checked="${preferenciaIdioma === v}" class="${preferenciaIdioma === v ? 'activo' : ''}" data-idioma="${v}">${t}</button>`).join('')}
       </div>
+      <p class="ayuda" translate="no" data-idioma-ayuda>${enIngles
+        ? `Automatic follows this device's language (now: <b>${idiomaDispositivo() === 'en' ? 'English' : 'Spanish'}</b>).`
+        : `Automático usa el idioma de este dispositivo (ahora: <b>${idiomaDispositivo() === 'en' ? 'inglés' : 'español'}</b>).`}</p>
       <p class="ayuda">Inglés (en prueba): menús, botones y pantallas. Los mensajes y las anotaciones quedan como los escribieron.</p>
     </section>
     <section class="tarjeta">
@@ -703,8 +818,10 @@ async function perfil() {
     </section>
     <p class="nota-pie">Complex_ v${esc(APP_VERSION)}${E.db.modo === 'demo' ? ' · modo demo' : ''}</p>`;
   m.querySelectorAll('[data-tema]').forEach((b) => (b.onclick = () => { pref('tema', b.dataset.tema); aplicarTema(); perfil(); }));
-  m.querySelectorAll('[data-idioma]').forEach((b) => (b.onclick = () => { if (b.dataset.idioma !== idioma) elegirIdioma(b.dataset.idioma); }));
+  m.querySelectorAll('[data-idioma]').forEach((b) => (b.onclick = () => { if (b.dataset.idioma !== preferenciaIdioma && !elegirIdioma(b.dataset.idioma)) perfil(); }));
   $('#btn-cambiar-clave')?.addEventListener('click', () => cambiarClave(false));
+  // Mi firma (circulares institucionales): solo para quien las prepara (Administración o designado)
+  if (ROLES_PERSONAL.includes(E.rol) || E.rol === 'admin') import('./firma_circular.js').then((f) => f.pintarMiFirma(m.querySelector('#sec-firma'))).catch(() => {});
   $('#btn-guardar-perfil').onclick = async () => {
     const d = leerForm($('#f-perfil'));
     try {
@@ -763,7 +880,30 @@ async function pintarHuellas(m) {
   }));
 }
 
+// Borradores y mensajes sin enviar que ESTA persona dejó en el equipo (PQRS y circulares institucionales); los vacíos no cuentan
+function borradoresDe(uid) {
+  const ks = [];
+  const conAlgo = (v) => (Array.isArray(v) ? v.length > 0 : v && typeof v === 'object' ? Object.values(v).some((x) => (typeof x === 'string' ? x.trim().length > 0 : conAlgo(x))) : false);
+  try {
+    for (let i = 0; i < localStorage.length; i++) {
+      const k = localStorage.key(i);
+      if (!uid || !(k.startsWith('complex_pqrs_') && k.endsWith('_' + uid)) && !(k.startsWith('complex_circular_') && k.includes('_' + uid + '_'))) continue;
+      let v = null; try { v = JSON.parse(localStorage.getItem(k)); } catch {}
+      ks.push({ k, algo: conAlgo(v) });
+    }
+  } catch {}
+  return ks;
+}
 async function salir() {
+  // Lo que esta persona dejó sin enviar en el equipo: se avisa antes; si sale, se borra (no queda para quien entre después; 3-nov-2026)
+  const propios = borradoresDe(E.yo?.id);
+  const n = propios.filter((x) => x.algo).length;
+  if (n && !(await confirmar('¿Cerrar sesión?', `Tienes ${n === 1 ? 'un borrador o mensaje sin enviar' : n + ' borradores o mensajes sin enviar'} guardado en este equipo. Si cierras sesión se borra de aquí y no se envía.`, 'Cerrar sesión'))) return;
+  for (const x of propios) try { localStorage.removeItem(x.k); } catch {}
+  (await pant.mensajeria().catch(() => null))?.olvidarEnvios?.();
+  (await pant.pqrs().catch(() => null))?.olvidarTodo?.();
+  (await pant.album().catch(() => null))?.olvidar?.();
+  (await pant.salas().catch(() => null))?.olvidar?.();
   dejarDeEscuchar?.();
   dejarDeEscuchar = null;
   dejarNotas?.(); dejarNotas = null; notasDe = null;
@@ -957,8 +1097,8 @@ export async function cambiarClave(desdeEnlace) {
     titulo: desdeEnlace ? 'Crea tu contraseña nueva' : 'Cambiar contraseña',
     html: `<div class="form">
       ${desdeEnlace ? '<p class="ayuda">Entraste con el enlace de recuperación. Escribe tu contraseña nueva.</p>' : ''}
-      <label>Contraseña nueva<input type="password" name="clave1" autocomplete="new-password" minlength="8"></label>
-      <label>Repítela<input type="password" name="clave2" autocomplete="new-password" minlength="8"></label>
+      ${campoClave('Contraseña nueva', 'name="clave1" autocomplete="new-password" minlength="8"')}
+      ${campoClave('Repítela', 'name="clave2" autocomplete="new-password" minlength="8"')}
       <p class="ayuda">Mínimo 8 caracteres. Usa letras y números.</p></div>`,
     botones: [{ texto: 'Cancelar' }, { texto: 'Guardar', antes: async (caja) => {
       const a = caja.querySelector('[name=clave1]').value, b2 = caja.querySelector('[name=clave2]').value;

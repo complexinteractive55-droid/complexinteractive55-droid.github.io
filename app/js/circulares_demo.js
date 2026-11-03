@@ -1,6 +1,8 @@
 // Numeración de circulares por área en el MODO DEMO (todo queda en este navegador): las mismas reglas y mensajes que
 // supabase/migrations/20261029130000_circular_series_area.sql (configurar áreas y series, validar, vista previa, emitir, anular).
-export function crearCircularesDemo({ tabla, usuario, guardar, ahora, err, esAdmin, consecutivoCircular, formatoCirc }) {
+// 2-nov-2026 (20261102140000_circular_firmas_emisores): quién prepara circulares (además de Administración), con su cargo y
+// área, y la firma propia de cada persona (imagen PNG que solo ve su dueño).
+export function crearCircularesDemo({ tabla, usuario, guardar, ahora, err, esAdmin, consecutivoCircular, formatoCirc, emisorCirc, puedePreparar, existeArchivo }) {
   const soloAdmin = (c) => { if (!usuario() || !esAdmin(c)) err('Solo el administrador del colegio configura y emite las circulares.'); };
   const historia = (c, objeto, id, accion, antes, despues) => tabla('circular_config_historial').push({ id: Date.now() + Math.random(), colegio_id: c, actor_id: usuario(), objeto, objeto_id: id, accion,
     antes: antes ? JSON.parse(JSON.stringify(antes)) : null, despues: despues ? JSON.parse(JSON.stringify(despues)) : null, creado_en: ahora() });
@@ -11,6 +13,14 @@ export function crearCircularesDemo({ tabla, usuario, guardar, ahora, err, esAdm
     return tabla('circular_borradores').some(ya) || tabla('circular_numeros_anulados').some(ya);
   };
 
+  // Formatos que puede usar una persona (como private.circular_formatos_de): {todos} | {permitidas} | {prohibidas}
+  const formatosDe = (c, p) => {
+    const e = emisorCirc(c, p);
+    if (!e) return { todos: tabla('miembros').some((m) => m.colegio_id === c && m.perfil_id === p && m.rol === 'admin' && m.activo !== false) };
+    const mias = tabla('circular_area_formatos').filter((x) => e.area_id && x.area_id === e.area_id).map((x) => x.plantilla_id);
+    if (mias.length) return { todos: false, permitidas: mias };
+    return { todos: false, prohibidas: [...new Set(tabla('circular_area_formatos').filter((x) => x.colegio_id === c && x.area_id !== e.area_id).map((x) => x.plantilla_id))] };
+  };
   const F = {
     circular_area_guardar(a) {
       soloAdmin(a.p_colegio);
@@ -104,11 +114,79 @@ export function crearCircularesDemo({ tabla, usuario, guardar, ahora, err, esAdm
       };
     },
     circular_previsualizar_numero(a) {
-      soloAdmin(a.p_colegio);
+      if (!puedePreparar(a.p_colegio)) err('Solo Administración o quien el administrador designe preparan circulares institucionales.');
+      if (emisorCirc(a.p_colegio) || !esAdmin(a.p_colegio)) a = { ...a, p_area: emisorCirc(a.p_colegio)?.area_id || null }; // numera en su área designada
       const modo = tabla('circular_ajustes').find((x) => x.colegio_id === a.p_colegio)?.asignar_numero || 'guardar';
       const s = tabla('circular_series').find((x) => x.colegio_id === a.p_colegio && (x.area_id || null) === (a.p_area || null) && x.vigente);
       if (!s) return { hay_serie: false, asignar_numero: modo };
       return { hay_serie: true, asignar_numero: modo, serie_id: s.id, provisional: s.provisional, siguiente: texto(s, s.ultimo + 1), agotada: !!s.area_id && String(s.ultimo + 1).length > s.ancho };
+    },
+    circular_mi_perfil(a) {
+      const c = a.p_colegio, yo = usuario();
+      if (!yo || !tabla('miembros').some((m) => m.colegio_id === c && m.perfil_id === yo && m.activo !== false)) return { admin: false, puede_preparar: false };
+      const e = emisorCirc(c), f = tabla('circular_firmas').find((x) => x.colegio_id === c && x.perfil_id === yo);
+      const area = e?.area_id ? tabla('circular_areas').find((x) => x.id === e.area_id) : null;
+      return { admin: esAdmin(c), puede_preparar: puedePreparar(c), nombre: nombreDe(yo),
+        emisor: e ? { cargo: e.cargo, area: area ? { id: area.id, nombre: area.nombre } : null } : null,
+        firma: f ? { ruta: f.ruta, sha256: f.sha256, ancho: f.ancho, alto: f.alto, actualizado_en: f.actualizado_en } : null, formatos: formatosDe(c, yo) };
+    },
+    circular_area_formato_guardar(a) {
+      soloAdmin(a.p_colegio);
+      const c = a.p_colegio;
+      if (!tabla('circular_areas').some((x) => x.id === a.p_area && x.colegio_id === c)) err('Esa área no es de este colegio.');
+      if (!a.p_plantilla) err('Elige el formato.');
+      // un solo formato por área: el nuevo reemplaza al que tuviera (como la base)
+      if (a.p_asignar !== false) for (const x of tabla('circular_area_formatos').filter((y) => y.area_id === a.p_area && y.plantilla_id !== a.p_plantilla)) {
+        tabla('circular_area_formatos').splice(tabla('circular_area_formatos').indexOf(x), 1); historia(c, 'area', a.p_area, 'formato_quitado', { plantilla_id: x.plantilla_id }, null);
+      }
+      const i = tabla('circular_area_formatos').findIndex((x) => x.area_id === a.p_area && x.plantilla_id === a.p_plantilla);
+      if (a.p_asignar !== false && i < 0) { tabla('circular_area_formatos').push({ colegio_id: c, area_id: a.p_area, plantilla_id: a.p_plantilla, asignado_por: usuario(), asignado_en: ahora() }); historia(c, 'area', a.p_area, 'formato_asignado', null, { plantilla_id: a.p_plantilla }); }
+      if (a.p_asignar === false && i >= 0) { tabla('circular_area_formatos').splice(i, 1); historia(c, 'area', a.p_area, 'formato_quitado', { plantilla_id: a.p_plantilla }, null); }
+      return F.circular_formatos_por_area({ p_colegio: c });
+    },
+    circular_formatos_por_area(a) {
+      soloAdmin(a.p_colegio);
+      return tabla('circular_area_formatos').filter((x) => x.colegio_id === a.p_colegio).map((x) => ({ area_id: x.area_id, area: tabla('circular_areas').find((y) => y.id === x.area_id)?.nombre || '', plantilla_id: x.plantilla_id }));
+    },
+    circular_firma_guardar(a) {
+      const c = a.p_colegio, yo = usuario();
+      if (!puedePreparar(c)) err('Solo quien prepara circulares institucionales (Administración o quien el administrador designe) carga su firma.');
+      if (!/^[0-9a-f]{64}$/.test(a.p_sha256 || '') || a.p_ruta !== `${c}/${yo}/${a.p_sha256}.png`) err('La firma no tiene una ruta válida.');
+      if (!(a.p_ancho >= 20 && a.p_ancho <= 2000 && a.p_alto >= 10 && a.p_alto <= 1000)) err('La imagen de la firma no tiene un tamaño válido.');
+      if (!existeArchivo('firmas', a.p_ruta)) err('La imagen de la firma no se alcanzó a subir. Intenta de nuevo.');
+      let f = tabla('circular_firmas').find((x) => x.colegio_id === c && x.perfil_id === yo);
+      const antes = f?.ruta || null;
+      if (!f) tabla('circular_firmas').push((f = { colegio_id: c, perfil_id: yo }));
+      Object.assign(f, { ruta: a.p_ruta, sha256: a.p_sha256, ancho: a.p_ancho, alto: a.p_alto, actualizado_en: ahora() });
+      return { ruta: a.p_ruta, anterior: antes !== a.p_ruta ? antes : null };
+    },
+    circular_firma_borrar(a) {
+      if (!usuario()) err('Inicia sesión para quitar tu firma.');
+      const f = tabla('circular_firmas').find((x) => x.colegio_id === a.p_colegio && x.perfil_id === usuario());
+      if (f) tabla('circular_firmas').splice(tabla('circular_firmas').indexOf(f), 1);
+      return { anterior: f?.ruta || null };
+    },
+    circular_emisor_guardar(a) {
+      soloAdmin(a.p_colegio);
+      const c = a.p_colegio, cargo = String(a.p_cargo || '').trim();
+      if (!tabla('miembros').some((m) => m.colegio_id === c && m.perfil_id === a.p_perfil && m.activo !== false && ['admin', 'profesor', 'director_seccion', 'enfermeria'].includes(m.rol))) err('Solo el personal del colegio (no familias ni estudiantes) prepara circulares.');
+      if (cargo.length < 2 || cargo.length > 160) err('Escribe el cargo con el que firma (ej.: Gerente, Directora de Sección Infantil, Rectora).');
+      if (a.p_area && !tabla('circular_areas').some((x) => x.id === a.p_area && x.colegio_id === c)) err('Esa área no es de este colegio.');
+      let e = tabla('circular_emisores').find((x) => x.colegio_id === c && x.perfil_id === a.p_perfil);
+      const antes = e ? { ...e } : null;
+      if (!e) tabla('circular_emisores').push((e = { colegio_id: c, perfil_id: a.p_perfil }));
+      Object.assign(e, { cargo, area_id: a.p_area || null, activo: a.p_activo !== false, asignado_por: usuario(), asignado_en: ahora() });
+      historia(c, 'emisor', a.p_perfil, !antes ? 'crear' : !e.activo ? 'retirar' : 'editar', antes, e);
+      return { ...e };
+    },
+    circular_emisores_ver(a) {
+      soloAdmin(a.p_colegio);
+      const c = a.p_colegio;
+      return tabla('circular_emisores').filter((e) => e.colegio_id === c).map((e) => {
+        const area = e.area_id ? tabla('circular_areas').find((x) => x.id === e.area_id) : null;
+        return { perfil_id: e.perfil_id, nombre: nombreDe(e.perfil_id) || '', cargo: e.cargo, activo: e.activo, asignado_en: e.asignado_en,
+          area: area ? { id: area.id, nombre: area.nombre } : null, tiene_firma: tabla('circular_firmas').some((f) => f.colegio_id === c && f.perfil_id === e.perfil_id) };
+      }).sort((x, y) => (y.activo - x.activo) || x.nombre.localeCompare(y.nombre));
     },
     circular_emitir(a) {
       const b = tabla('circular_borradores').find((x) => x.id === a.p_id);

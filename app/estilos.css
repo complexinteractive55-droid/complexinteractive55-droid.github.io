@@ -66,6 +66,7 @@ small { color: var(--texto-2); font-size: .82em; }
 .etiqueta-demo { font-size: 11px; font-weight: 700; background: var(--alerta); color: #fff; padding: 2px 6px; border-radius: 6px; }
 .chip-rol { border: 1px solid var(--borde); background: var(--superficie-2); border-radius: 999px; padding: 6px 12px; font-size: 14px; cursor: pointer; white-space: nowrap; }
 .chip-rol:disabled { cursor: default; }
+.chip-rol { max-width: 42vw; overflow: hidden; text-overflow: ellipsis; } /* un cargo largo (ej. líder de un área) no empuja el encabezado */
 
 /* Menú: panel que se despliega desde la IZQUIERDA en celular; fijo a la izquierda en PC */
 .btn-menu { font-size: 22px; margin-left: -8px; }
@@ -78,6 +79,11 @@ small { color: var(--texto-2); font-size: .82em; }
 .menu-abierto .menu { transform: none; }
 .menu-fondo { position: fixed; inset: 0; z-index: 55; background: rgba(10, 15, 30, .45); opacity: 0; pointer-events: none; transition: opacity .22s; }
 .menu-abierto .menu-fondo { opacity: 1; pointer-events: auto; }
+/* Con el menú abierto la página de atrás no se mueve (Fabio, 2-nov: «se mueve el fondo cosa que no debe pasar») */
+.menu { overscroll-behavior: contain; }
+.menu-abierto .menu-fondo { touch-action: none; }
+/* (solo html: si también el body, que mide 100 %, la página salta arriba al abrir el menú) */
+@media (max-width: 899.98px) { html.menu-bloqueo { overflow: hidden; } }
 .menu-cab { display: flex; align-items: center; gap: 12px; padding: 8px 8px 16px; margin-bottom: 8px; border-bottom: 1px solid var(--borde); }
 .menu-cab > span:last-child { display: flex; flex-direction: column; min-width: 0; }
 .menu-cab small { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
@@ -175,6 +181,15 @@ small { color: var(--texto-2); font-size: .82em; }
 .form label { display: flex; flex-direction: column; gap: 6px; font-weight: 600; font-size: 14px; }
 .form fieldset { border: 1px solid var(--borde); border-radius: 10px; padding: 10px 12px; display: flex; flex-direction: column; gap: 8px; }
 .form legend { font-size: 14px; color: var(--texto-2); padding: 0 4px; }
+/* Contraseña con botón de ojo (sin el ojo propio de Edge, para que no haya dos) */
+.campo-clave { display: flex; flex-direction: column; gap: 6px; font-weight: 600; font-size: 14px; }
+.clave-caja { position: relative; display: block; }
+.clave-caja input { padding-right: 52px; }
+.clave-caja input::-ms-reveal, .clave-caja input::-ms-clear { display: none; }
+.ver-clave { position: absolute; top: 50%; right: 1px; transform: translateY(-50%); width: 44px; height: 44px; display: grid; place-items: center;
+  border: 0; border-radius: 9px; background: transparent; color: var(--texto-2); cursor: pointer; padding: 0; }
+.ver-clave:hover { color: var(--texto); background: var(--superficie-2); }
+.ver-clave svg { width: 22px; height: 22px; }
 input:not([type=checkbox]):not([type=radio]), select, textarea {
   width: 100%; min-height: 46px; padding: 10px 12px; border-radius: 10px; border: 1px solid var(--borde); background: var(--superficie); font-weight: 400;
 }
@@ -222,6 +237,8 @@ input.nota:disabled { background: transparent; border-color: transparent; color:
 .fila-clase { flex-wrap: wrap; }
 .fila > .botones-fila { display: flex; flex-direction: row; gap: 8px; flex: none; width: auto; font-size: inherit; }
 @media (max-width: 520px) { .fila > .botones-fila { width: 100%; padding-left: 52px; } .botones-fila .btn { flex: 1; } }
+/* En el celular los 4 botones de «Mis clases» pasan a dos por fila (antes se salían y la cartelera se desplazaba de lado; 3-nov-2026) */
+@media (max-width: 520px) { .fila > .botones-fila { flex-wrap: wrap; } .botones-fila .btn { flex: 1 1 calc(50% - 8px); min-width: 0; white-space: normal; } }
 
 /* ---------- Asistencia ---------- */
 .fila-asistencia { flex-wrap: wrap; }
@@ -284,7 +301,25 @@ input.nota:disabled { background: transparent; border-color: transparent; color:
 .circ-cuerpo ol, .circ-cuerpo ul { margin: 0 0 10px; padding-left: 24px; }
 .circ-firma { display: flex; flex-direction: column; margin-top: 30px; }
 .circ-firma p { margin: 0 0 40px; }
+/* Firma manuscrita (2-nov-2026): encima del nombre, en el espacio después de la despedida, bajando un poco sobre el nombre */
+.circ-firma .circ-firma-img { display: block; height: 52px; width: auto; max-width: 45%; object-fit: contain; object-position: left bottom; margin: -48px 0 -9px; }
+/* «Mi firma»: siempre sobre papel blanco (la tinta es oscura), también en modo oscuro */
+.firma-muestra { display: flex; flex-direction: column; align-items: flex-start; gap: 2px; background: #fff; color: #1b1b1b; border: 1px solid var(--borde); border-radius: var(--radio); padding: 14px 16px; margin: 8px 0; font-family: Arial, Helvetica, sans-serif; }
+.firma-muestra img { display: block; max-width: min(100%, 320px); max-height: 110px; height: auto; margin-bottom: -10px; }
+.firma-muestra span { font-size: 14px; }
 .circ-hoja .ayuda { color: var(--tinta); font-size: 13px; }
+/* Memorando de Gerencia como el V2-2025-2026-1 (2-nov-2026): cuadro con bordes grises, asunto centrado, cargo en cursiva, recibido */
+.circ-cuadro-gerencia td { border-color: #bfbfbf; }
+.circ-asunto-centro { text-align: center; margin: 4px 0 14px; }
+.circ-gerencia .circ-cuerpo { text-align: justify; }
+.circ-recibido { margin: 18px 0 0 auto; width: 170px; border: 1px solid var(--tinta); padding: 6px 8px; display: flex; flex-direction: column; gap: 8px; font-size: 10px; }
+.circ-recibido span { border-bottom: 1px solid var(--tinta); height: 10px; }
+.circ-formatos { border: 1px solid var(--borde); border-radius: var(--radio); padding: 8px 10px; margin: 8px 0; }
+/* Carta como la circular E2-006 (2-nov-2026): ciudad y fecha con el consecutivo a la derecha; viñetas «-»; firma en negrita */
+.circ-carta-cab { display: flex; justify-content: space-between; gap: 12px; flex-wrap: wrap; margin: 0 0 14px; }
+.circ-carta .circ-cuerpo { text-align: justify; }
+.circ-carta .circ-cuerpo ul { list-style-type: "-   "; }
+.circ-firma.circ-firma-negrita { margin-top: 44px; }
 .circ-marca { margin: 18px 0 0; text-align: center; font-size: 11px; color: #6b7280; }
 .tarjeta-hijo:hover { border-color: var(--primario); }
 
@@ -366,3 +401,65 @@ input.nota:disabled { background: transparent; border-color: transparent; color:
 .texto-largo { white-space: pre-wrap; margin: 0; }
 .tarjeta-archivo { border: 1px solid var(--borde); background: var(--superficie); }
 input[type=file] { padding: 10px; background: var(--superficie-2); }
+
+/* Agenda de hoy en la cartelera del docente (3-nov-2026, §7). El recuadro se acerca con dos dedos (o con − / ＋) sin cambiar la página;
+   el estado no depende solo del color: cada marca lleva su texto («Ahora», «Siguiente», «Se cruza», «Por confirmar»). */
+.agenda-acciones { display: flex; gap: 6px; align-items: center; }
+.agenda-caja { border: 1px solid var(--borde); border-radius: 12px; padding: 8px 10px; overflow: auto; max-height: 360px; touch-action: pan-x pan-y; cursor: pointer; }
+.agenda-caja:focus-visible { outline: 3px solid var(--primario); outline-offset: 2px; }
+.agenda-zoom { font-size: calc(1rem * var(--agenda-escala, 1)); }
+.agenda-fecha { margin: 0 0 6px; }
+.agenda-nota { margin: 6px 0; padding: 6px 10px; border-radius: 8px; background: var(--primario-suave); }
+.agenda-todo-dia { list-style: none; padding: 0; margin: 0 0 6px; display: grid; gap: 4px; }
+.agenda-lista { list-style: none; margin: 0; padding: 0; display: grid; gap: 6px; }
+.agenda-item { display: grid; grid-template-columns: 6em 1fr; gap: 2px 10px; padding: 6px 8px; border-radius: 8px; background: var(--superficie-2); }
+.agenda-item .agenda-estados { grid-column: 2; display: flex; gap: 6px; flex-wrap: wrap; }
+.agenda-item .agenda-estados:empty { display: none; }
+.agenda-item.actual { box-shadow: inset 4px 0 0 var(--primario); }
+.agenda-item.conflicto { box-shadow: inset 4px 0 0 var(--peligro); }
+.agenda-item.por-confirmar { opacity: .8; }
+.agenda-hora { font-variant-numeric: tabular-nums; font-weight: 600; }
+.agenda-que small { display: block; color: var(--texto-2); }
+.agenda-etq { font-size: .78em; font-weight: 700; padding: 1px 8px; border-radius: 999px; border: 1px solid currentColor; }
+.agenda-etq.ahora { color: var(--primario); }
+.agenda-etq.sig, .agenda-etq.conf { color: var(--texto-2); }
+.agenda-etq.cruce { color: var(--peligro); }
+.agenda-pie { margin: 6px 0 0; }
+
+/* Álbum por curso (3-nov-2026, §8): rejilla que se adapta del celular al computador; el nombre completo se parte en renglones */
+.album-barra { display: flex; flex-wrap: wrap; gap: 8px 12px; align-items: center; margin-bottom: 4px; }
+.album-barra .buscador { flex: 1 1 220px; margin: 0; }
+.album-rejilla { list-style: none; margin: 8px 0; padding: 0; display: grid; grid-template-columns: repeat(auto-fill, minmax(140px, 1fr)); gap: 12px; }
+.album-ficha { display: flex; flex-direction: column; gap: 2px; padding: 8px; border-radius: 12px; background: var(--superficie); border: 1px solid var(--borde); min-width: 0; }
+.album-foto { aspect-ratio: 3 / 4; border-radius: 8px; overflow: hidden; background: var(--superficie-2); display: flex; align-items: center; justify-content: center; }
+.album-foto img { width: 100%; height: 100%; object-fit: cover; }
+.album-sin-foto { display: flex; flex-direction: column; align-items: center; gap: 4px; color: var(--texto-2); }
+.album-sin-foto svg { width: 56px; height: 56px; fill: currentColor; opacity: .45; }
+.album-nombre { overflow-wrap: anywhere; line-height: 1.25; }
+.album-homonimo { color: var(--peligro); font-weight: 600; }
+.album-mas { text-align: center; }
+
+/* Salas de sección y avisos (3-nov-2026, §9): los avisos vigentes van arriba, aparte del chat; la prioridad lleva texto */
+.avisos-vigentes:empty { display: none; }
+.avisos-titulo { font-size: 1rem; margin: 4px 0 6px; }
+.avisos-lista { display: grid; gap: 8px; margin-bottom: 10px; }
+.aviso-tarjeta { display: flex; flex-direction: column; gap: 2px; color: inherit; border-left: 5px solid var(--borde); }
+.aviso-tarjeta.prio-importante, .aviso-detalle.prio-importante { border-left-color: #c77700; }
+.aviso-tarjeta.prio-urgente, .aviso-detalle.prio-urgente { border-left-color: var(--peligro); }
+.aviso-detalle { border-left: 5px solid var(--borde); }
+.aviso-prio { font-size: .82em; font-weight: 700; color: var(--texto-2); margin: 0; }
+.aviso-estado { font-size: .82em; font-weight: 700; color: var(--peligro); }
+.aviso-nuevo { color: var(--primario); font-weight: 700; }
+.aviso-texto { white-space: normal; overflow-wrap: anywhere; }
+.aviso-version { border-top: 1px solid var(--borde); padding-top: 6px; margin-top: 6px; }
+.sala-chat { display: flex; flex-direction: column; gap: 8px; }
+.sala-hilo { max-height: 55vh; overflow-y: auto; display: flex; flex-direction: column; gap: 6px; overscroll-behavior: contain; }
+.sala-msj { align-self: flex-start; max-width: 85%; background: var(--superficie-2); border-radius: 12px; padding: 6px 10px; overflow-wrap: anywhere; }
+.sala-msj p { margin: 2px 0 0; }
+.sala-msj.mio { align-self: flex-end; background: var(--primario-suave); }
+.sala-msj.anuncio { align-self: stretch; max-width: none; background: none; padding: 0; }
+.sala-msj.pendiente { opacity: .8; }
+.sala-msj .falla { color: var(--peligro); font-weight: 600; }
+.sala-escribir { display: flex; gap: 8px; align-items: flex-end; }
+.sala-escribir textarea { flex: 1; min-width: 0; }
+.oculto-visual { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; }

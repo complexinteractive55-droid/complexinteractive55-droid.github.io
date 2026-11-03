@@ -4,6 +4,8 @@ import { esc, aviso, ventana, leerForm, confirmar, nombre, nombreLista, vacio, f
 import { cabecera, camposHTML } from './comun.js';
 import { visiblesParaMi } from './circulares.js';
 import { pendientesProfesor, previaBandeja } from './tablero.js';
+import { agendaCaja, montarAgenda } from './agenda_docente.js';
+import { avisosCartelera } from './salas.js';
 import { notaPeriodo, notaConIndicadores, definitiva, mostrarNota, desempeno, sumaPorcentajes, redondear } from '../calculos.js';
 
 export const etiquetaAsig = (b, a) => `${b.materiaPorId.get(a.materia_id)?.nombre || 'Materia'} · ${b.cursoPorId.get(a.curso_id)?.nombre || ''}`;
@@ -16,6 +18,8 @@ export async function inicio(m) {
   const circ = (await visiblesParaMi(b, await E.db.select('circulares', { eq: { colegio_id: E.colegio.id }, order: 'publicada_en desc' }))).slice(0, 3);
   m.innerHTML = `
     <h1 class="titulo">Hola, ${esc(E.yo.nombres || 'profe')}</h1>
+    ${agendaCaja()}
+    <div data-avisos-cartelera></div>
     ${await pendientesProfesor()}
     ${await previaBandeja()}
     ${dirijo.length ? `<section class="tarjeta"><h2>Director de curso</h2><div class="rejilla">${dirijo.map((c) => `<a class="mini" href="#/inicio" data-director="${c.id}"><b>${esc(c.nombre)}</b><small>Ver estudiantes</small></a>`).join('')}</div></section>` : ''}
@@ -28,6 +32,8 @@ export async function inicio(m) {
       ${circ.filter((c) => c.publicada_en).length ? `<div class="lista">${circ.filter((c) => c.publicada_en).map((c) => `<a class="fila fila-boton" href="#/circular/${c.id}"><span>📣</span><span><b>${esc(c.titulo)}</b><small>${fecha(c.publicada_en)}</small></span></a>`).join('')}</div>` : vacio('Sin circulares.')}
     </section>`;
   m.querySelectorAll('[data-director]').forEach((a) => (a.onclick = (e) => { e.preventDefault(); verCursoDirector(b, a.dataset.director); }));
+  montarAgenda(m.querySelector('[data-agenda-hoy]'), b); // carga aparte: no retrasa el resto del inicio
+  avisosCartelera().then((h) => { const el = m.querySelector('[data-avisos-cartelera]'); if (el) el.outerHTML = h; }).catch(() => {}); // también aparte
 }
 
 const tarjetaClase = (b, a) => `

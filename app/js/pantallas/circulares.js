@@ -20,7 +20,9 @@ export async function lista(m) {
   let circ = await E.db.select('circulares', { eq: { colegio_id: E.colegio.id }, order: 'creado_en desc' });
   if (!admin) circ = await visiblesParaMi(b, circ);
   const leidas = new Set((await E.db.select('circular_lecturas', { eq: { perfil_id: E.yo.id } })).map((l) => l.circular_id));
-  m.innerHTML = cabecera('Circulares', { acciones: admin ? '<button class="btn btn-primario" data-nueva>＋ Nueva</button>' : '' }) + (admin ? `
+  // La entrada a las circulares institucionales: Administración y quien el administrador designó (2-nov-2026)
+  const prepara = admin || (['profesor', 'director_seccion', 'enfermeria'].includes(E.rol) && (await (await import('../firma_circular.js')).perfilCircular().catch(() => ({}))).puede_preparar === true);
+  m.innerHTML = cabecera('Circulares', { acciones: admin ? '<button class="btn btn-primario" data-nueva>＋ Nueva</button>' : '' }) + (prepara ? `
     <a class="tarjeta fila fila-boton circ-entrada" href="#/circulares-institucionales"><span class="avatar">📄</span><span class="crece"><b>Circulares institucionales (PDF)</b><small>Formato oficial del colegio: borradores y PDF de revisión</small></span><span aria-hidden="true">›</span></a>` : '') + (circ.length ? `
     <div class="lista">${circ.map((c) => `
       <a class="fila fila-boton ${!admin && !leidas.has(c.id) ? 'sin-leer' : ''}" href="#/circular/${c.id}">

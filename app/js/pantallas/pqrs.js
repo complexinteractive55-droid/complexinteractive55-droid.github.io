@@ -1,6 +1,9 @@
 // PQRS — Peticiones, Quejas, Reclamos y Sugerencias (pedido de Fabio, 28-oct-2026). Necesita la migración 20261028200000_pqrs.
-// Todos los perfiles presentan PQRS (#/pqrs?tab=nueva) y ven las suyas («Mis PQRS»). Los responsables de un área ven su bandeja;
+// Todos los perfiles presentan PQRS (#/pqrs?tab=nueva) y ven las suyas («Mis PQRS»), menos los estudiantes: la presenta su
+// acudiente (Fabio, 2-nov-2026; la base también lo impide). Los responsables de un área ven su bandeja;
 // el administrador general, la supervisión y la configuración de áreas, responsables, secciones y permisos de salud.
+// Gerencia (responsables del área Gerencia, 1-nov-2026) ve TODAS las PQRS en su bandeja, escribe en nombre de Gerencia y puede
+// finalizar; cada área tiene un líder principal y, guardados en el área, el cargo y el correo que publica el colegio.
 // La base decide qué ve cada quien (lo de salud llega oculto a quien no tiene permiso): esta pantalla solo lo muestra.
 // Lo escrito se guarda en el equipo hasta que el servidor confirma, con el mismo identificador de envío (reintentar no duplica).
 import { E } from '../estado.js';
@@ -85,6 +88,9 @@ function estilos() {
   .pq-chips { display: flex; flex-wrap: wrap; gap: 6px; margin: 6px 0; }
   .pq-chip-x { display: inline-flex; align-items: center; gap: 4px; padding: 2px 4px 2px 10px; border: 1px solid var(--borde); border-radius: 999px; font-size: 14px; }
   .pq-chip-x button { min-width: 32px; min-height: 32px; border: 0; background: none; color: var(--peligro); font-size: 18px; cursor: pointer; }
+  .pq-chip-x.pq-lider { border-color: var(--primario); background: var(--primario-suave); font-weight: 700; }
+  .pq-chip-x .pq-hacer-lider { color: var(--primario); }
+  .pq-contacto summary { cursor: pointer; min-height: 44px; display: flex; align-items: center; }
   .pq-grados { display: flex; flex-wrap: wrap; gap: 6px 14px; margin: 6px 0; }
   @media (max-width: 520px) { .pq-datos dl { grid-template-columns: 1fr; gap: 0; } .pq-datos dd { margin-bottom: 8px; } }
   .solo-lector { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; }
@@ -143,17 +149,23 @@ async function miPerfil() {
 // ---------------------------------------------------------------- Inicio del módulo (pestañas según quién soy)
 export async function inicio(m, p = {}) {
   estilos();
+  if (E.rol === 'estudiante') {
+    m.innerHTML = cabecera('PQRS') + `<div class="contenido">${vacio('Los estudiantes no presentan PQRS. Si necesitas algo, cuéntale a tu acudiente para que la presente.')}</div>`;
+    return;
+  }
   const yo = await miPerfil();
   const tabs = [['nueva', 'Nueva PQRS'], ['mias', 'Mis PQRS']];
-  if (yo.areas.length) tabs.push(['area', 'Bandeja de mis áreas']);
+  if (yo.areas.some((a) => a.clave !== 'gerencia')) tabs.push(['area', 'Bandeja de mis áreas']);
+  if (yo.gerencia) tabs.push(['gerencia', 'Bandeja de Gerencia']);
   if (yo.admin) tabs.push(['supervision', 'Supervisión'], ['config', 'Áreas y responsables']);
-  const tab = tabs.some(([k]) => k === p.tab) ? p.tab : yo.admin ? 'supervision' : yo.areas.length ? 'area' : 'nueva';
+  const tab = tabs.some(([k]) => k === p.tab) ? p.tab : yo.admin ? 'supervision' : yo.gerencia ? 'gerencia' : yo.areas.length ? 'area' : 'nueva';
   m.innerHTML = cabecera('PQRS') + pestanas(tabs, tab, '#/pqrs?tab=') + '<div class="contenido" data-pq></div>';
   const c = m.querySelector('[data-pq]');
   if (tab === 'nueva') return formulario(c, yo);
   if (tab === 'mias') return listado(c, 'mias', yo);
   if (tab === 'area') return listado(c, 'area', yo);
   if (tab === 'supervision') return listado(c, 'supervision', yo);
+  if (tab === 'gerencia') return listado(c, 'gerencia', yo);
   return configuracion(c);
 }
 
@@ -311,6 +323,7 @@ function tarjeta(x, vista) {
   const personal = vista !== 'mias';
   const badges = [
     personal && (vista === 'area' ? !x.visto_por_mi_area : !x.visto_por_mi) ? '<span class="pq-badge">Sin revisar</span>' : '',
+    x.visto_por_mi && x.nuevos > 0 ? `<span class="pq-badge info">${x.nuevos === 1 ? '1 mensaje nuevo' : x.nuevos + ' mensajes nuevos'}</span>` : '', // de otros, aún sin ver (3-nov-2026)
     x.aporte_pendiente ? '<span class="pq-badge info">Información nueva del solicitante</span>' : '',
     x.revisar ? '<span class="pq-badge suave">Revisar clasificación</span>' : '',
     personal && x.areas.some((a) => a.sin_responsables) ? '<span class="pq-badge suave">Área sin responsables</span>' : '',
@@ -330,7 +343,7 @@ function tarjeta(x, vista) {
 const borradores = new Map(); // texto a medio escribir por caso (no se pierde si la pantalla se repinta)
 const TEXTO_EVENTO = {
   creada: (e, personal) => 'Se presentó la PQRS' + (personal ? (e.detalle.areas?.length ? ` · clasificación automática: ${lista(e.detalle.areas)}` : ' · pendiente de clasificación') + (e.detalle.sin_responsables?.length ? ` · sin responsables: ${lista(e.detalle.sin_responsables)}` : '') : ''),
-  leida: (e) => `Lo vio ${e.actor}${e.detalle.areas?.length ? ` (${lista(e.detalle.areas)})` : e.detalle.admin ? ' (Administración)' : ''}`,
+  leida: (e) => `Lo vio ${e.actor}${e.detalle.areas?.length ? ` (${lista(e.detalle.areas)})` : e.detalle.gerencia ? ' (Gerencia)' : e.detalle.admin ? ' (Administración)' : ''}`,
   asignada: (e, personal) => `Se asignó a ${e.area}${personal && e.detalle.motivo ? ` · motivo: ${e.detalle.motivo}` : ''}`,
   retirada: (e, personal) => `${e.area} dejó de participar${personal && e.detalle.motivo ? ` · motivo: ${e.detalle.motivo}` : ''}`,
   estado_area: (e) => `${e.area} pasó a «En revisión»`,
@@ -354,6 +367,8 @@ const TEXTO_EVENTO = {
 // «No enviado» con el texto y Reintentar (mismo identificador: no se duplica). Los mensajes nuevos llegan por un aviso en vivo
 // privado (sin contenido) y, si ese canal falla, por consulta cada pocos segundos.
 const chats = new Map(); // estado por caso: mensajes confirmados, pendientes y borrador (sobrevive a repintar la pantalla)
+// Al cerrar sesión: nada de lo cargado o escrito queda en memoria para la siguiente cuenta de este equipo (3-nov-2026)
+export function olvidarTodo() { soltarChat?.(); soltarChat = null; chats.clear(); urls.clear(); }
 let soltarChat = null;   // deja de escuchar el caso al salir de la pantalla
 window.addEventListener('hashchange', () => { if (!/^#\/pqrs\/[0-9a-f-]{36}/.test(location.hash)) { soltarChat?.(); soltarChat = null; } });
 const ICONO = { pdf: '📄', docx: '📝', xlsx: '📊' };
@@ -392,10 +407,12 @@ export async function detalle(m, p) {
   if (!st.pendientes.size) for (const x of leer(clavePend(d.id)) || []) st.pendientes.set(x.solicitud, x);
   const yo = d.yo, personal = yo.personal, abierto = d.estado !== 'cerrada';
   const misAreas = d.areas.filter((a) => a.activa && yo.areas.includes(a.id));
-  const puedeEscribir = abierto && (misAreas.length || yo.admin || yo.puede_aportar);
-  st.borrador ||= { modo: personal ? '' : 'aporte', area: misAreas[0]?.id || '', texto: '', salud: null, solicitud: nuevoId() };
+  // Gerencia escribe en cualquier caso en nombre de Gerencia (aunque no esté asignada); su mensaje no cambia el estado de las áreas
+  const enNombre = yo.gerencia && yo.area_gerencia && !misAreas.some((a) => a.id === yo.area_gerencia) ? [...misAreas, { id: yo.area_gerencia, nombre: 'Gerencia' }] : misAreas;
+  const puedeEscribir = abierto && (enNombre.length || yo.admin || yo.puede_aportar);
+  st.borrador ||= { modo: personal ? '' : 'aporte', area: enNombre[0]?.id || '', texto: '', salud: null, solicitud: nuevoId() };
   const borr = st.borrador;
-  const volver = personal ? (yo.admin ? '#/pqrs?tab=supervision' : '#/pqrs?tab=area') : '#/pqrs?tab=mias';
+  const volver = personal ? (yo.admin ? '#/pqrs?tab=supervision' : yo.gerencia && !misAreas.length ? '#/pqrs?tab=gerencia' : '#/pqrs?tab=area') : '#/pqrs?tab=mias';
   m.innerHTML = cabecera(esc(d.consecutivo), { volver }) + `
     <div class="pq-chat" data-pq-detalle>
       <section class="tarjeta pq-chat-cab" data-cab>${cabChat(d)}</section>
@@ -412,7 +429,8 @@ export async function detalle(m, p) {
   const abajo = () => hiloEl.scrollHeight - hiloEl.scrollTop - hiloEl.clientHeight < 80;
   const pintar = ({ alFinal = false } = {}) => {
     const seguir = alFinal || abajo();
-    const confirmados = [...st.mensajes.values()].sort((x, y) => x.creado_en.localeCompare(y.creado_en) || x.id.localeCompare(y.id));
+    // orden de guardado del servidor (seq); sin seq (servidor anterior), por fecha e id como antes
+    const confirmados = [...st.mensajes.values()].sort((x, y) => (Number.isInteger(x.seq) && Number.isInteger(y.seq) ? x.seq - y.seq : 0) || x.creado_en.localeCompare(y.creado_en) || x.id.localeCompare(y.id));
     const yaConfirmadas = new Set(confirmados.map((x) => x.solicitud_id).filter(Boolean));
     for (const s of [...st.pendientes.keys()]) if (yaConfirmadas.has(s)) st.pendientes.delete(s); // llegó por otro lado (reintento, recarga)
     hiloEl.innerHTML = (st.hayAnteriores ? '<div class="pq-mas"><button type="button" class="btn btn-chico" data-anteriores>Ver mensajes anteriores</button></div>' : '')
@@ -424,9 +442,45 @@ export async function detalle(m, p) {
     if (seguir) hiloEl.scrollTop = hiloEl.scrollHeight;
     else raiz.querySelector('[data-ir-abajo]').hidden = false;
     guardarPend(d.id, st);
+    observar();
   };
+  // ---- Leído de verdad (3-nov-2026, A06): solo cuenta lo que estuvo EN PANTALLA con la pestaña visible (no abrir, ni una pestaña oculta,
+  // ni una precarga). Se manda «visto hasta el mensaje N» y el servidor solo avanza (otro equipo o un aviso atrasado no lo devuelven).
+  let marcando = null;
+  const marcar = () => {
+    clearTimeout(marcando);
+    marcando = setTimeout(async () => {
+      const hasta = st.verHasta ?? -1;
+      if (document.visibilityState !== 'visible' || !document.body.contains(hiloEl) || hasta < 0 || hasta <= (st.leido ?? -1)) return;
+      try {
+        const r = await rpc('pqrs_marcar_leido', { p_id: d.id, p_hasta: hasta });
+        st.leido = Math.max(st.leido ?? -1, r?.leido_seq ?? hasta);
+        if (!marcadoAqui) { marcadoAqui = true; if (personal) refrescarGestion(); } // «Visto por» ya incluye a quien lo está viendo
+      } catch { /* sin red o servidor anterior: se vuelve a intentar al ver otro mensaje */ }
+    }, 700);
+  };
+  let marcadoAqui = false;
+  // Repinta solo el contenido de «Gestión del caso» (los botones se atienden por delegación en el contenedor; queda abierto si lo estaba)
+  const refrescarGestion = async () => {
+    try {
+      const d2 = await rpc('pqrs_detalle', { p_id: d.id });
+      const g = raiz.querySelector('[data-gestion]');
+      if (g && document.body.contains(g)) g.innerHTML = g.querySelector('summary').outerHTML + gestionHTML(d2);
+    } catch { /* se verá al volver a abrir */ }
+  };
+  const visor = 'IntersectionObserver' in window ? new IntersectionObserver((vistos) => {
+    if (document.visibilityState !== 'visible') return;
+    for (const v of vistos) if (v.isIntersecting) st.verHasta = Math.max(st.verHasta ?? -1, Number(v.target.dataset.seq));
+    marcar();
+  }, { threshold: 0.5 }) : null; // respecto a la pantalla: si el hilo o la página tapan el mensaje, no cuenta
+  function observar() {
+    if (!visor) { if (document.visibilityState === 'visible') { st.verHasta = Math.max(-1, ...[...hiloEl.querySelectorAll('[data-seq]')].map((el) => Number(el.dataset.seq))); marcar(); } return; }
+    visor.disconnect();
+    hiloEl.querySelectorAll('[data-seq]').forEach((el) => visor.observe(el));
+  }
   const aplicar = (r, { inicial = false } = {}) => {
     if (r.inicio) st.inicio = r.inicio;
+    if (Number.isInteger(r.leido_seq)) st.leido = Math.max(st.leido ?? -1, r.leido_seq);
     if (inicial || r.inicio) st.hayAnteriores = r.hay_anteriores;
     for (const x of r.mensajes) if (x) st.mensajes.set(x.id, x);
     st.ultimo = r.ahora;
@@ -460,12 +514,12 @@ export async function detalle(m, p) {
   let enVivo = false, reloj = null;
   const programar = () => { clearTimeout(reloj); reloj = setTimeout(async () => { if (document.visibilityState === 'visible') await traerNuevos(); programar(); }, enVivo ? 60000 : 15000); };
   const dejar = E.db.escucharCanal ? E.db.escucharCanal(`${personal ? 'pqrs-personal' : 'pqrs'}:${d.id}`, () => traerNuevos(), (estado) => { enVivo = estado === 'SUBSCRIBED'; programar(); }) : () => {};
-  const alVolver = () => { if (document.visibilityState === 'visible') traerNuevos(); };
+  const alVolver = () => { if (document.visibilityState === 'visible') { traerNuevos(); observar(); } }; // al volver a la pestaña cuenta lo que se ve
   const alConectar = () => { estadoConexion(''); traerNuevos(); };
   document.addEventListener('visibilitychange', alVolver);
   window.addEventListener('online', alConectar);
   programar();
-  soltarChat = () => { dejar(); clearTimeout(reloj); document.removeEventListener('visibilitychange', alVolver); window.removeEventListener('online', alConectar); };
+  soltarChat = () => { dejar(); clearTimeout(reloj); clearTimeout(marcando); visor?.disconnect(); document.removeEventListener('visibilitychange', alVolver); window.removeEventListener('online', alConectar); };
 
   hiloEl.addEventListener('scroll', () => { if (abajo()) raiz.querySelector('[data-ir-abajo]').hidden = true; });
   raiz.querySelector('[data-ir-abajo]').onclick = () => { hiloEl.scrollTop = hiloEl.scrollHeight; raiz.querySelector('[data-ir-abajo]').hidden = true; };
@@ -480,11 +534,12 @@ export async function detalle(m, p) {
     const comoSolicitante = !personal;
     zona.innerHTML = `<form class="tarjeta form pq-compositor" ${comoSolicitante ? 'data-aportar' : 'data-escribir'} novalidate autocomplete="off">
       ${comoSolicitante ? '' : `<fieldset class="pq-modos" aria-describedby="ayuda-modo"><legend>¿Para quién es? (elige uno)</legend>
-        ${misAreas.length ? `<label class="pq-modo"><input type="radio" name="modo" value="respuesta" ${borr.modo === 'respuesta' ? 'checked' : ''}><span>✉ Para el solicitante</span></label>` : ''}
+        ${enNombre.length ? `<label class="pq-modo"><input type="radio" name="modo" value="respuesta" ${borr.modo === 'respuesta' ? 'checked' : ''}><span>✉ Para el solicitante</span></label>` : ''}
         <label class="pq-modo pq-interno"><input type="radio" name="modo" value="comentario" ${borr.modo === 'comentario' ? 'checked' : ''}><span>🔒 Comentario interno</span></label>
       </fieldset>
-      ${misAreas.length > 1 || (misAreas.length && yo.admin) ? `<label>En nombre de<select name="area">${misAreas.map((a) => `<option value="${esc(a.id)}" ${borr.area === a.id ? 'selected' : ''}>${esc(a.nombre)}</option>`).join('')}${yo.admin ? `<option value="" ${borr.area === '' ? 'selected' : ''}>Administración general (solo comentario)</option>` : ''}</select></label>`
-        : misAreas.length ? `<p class="ayuda">Escribes en nombre de <b>${esc(misAreas[0].nombre)}</b>.</p>` : '<p class="ayuda">Comentas como Administración general.</p>'}
+      ${enNombre.length > 1 || (enNombre.length && yo.admin) ? `<label>En nombre de<select name="area">${enNombre.map((a) => `<option value="${esc(a.id)}" ${borr.area === a.id ? 'selected' : ''}>${esc(a.nombre)}</option>`).join('')}${yo.admin ? `<option value="" ${borr.area === '' ? 'selected' : ''}>Administración general (solo comentario)</option>` : ''}</select></label>`
+        : enNombre.length ? `<p class="ayuda">Escribes en nombre de <b>${esc(enNombre[0].nombre)}</b>.</p>` : '<p class="ayuda">Comentas como Administración general.</p>'}
+      ${yo.gerencia && borr.area === yo.area_gerencia ? '<p class="ayuda" data-ayuda-gerencia>Como Gerencia tu mensaje es opcional: no cambia el estado de las áreas ni es requisito para finalizar.</p>' : ''}
       ${yo.salud && d.sensible ? '<label class="check"><input type="checkbox" name="salud"> Contiene información de salud (solo la verán Enfermería del caso y quienes tienen el permiso)</label>' : ''}
       <div class="pq-aviso-modo" data-aviso-modo id="ayuda-modo"></div>`}
       <div data-adjuntos></div>
@@ -501,7 +556,7 @@ export async function detalle(m, p) {
     const crecer = () => { txt.style.height = 'auto'; txt.style.height = Math.min(txt.scrollHeight, 200) + 'px'; };
     txt.addEventListener('input', () => { borr.texto = txt.value; crecer(); });
     crecer();
-    const areaSel = () => (comoSolicitante ? null : selArea ? selArea.value || null : misAreas[0]?.id || null);
+    const areaSel = () => (comoSolicitante ? null : selArea ? selArea.value || null : enNombre[0]?.id || null);
     const esEnf = () => d.areas.find((a) => a.id === areaSel())?.clave === 'enfermeria';
     if (chkSalud) chkSalud.checked = borr.salud ?? esEnf();
     const pintarModo = () => {
@@ -590,10 +645,12 @@ export async function detalle(m, p) {
     if (b.dataset.abrirAdjunto) { e.preventDefault(); return abrirAdjunto(b.dataset.abrirAdjunto); }
     return accionGestion(b, d, recargar, conMotivo);
   });
-  const conMotivo = (titulo, html, etiqueta, fn, ok) => ventana({
+  // Si otra persona ya lo había hecho (pantalla desactualizada), el servidor responde «igual» y no guarda este motivo: se dice tal cual
+  // (3-nov-2026, A07: el usuario no ve un éxito que no ocurrió)
+  const conMotivo = (titulo, html, etiqueta, fn, ok) => { let res = null; return ventana({
     titulo, html: `${html}<label>${esc(etiqueta)}<textarea name="motivo" rows="3" maxlength="1000"></textarea></label>`,
-    botones: [{ texto: 'Cancelar', valor: null }, { texto: 'Guardar', antes: async (caja) => fn(caja.querySelector('[name=motivo]').value.trim(), caja) }],
-  }).then((r) => { if (r) { aviso(ok); olvidarChat(d.id); recargar(); } });
+    botones: [{ texto: 'Cancelar', valor: null }, { texto: 'Guardar', antes: async (caja) => (res = await fn(caja.querySelector('[name=motivo]').value.trim(), caja)) }],
+  }).then((r) => { if (r) { aviso(res?.igual ? 'Otra persona ya lo había hecho: se conserva lo suyo y tu texto no se guardó.' : ok, res?.igual ? 'error' : undefined); olvidarChat(d.id); recargar(); } }); };
 
   // Adjuntos: ver una imagen grande o descargar un documento (enlace firmado pedido en el momento)
   async function abrirAdjunto(id) {
@@ -624,7 +681,8 @@ function cabChat(d) {
   return `<div class="pq-caso-cab"><span class="pq-tipo">${esc(TIPOS[d.tipo] || d.tipo)}</span>${chipEstado(d.estado)}${d.sensible ? '<span class="pq-badge info">🔒 Información de salud</span>' : ''}${d.revisar ? '<span class="pq-badge suave">Revisar clasificación</span>' : ''}</div>
     <h2 class="pq-asunto" data-asunto>${esc(d.asunto)}</h2>
     <div class="pq-areas">${activas.length ? activas.map(chipArea).join('') : '<span class="pq-badge suave">Pendiente de clasificación</span>'}</div>
-    ${d.estado !== 'cerrada' && d.pendientes?.length && d.pendientes.length < activas.length ? `<small class="ayuda">Falta responder: <b>${esc(lista(d.pendientes))}</b></small>` : ''}`;
+    ${d.estado !== 'cerrada' && d.pendientes?.length && d.pendientes.length < activas.length ? `<small class="ayuda">Falta responder: <b>${esc(lista(d.pendientes))}</b></small>` : ''}
+    ${d.yo?.puede_cerrar && d.estado !== 'cerrada' ? '<div class="pq-acciones"><button type="button" class="btn btn-chico btn-primario" data-finalizar>✅ Finalizar PQRS</button></div>' : ''}`;
 }
 
 const adjuntosHTML = (as) => (as?.length ? `<div class="pq-adjs">${as.map((a) => a.imagen
@@ -632,7 +690,7 @@ const adjuntosHTML = (as) => (as?.length ? `<div class="pq-adjs">${as.map((a) =>
   : `<button type="button" class="pq-adj-doc" data-abrir-adjunto="${esc(a.id)}" aria-label="Descargar ${esc(a.nombre)}">${ICONO[a.extension] || '📎'} <span>${esc(a.nombre)}</span><small>${esc(tamanoTexto(a.tamano))} · descargar</small></button>`).join('')}</div>` : '');
 
 function burbujaInicio(x) {
-  return `<article class="pq-burbuja inicio ${x.mia ? 'mia' : ''}" data-inicio>
+  return `<article class="pq-burbuja inicio ${x.mia ? 'mia' : ''}" data-inicio data-seq="0">
     <header><b>${esc(x.autor)}</b> · ${esc(etiquetaRol(x.rol))} · <span class="pq-etq">Descripción original</span></header>
     <div class="texto" data-descripcion>${x.oculto_salud ? '<span class="pq-reservado">Reservada: tiene información de salud. Solo la ven Enfermería del caso y quienes tienen el permiso de salud.</span>' : esc(x.contenido)}</div>
     ${adjuntosHTML(x.adjuntos)}
@@ -642,7 +700,7 @@ function burbujaInicio(x) {
 
 function burbuja(i, { abierto }) {
   const etq = i.tipo === 'respuesta' ? `Respuesta al solicitante · ${esc(i.area || '')}` : i.tipo === 'comentario' ? `🔒 Comentario interno · ${esc(i.area || 'Administración general')}` : `Información del solicitante${i.rol ? ' · ' + esc(etiquetaRol(i.rol)) : ''}`;
-  return `<article class="pq-burbuja ${i.tipo} ${i.mia ? 'mia' : ''}" data-int="${esc(i.id)}">
+  return `<article class="pq-burbuja ${i.tipo} ${i.mia ? 'mia' : ''}" data-int="${esc(i.id)}"${Number.isInteger(i.seq) ? ` data-seq="${i.seq}"` : ''}>
     <header><b>${esc(i.autor)}</b> · <span class="pq-etq">${etq}</span></header>
     ${i.oculto_salud ? `<p class="pq-reservado">Contenido de salud reservado: solo lo ven Enfermería del caso y quienes tienen el permiso de salud.${i.adjuntos_ocultos ? ` (${i.adjuntos_ocultos} adjunto(s) reservado(s))` : ''}</p>` : `${i.contenido ? `<div class="texto">${esc(i.contenido)}</div>` : ''}${adjuntosHTML(i.adjuntos)}`}
     <footer><time datetime="${esc(i.creado_en)}" title="${esc(fechaHora(i.creado_en))}">${esc(horaCorta(i.creado_en))}</time>${i.mia ? ' · <span class="pq-ok">✓ Enviado</span>' : ''}${i.editado_en ? ` · <b>corregido</b>` : ''}
@@ -761,7 +819,7 @@ function gestionHTML(d) {
     ${d.areas.length ? d.areas.map((a) => `<div class="pq-area-fila ${a.activa ? '' : 'retirada'}" data-area-fila="${esc(a.id)}">
       <div class="pq-caso-cab">${a.activa ? chipArea(a) : `<span class="pq-area">${esc(a.nombre)} · retirada</span>`}${a.mia ? '<span class="pq-badge info">Tu área</span>' : ''}${personal && a.activa && !a.responsables?.length ? '<span class="pq-badge suave">Sin responsables configurados</span>' : ''}</div>
       ${personal && a.motivo ? `<small class="ayuda">Por qué: ${esc(a.motivo)} (${a.origen === 'automatica' ? 'automática' : `asignada por ${esc(a.asignada_por || '')}`}, ${esc(fechaHora(a.asignada_en))})</small>` : ''}
-      ${personal && a.responsables?.length ? `<small class="ayuda">Responsables: ${esc(lista(a.responsables))}</small>` : ''}
+      ${personal && a.responsables?.length ? `<small class="ayuda">Responsables: ${esc(lista(a.responsables))}${a.lider ? ` · líder: <b>${esc(a.lider)}</b>` : ''}</small>` : ''}
       ${!a.activa ? `<small class="ayuda">Retirada por ${esc(a.retirada_por || '')} el ${esc(fechaHora(a.retirada_en))}: ${esc(a.retiro_motivo || '')}</small>` : ''}
       <div class="pq-acciones">
         ${a.mia && abierto && (a.estado === 'pendiente' || (a.estado === 'respondida' && a.aporte_pendiente)) ? `<button type="button" class="btn btn-chico" data-revision="${esc(a.id)}">Marcar «En revisión»</button>` : ''}
@@ -773,7 +831,7 @@ function gestionHTML(d) {
     ${yo.admin && d.clasificacion && (d.clasificacion.razon || d.clasificacion.intencion?.length) ? `<details><summary>Cómo se clasificó</summary>
       <p class="ayuda">${d.clasificacion.razon ? esc(d.clasificacion.razon) + '<br>' : ''}${d.clasificacion.intencion?.length ? `Intención detectada: ${esc(lista(d.clasificacion.intencion))}. ` : ''}${d.clasificacion.descartes ? `${d.clasificacion.descartes} señal(es) descartadas por negación o elogio.` : ''}
       ${d.clasificacion.debiles?.length ? `<br>Señales débiles (no alcanzaron): ${esc(lista(d.clasificacion.debiles.map((k) => AREAS.find((a) => a.clave === k)?.nombre || (k === 'seccion' ? 'Sección' : k))))}.` : ''}</p></details>` : ''}
-    ${personal && d.lecturas ? `<h3>Visto por</h3>${d.lecturas.length ? `<ul class="pq-crono">${d.lecturas.map((l) => `<li><b>${esc(l.nombre)}</b>${l.areas.length ? ` (${esc(lista(l.areas))})` : l.admin ? ' (Administración)' : ''}<small>Primera vez: ${esc(fechaHora(l.primera_en))}${l.ultima_en !== l.primera_en ? ` · última: ${esc(fechaHora(l.ultima_en))}` : ''}</small></li>`).join('')}</ul><p class="ayuda">Leer un caso no lo marca como respondido.</p>` : '<p class="ayuda">Nadie del personal lo ha abierto todavía.</p>'}` : ''}
+    ${personal && d.lecturas ? `<h3>Visto por</h3>${d.lecturas.length ? `<ul class="pq-crono">${d.lecturas.map((l) => `<li><b>${esc(l.nombre)}</b>${l.areas.length || l.gerencia ? ` (${esc(lista([...l.areas, ...(l.gerencia && !l.areas.includes('Gerencia') ? ['Gerencia'] : [])]))})` : l.admin ? ' (Administración)' : ''}<small>Primera vez: ${esc(fechaHora(l.primera_en))}${l.ultima_en !== l.primera_en ? ` · última: ${esc(fechaHora(l.ultima_en))}` : ''}</small></li>`).join('')}</ul><p class="ayuda">Leer un caso no lo marca como respondido.</p>` : '<p class="ayuda">Nadie del personal lo ha abierto todavía.</p>'}` : ''}
     <h3>Cronología</h3>
     <ul class="pq-crono">${d.eventos.map((e) => `<li data-evento="${esc(e.tipo)}">${esc((TEXTO_EVENTO[e.tipo] || (() => e.tipo))(e, personal))}<small>${esc(fechaHora(e.creado_en))}${e.actor && e.tipo !== 'leida' && (personal || e.tipo === 'respuesta') ? ` · ${esc(e.actor)}` : ''}</small></li>`).join('')}</ul>
     ${yo.puede_cerrar || yo.puede_reabrir ? `<div class="pq-acciones">
@@ -802,7 +860,7 @@ async function accionGestion(b, d, recargar, conMotivo) {
   }
   if (b.hasAttribute('data-confirmar')) return conMotivo('Confirmar clasificación', '<p>Quita la marca «Revisar clasificación». Las áreas siguen como están.</p>', 'Nota (opcional)',
     (nota) => rpc('pqrs_confirmar_clasificacion', { p_id: d.id, p_nota: nota || null }), 'Clasificación confirmada');
-  if (b.hasAttribute('data-cerrar')) return conMotivo('Finalizar PQRS', (d.pendientes.length ? `<p class="pq-reservado">Aún falta responder: <b>${esc(lista(d.pendientes))}</b>. Finalizar no marca sus respuestas; queda como constancia.</p>` : '<p>Todas las áreas respondieron.</p>')
+  if (b.hasAttribute('data-cerrar') || b.hasAttribute('data-finalizar')) return conMotivo('Finalizar PQRS', (d.pendientes.length ? `<p class="pq-reservado">Aún falta responder: <b>${esc(lista(d.pendientes))}</b>. Finalizar no marca sus respuestas; queda como constancia.</p>` : '<p>Todas las áreas respondieron.</p>')
     + '<p class="ayuda">Al finalizar ya no se pueden enviar mensajes. La conversación y los adjuntos siguen disponibles para quienes participan.</p>',
     'Conclusión: solución y acuerdos (obligatoria)', (motivo) => rpc('pqrs_cerrar', { p_id: d.id, p_motivo: motivo }), 'PQRS finalizada');
   if (b.hasAttribute('data-reabrir')) return conMotivo('Reabrir el caso', '', 'Motivo (obligatorio)', (motivo) => rpc('pqrs_reabrir', { p_id: d.id, p_motivo: motivo }), 'Caso reabierto');
@@ -840,8 +898,14 @@ async function configuracion(c) {
     ${cfg.avisos_pendientes ? `<section class="tarjeta"><p><b>${cfg.avisos_pendientes} aviso(s) del chat no salieron.</b> Las PQRS están guardadas.</p><button type="button" class="btn btn-primario" data-reintentar>Reintentar los avisos</button></section>` : ''}
     ${cfg.areas.map((a) => `<section class="tarjeta" data-area="${esc(a.id)}">
       <h2>${esc(a.nombre)}</h2>
-      ${a.clave === 'gerencia' ? '<p class="ayuda">Gerencia nunca se asigna sola: la agrega el administrador en cada caso.</p>' : ''}
-      <div class="pq-chips">${a.responsables.length ? a.responsables.map((r) => `<span class="pq-chip-x">${esc(r.nombre)}<button type="button" aria-label="Quitar a ${esc(r.nombre)} de ${esc(a.nombre)}" data-quitar="${esc(r.id)}">×</button></span>`).join('') : '<span class="pq-badge suave">Sin responsables: sus casos quedan pendientes y se te avisa</span>'}</div>
+      ${a.clave === 'gerencia' ? '<p class="ayuda">Gerencia nunca se asigna sola. Sus responsables ven <b>todas</b> las PQRS del colegio en la «Bandeja de Gerencia», pueden responder si quieren (no es requisito para cerrar) y finalizar; no ven lo de salud sin el permiso de salud.</p>' : ''}
+      <div class="pq-chips">${a.responsables.length ? a.responsables.map((r) => `<span class="pq-chip-x ${r.principal ? 'pq-lider' : ''}">${r.principal ? '★ ' : ''}${esc(r.nombre)}${r.principal ? ' <small>(líder)</small>' : `<button type="button" class="pq-hacer-lider" aria-label="Hacer líder de ${esc(a.nombre)} a ${esc(r.nombre)}" title="Hacer líder" data-lider="${esc(r.id)}">☆</button>`}<button type="button" aria-label="Quitar a ${esc(r.nombre)} de ${esc(a.nombre)}" data-quitar="${esc(r.id)}">×</button></span>`).join('') : '<span class="pq-badge suave">Sin responsables: sus casos quedan pendientes y se te avisa</span>'}
+        ${a.responsables.length && !a.responsables.some((r) => r.principal) ? '<span class="pq-badge suave" data-sin-lider>Sin líder: marca uno con ☆</span>' : ''}</div>
+      <details class="pq-contacto" ${a.cargo_lider || a.correo_contacto ? '' : ''}><summary>Cargo y correo publicado${a.cargo_lider || a.correo_contacto ? `: ${esc([a.cargo_lider, a.correo_contacto].filter(Boolean).join(' · '))}` : ' (sin dato)'}</summary>
+        <p class="ayuda">Son del área, no de una persona: el correo institucional publicado no crea ni reemplaza cuentas. Quien ocupe el cargo es el líder.</p>
+        <div class="form pq-acciones"><label class="crece">Cargo<input data-cargo maxlength="80" value="${esc(a.cargo_lider || '')}" placeholder="Ej.: Directora de sección"></label>
+          <label class="crece">Correo publicado<input data-correo type="email" maxlength="120" value="${esc(a.correo_contacto || '')}" placeholder="Ej.: direccion.infantil@colegio.edu.co"></label>
+          <button type="button" class="btn" data-contacto>Guardar</button></div></details>
       <div class="form pq-acciones"><label class="crece">Agregar responsable<select data-nuevo><option value="">Elige una persona…</option>${cfg.personal.filter((x) => !a.responsables.some((r) => r.id === x.id)).map((x) => `<option value="${esc(x.id)}">${esc(x.nombre)} (${esc(x.roles.map((r) => ROL[r] || r).join(', '))})</option>`).join('')}</select></label>
         <button type="button" class="btn" data-agregar>Agregar</button></div>
       ${SECCIONES.includes(a.clave) ? `<details ${a.grados.length ? '' : 'open'}><summary>Grados de esta sección${a.grados.length ? `: ${esc(lista(a.grados.map(nombreGrado)))}` : ' (sin marcar)'}</summary>
@@ -857,7 +921,7 @@ async function configuracion(c) {
       <div class="form pq-acciones"><label class="crece">Dar el permiso a<select data-nuevo-salud><option value="">Elige una persona…</option>${cfg.personal.filter((x) => !cfg.permisos_salud.some((s) => s.id === x.id)).map((x) => `<option value="${esc(x.id)}">${esc(x.nombre)}</option>`).join('')}</select></label>
         <button type="button" class="btn" data-dar-salud>Dar permiso</button></div>
     </section>
-    ${cfg.historial.length ? `<section class="tarjeta"><h2>Historial de cambios</h2><ul class="pq-crono">${cfg.historial.map((h) => `<li>${esc({ responsable_agregado: `${h.persona} ahora es responsable de ${h.area}`, responsable_quitado: `${h.persona} ya no es responsable de ${h.area}`, grados_seccion: `Se cambiaron los grados de ${h.area}`, permiso_salud_dado: `Permiso de salud para ${h.persona}`, permiso_salud_quitado: `Se quitó el permiso de salud a ${h.persona}` }[h.accion] || h.accion)}<small>${esc(h.actor || '')} · ${esc(fechaHora(h.creado_en))}${h.detalle?.motivo ? ` · ${esc(h.detalle.motivo)}` : ''}</small></li>`).join('')}</ul></section>` : ''}`;
+    ${cfg.historial.length ? `<section class="tarjeta"><h2>Historial de cambios</h2><ul class="pq-crono">${cfg.historial.map((h) => `<li>${esc({ responsable_agregado: `${h.persona} ahora es responsable de ${h.area}`, responsable_quitado: `${h.persona} ya no es responsable de ${h.area}`, grados_seccion: `Se cambiaron los grados de ${h.area}`, lider_cambiado: h.persona ? `${h.persona} es ahora líder de ${h.area}${h.detalle?.antes_nombre ? ` (antes: ${h.detalle.antes_nombre})` : ''}` : `${h.area} quedó sin líder${h.detalle?.antes_nombre ? ` (era ${h.detalle.antes_nombre})` : ''}`, contacto_area: `Se cambió el cargo o el correo de ${h.area}`, permiso_salud_dado: `Permiso de salud para ${h.persona}`, permiso_salud_quitado: `Se quitó el permiso de salud a ${h.persona}` }[h.accion] || h.accion)}<small>${esc(h.actor || '')} · ${esc(fechaHora(h.creado_en))}${h.detalle?.motivo ? ` · ${esc(h.detalle.motivo)}` : ''}</small></li>`).join('')}</ul></section>` : ''}`;
 
   c.addEventListener('click', async (e) => {
     const b = e.target.closest('button');
@@ -866,6 +930,11 @@ async function configuracion(c) {
     try {
       if (b.hasAttribute('data-reintentar')) { const r = await rpc('pqrs_reintentar_avisos', { p_colegio: E.colegio.id }); aviso(r.con_error ? `Salieron ${r.enviados}; ${r.con_error} siguen con error` : `Salieron ${r.enviados} aviso(s)`, r.con_error ? 'error' : 'ok'); return recargar(); }
       if (b.dataset.quitar) { await rpc('pqrs_responsable', { p_colegio: E.colegio.id, p_area: area, p_perfil: b.dataset.quitar, p_agregar: false }); aviso('Responsable quitado'); return recargar(); }
+      if (b.dataset.lider) { await rpc('pqrs_lider', { p_colegio: E.colegio.id, p_area: area, p_perfil: b.dataset.lider }); aviso('Líder designado'); return recargar(); }
+      if (b.hasAttribute('data-contacto')) {
+        await rpc('pqrs_area_contacto', { p_colegio: E.colegio.id, p_area: area, p_cargo: sec.querySelector('[data-cargo]').value, p_correo: sec.querySelector('[data-correo]').value });
+        aviso('Cargo y correo guardados'); return recargar();
+      }
       if (b.hasAttribute('data-agregar')) {
         const v = sec.querySelector('[data-nuevo]').value;
         if (!v) return aviso('Elige una persona.', 'error');

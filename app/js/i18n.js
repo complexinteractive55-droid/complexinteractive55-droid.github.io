@@ -2,17 +2,31 @@
 // se traduce al pintar, buscando cada texto en el diccionario es → en. Lo que escriben las personas
 // (mensajes, nombres, notas, observaciones) NO se traduce. Lo que se guarda en la base sigue siendo
 // la clave en español (estados, roles, categorías): solo cambia lo que se muestra.
-// El español es el idioma por defecto; el inglés se elige en "Mi cuenta y ajustes → Idioma".
+// En "Mi cuenta y ajustes → Idioma" (también en el modo demo) se elige Automático, Español o English. Por defecto es
+// Automático: el idioma del dispositivo (inglés si el dispositivo está en inglés; español si está en español o en otro
+// idioma que la app aún no tiene). Pedido de Fabio, 2-nov-2026.
 
 const CLAVE = 'complex_idioma';
 const leer = () => { try { return localStorage.getItem(CLAVE); } catch { return null; } };
-export const idioma = leer() === 'en' ? 'en' : 'es';
-// Los diccionarios (unos 60 KB) se bajan solo si la persona eligió inglés
+// El primero de los idiomas preferidos del dispositivo que la app tiene; si ninguno, español
+export function idiomaDispositivo() {
+  const lista = (typeof navigator !== 'undefined' && (navigator.languages?.length ? navigator.languages : [navigator.language])) || [];
+  for (const l of lista) { const b = String(l || '').toLowerCase().slice(0, 2); if (b === 'es' || b === 'en') return b; }
+  return 'es';
+}
+// Lo que eligió la persona: 'es', 'en' o 'auto' (nada guardado = automático)
+export let preferenciaIdioma = ['es', 'en'].includes(leer()) ? leer() : 'auto';
+export const idioma = preferenciaIdioma === 'auto' ? idiomaDispositivo() : preferenciaIdioma;
+// Los diccionarios (unos 60 KB) se bajan solo si la app se va a ver en inglés
 const DIC = { en: idioma === 'en' ? Object.assign({}, ...(await Promise.all(['en1', 'en2', 'en3', 'en4'].map((n) => import(`./i18n/${n}.js`)))).map((m) => m.default)) : {} };
 export const enIngles = idioma === 'en';
+// Guarda la elección; si cambia el idioma que se ve, recarga para pintar todo de nuevo (devuelve true si recarga)
 export function elegirIdioma(l) {
-  try { if (l === 'es') localStorage.removeItem(CLAVE); else localStorage.setItem(CLAVE, l); } catch {}
-  location.reload(); // así toda la app se pinta de nuevo en el idioma elegido
+  try { if (l === 'auto') localStorage.removeItem(CLAVE); else localStorage.setItem(CLAVE, l); } catch {}
+  preferenciaIdioma = l;
+  if ((l === 'auto' ? idiomaDispositivo() : l) === idioma) return false;
+  location.reload();
+  return true;
 }
 document.documentElement.lang = idioma;
 
