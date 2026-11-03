@@ -133,6 +133,17 @@ export async function crearDbSupabase() {
       falla(error);
       return data;
     },
+    // Funciones que devuelven muchas filas (los contactos de todo un colegio): por páginas de 1.000, el máximo que entrega la API.
+    // Antes llegaban solo las primeras 1.000 y «Todos» marcaba a menos personas sin avisar (3-nov-2026). Siempre del servidor.
+    async rpcTodo(nombre, args) {
+      const todo = [];
+      for (let desde = 0; ; desde += 1000) {
+        const { data, error } = await sb.rpc(nombre, args).range(desde, desde + 999);
+        falla(error);
+        todo.push(...(data || []));
+        if (!data || data.length < 1000) return todo;
+      }
+    },
     async funcion(nombre, cuerpo) {
       const { data, error } = await sb.functions.invoke(nombre, { body: cuerpo });
       if (error) {
@@ -156,13 +167,19 @@ export async function crearDbSupabase() {
       falla(error);
       return Object.fromEntries((data || []).filter((x) => x.signedUrl).map((x) => [x.path, x.signedUrl]));
     },
-    async urlArchivo(bucket, ruta) {
+    async urlArchivo(bucket, ruta, descargarComo) {
       // Archivos que el navegador podría ejecutar (HTML, SVG, XML, scripts) se DESCARGAN en vez de abrirse:
       // así un adjunto malicioso no corre código al tocarlo. PDF, fotos y documentos se siguen abriendo igual.
       const peligroso = /\.(html?|xhtml|svgz?|xml|js|mjs)$/i.test(ruta);
-      const { data, error } = await sb.storage.from(bucket).createSignedUrl(ruta, 600, peligroso ? { download: true } : undefined);
+      const { data, error } = await sb.storage.from(bucket).createSignedUrl(ruta, 600, descargarComo ? { download: descargarComo } : peligroso ? { download: true } : undefined);
       falla(error);
       return data.signedUrl;
+    },
+    // El archivo mismo (la RLS de Storage decide): para mostrar el PDF de una circular y comprobar su huella en el equipo
+    async archivoBytes(bucket, ruta) {
+      const { data, error } = await sb.storage.from(bucket).download(ruta);
+      falla(error);
+      return data;
     },
     async borrarArchivo(bucket, ruta) {
       const { error } = await sb.storage.from(bucket).remove([ruta]);
@@ -235,7 +252,9 @@ const RPC_LECTURA = new Set(['mis_contactos', 'personas_colegio', 'mi_intento'])
 // Lecturas que van siempre al servidor y no marcan lo demás «por revisar» (el hilo de una PQRS se consulta cada poco); también el
 // cursor de lectura de la PQRS (solo cambia «hasta dónde vi yo», nada que esté en la copia del equipo)
 const RPC_DIRECTA = new Set(['pqrs_mensajes', 'pqrs_marcar_leido', 'mensajes_sin_leer', 'hora_servidor', 'album_cursos', 'album_curso',
-  'salas_mias', 'sala_mensajes', 'sala_miembros_ver', 'sala_marcar_leido', 'avisos_ver', 'aviso_detalle', 'aviso_marcar_visto', 'pqrs_adjunto_estado', 'circular_previsualizar_numero', 'circular_numeracion', 'circular_mi_perfil', 'circular_emisores_ver', 'circular_formatos_por_area']);
+  'salas_mias', 'sala_mensajes', 'sala_miembros_ver', 'sala_marcar_leido', 'avisos_ver', 'aviso_detalle', 'aviso_marcar_visto', 'pqrs_adjunto_estado', 'circular_previsualizar_numero', 'circular_numeracion', 'circular_mi_perfil', 'circular_emisores_ver', 'circular_formatos_por_area',
+  // envío a la bandeja y mensajería del servidor (3-nov-2026): siempre lo vigente (audiencia, docentes, bandeja por páginas)
+  'audiencia_previa', 'circular_envio_estado', 'bandeja_mia', 'enviados_mios', 'mensaje_lecturas', 'mis_docentes_diagnostico']);
 // Escrituras que también cambian otras tablas (triggers del servidor o lógica de la app)
 const AFECTA = {
   tarea_entregas: ['calificaciones'], examenes: ['calificaciones'], examen_intentos: ['calificaciones'],
@@ -248,6 +267,9 @@ const AFECTA = {
   circular_emitir: ['circular_borradores', 'circular_series'], circular_anular: ['circular_borradores', 'circular_numeros_anulados'],
   circular_firma_guardar: ['circular_firmas'], circular_firma_borrar: ['circular_firmas'], circular_emisor_guardar: ['circular_emisores', 'circular_config_historial'],
   circular_area_formato_guardar: ['circular_area_formatos', 'circular_config_historial'],
+  mensaje_enviar: ['mensajes', 'mensaje_destinatarios', 'tipos_mensaje'],
+  circular_enviar: ['mensajes', 'mensaje_destinatarios', 'mensaje_adjuntos', 'circular_borradores', 'circular_envios', 'tipos_mensaje', 'circular_series'],
+  circular_envio_reponer: ['mensaje_destinatarios'],
 };
 const clonar = (x) => (x == null ? x : typeof structuredClone === 'function' ? structuredClone(x) : JSON.parse(JSON.stringify(x)));
 
@@ -415,6 +437,8 @@ export function crearDbDemo() {
   let pqrsDemo = null; // PQRS (pqrs_demo.js, mismas reglas que la base): se carga la primera vez que se usa
   let salasDemo = null; // salas de sección y avisos (salas_demo.js, mismas reglas que la base)
   let calendarioDemo = null;
+  let enviosDemo = null;
+  const RPC_ENVIOS_DEMO = ['audiencia_previa', 'circular_enviar', 'circular_envio_estado', 'mensaje_enviar', 'bandeja_mia', 'enviados_mios', 'mensaje_lecturas', 'mis_docentes_diagnostico'];
   let circularesDemo = null; // series de circulares por área (circulares_demo.js, mismas reglas que 20261029130000) // calendario institucional importado (calendario_demo.js, mismas reglas que la base)
 
   // Valores por defecto (los mismos que pone la base de datos real)
@@ -449,6 +473,38 @@ export function crearDbDemo() {
   const emisorCirc = (c, p = usuario()) => tabla('circular_emisores').find((e) => e.colegio_id === c && e.perfil_id === p && e.activo
     && tabla('miembros').some((m) => m.colegio_id === c && m.perfil_id === p && m.activo !== false && PERSONAL.includes(m.rol))) || null;
   const puedePreparar = (c) => !!usuario() && (esAdmin(c) || !!emisorCirc(c));
+  const circDemo = async () => (circularesDemo ||= (await import('./circulares_demo.js')).crearCircularesDemo({ tabla, usuario, guardar, ahora, err, esAdmin, consecutivoCircular, formatoCirc, emisorCirc, puedePreparar, existeArchivo: (b, r) => !!leerArchivos()[b + '/' + r] }));
+  // Adjuntos de un mensaje (bucket «mensajes»): su autor, sus destinatarios y la familia de un estudiante destinatario (como la RLS)
+  const puedoVerAdjuntos = (mid) => {
+    const yo = usuario(), m = tabla('mensajes').find((x) => x.id === mid);
+    if (!m) return false;
+    if (m.autor_id === yo) return true;
+    if (m.expira_en && m.expira_en <= ahora()) return false;
+    const ds = tabla('mensaje_destinatarios').filter((d) => d.mensaje_id === mid);
+    return ds.some((d) => d.perfil_id === yo) || ds.some((d) => tabla('acudientes').some((x) => x.acudiente_id === yo && x.estudiante_id === d.perfil_id));
+  };
+  // PDF del envío en el demo: como la acción «preparar_envio» de la Edge Function, con la versión GUARDADA y un PDF de demostración
+  async function prepararEnvioDemo(a) {
+    await lento();
+    if (!esAdmin(a.colegio_id)) err('Solo Administración envía circulares a la comunidad del colegio.');
+    const b = tabla('circular_borradores').find((x) => x.id === a.borrador_id && x.colegio_id === a.colegio_id);
+    if (!b) err('Esa circular no existe o no tienes acceso.');
+    if (b.version !== a.version) err('La circular cambió después de abrirla (hay otra versión guardada): recarga y genera el PDF de la versión actual.');
+    if (b.estado === 'anulada') err('Esa circular está anulada: no se envía.');
+    if (!b.consecutivo) err('La circular aún no tiene su número: guárdala con su área y serie antes de enviarla.');
+    if (localStorage.getItem('complex_demo_pdf_falla') === '1') err('No se pudo componer la circular con la plantilla y las fuentes oficiales. No se envió nada.'); // A01: falla simulada
+    const { pdfDemo } = await import('./pdf_demo.js');
+    const omitida = !!b.datos?.firmar && b.autor_id !== usuario();
+    const { bytes } = pdfDemo({ ...b.datos, ...(omitida ? { firmar: false } : {}) }, b.consecutivo, tabla('colegios').find((c) => c.id === a.colegio_id)?.nombre);
+    const huella = [...new Uint8Array(await crypto.subtle.digest('SHA-256', bytes))].map((x) => x.toString(16).padStart(2, '0')).join('');
+    const nom = String(b.consecutivo).replace(/[^A-Za-z0-9._-]+/g, '_').replace(/^[._-]+/, '').slice(0, 100) + '_v' + b.version + '_' + huella.slice(0, 8) + '.pdf';
+    const ruta = a.colegio_id + '/' + a.envio_id + '/' + nom;
+    const blob = new Blob([bytes], { type: 'application/pdf' });
+    await db.subirArchivo('mensajes', ruta, blob);
+    tabla('circular_revisiones_pdf').push({ id: Date.now(), colegio_id: a.colegio_id, borrador_id: b.id, version: b.version, sha256: huella, generado_por: usuario(), generado_en: ahora(), ruta, bytes: bytes.length, envio_id: a.envio_id });
+    guardar();
+    return blob;
+  }
   const borradorMio = (b) => esAdmin(b.colegio_id) || (b.autor_id === usuario() && puedePreparar(b.colegio_id));
   const numerarBorrador = (r) => {
     r.solicitud_id ||= crypto.randomUUID();
@@ -723,14 +779,30 @@ export function crearDbDemo() {
         acu.filter((a) => a.estudiante_id === mt.estudiante_id).forEach((a) => add(a.acudiente_id, 'Curso ' + nomCurso(mt.curso_id), 'Acudiente de ' + (P.get(mt.estudiante_id)?.nombres || '')));
       }
     }
-    if (roles.has('acudiente') || roles.has('estudiante')) {
-      const ests = new Set([...acu.filter((a) => a.acudiente_id === yo).map((a) => a.estudiante_id), yo]);
-      for (const mt of mats.filter((x) => ests.has(x.estudiante_id))) {
+    const docenteActivo = (id) => M.some((m) => m.perfil_id === id && m.rol === 'profesor');
+    const personalActivo = (id) => M.some((m) => m.perfil_id === id && ['profesor', 'admin', 'enfermeria', 'director_seccion'].includes(m.rol));
+    if (roles.has('acudiente')) { // los docentes y el director de cada hijo (solo activos)
+      const hijos = new Set(acu.filter((a) => a.acudiente_id === yo).map((a) => a.estudiante_id));
+      for (const mt of mats.filter((x) => hijos.has(x.estudiante_id) && x.estudiante_id !== yo)) {
         const g = (P.get(mt.estudiante_id)?.nombres || 'Estudiante') + ' · ' + nomCurso(mt.curso_id);
-        asig.filter((a) => a.curso_id === mt.curso_id && a.profesor_id).forEach((a) => add(a.profesor_id, g, tabla('materias').find((x) => x.id === a.materia_id)?.nombre || ''));
+        asig.filter((a) => a.curso_id === mt.curso_id && a.profesor_id && docenteActivo(a.profesor_id)).forEach((a) => add(a.profesor_id, g, tabla('materias').find((x) => x.id === a.materia_id)?.nombre || ''));
         const dir = cursos.find((c) => c.id === mt.curso_id)?.director_id;
-        add(dir, g, 'Director(a) de curso');
+        if (dir && personalActivo(dir)) add(dir, g, 'Director(a) de curso');
       }
+    }
+    if (roles.has('estudiante')) { // «Mis docentes»: un renglón por docente activo de SU curso, con sus materias y si es director
+      const mios = new Map(), de = (id) => mios.get(id) || mios.set(id, { mat: new Set(), cur: new Set(), dir: false }).get(id);
+      for (const mt of mats.filter((x) => x.estudiante_id === yo)) {
+        for (const a of asig.filter((a) => a.curso_id === mt.curso_id && a.profesor_id && docenteActivo(a.profesor_id))) {
+          const d = de(a.profesor_id); d.mat.add(tabla('materias').find((x) => x.id === a.materia_id)?.nombre || ''); d.cur.add(nomCurso(mt.curso_id));
+        }
+        const dir = cursos.find((c) => c.id === mt.curso_id)?.director_id;
+        if (dir && personalActivo(dir)) { const d = de(dir); d.cur.add(nomCurso(mt.curso_id)); d.dir = true; }
+      }
+      const orden = (x) => [...x].filter(Boolean).sort((a, b) => a.localeCompare(b, 'es')).join(', ');
+      for (const [id, d] of mios) add(id, 'Mis docentes', [orden(d.mat), orden(d.cur), d.dir ? 'Director(a) de curso' : ''].filter(Boolean).join(' · '));
+    }
+    if (roles.has('acudiente') || roles.has('estudiante')) {
       acu.filter((a) => a.estudiante_id === yo).forEach((a) => add(a.acudiente_id, 'Mi familia', a.parentesco || 'Acudiente'));
     }
     const vistos = new Set();
@@ -959,10 +1031,18 @@ export function crearDbDemo() {
         guardar();
         return copia(r);
       }
-      if (nombre.startsWith('circular_')) {
-        circularesDemo ||= (await import('./circulares_demo.js')).crearCircularesDemo({ tabla, usuario, guardar, ahora, err, esAdmin, consecutivoCircular, formatoCirc, emisorCirc, puedePreparar, existeArchivo: (b, r) => !!leerArchivos()[b + '/' + r] });
-        return circularesDemo(nombre, a);
+      // Envío de la circular a la bandeja y mensajería del servidor (envios_demo.js, mismas reglas que las migraciones 20261104*)
+      if (RPC_ENVIOS_DEMO.includes(nombre)) {
+        enviosDemo ||= (await import('./envios_demo.js')).crearEnviosDemo({ tabla, usuario, guardar, ahora, err, esAdmin, contactos: contactosDemo,
+          emitir: async (id, sol) => (await circDemo())('circular_emitir', { p_id: id, p_solicitud: sol }), existeArchivo: (b, r) => !!leerArchivos()[b + '/' + r] });
+        const r = await enviosDemo(nombre, a);
+        if (nombre !== 'mensaje_enviar' || r.repetido) return r;
+        // la escritura, como un insert normal (tipo, número y valores por defecto del demo), ya comprobados los destinatarios
+        await db.insert('mensajes', [{ ...r.r, autor_id: yo }]);
+        await db.insert('mensaje_destinatarios', r.para.map((p) => ({ mensaje_id: r.r.id, colegio_id: r.r.colegio_id, perfil_id: p })));
+        return { id: r.r.id, repetido: false, destinatarios: r.para.length };
       }
+      if (nombre.startsWith('circular_')) return (await circDemo())(nombre, a);
       if (nombre === 'crear_circular_borrador') {
         if (!puedePreparar(a.p_colegio)) err('Solo Administración o quien el administrador designe preparan circulares institucionales.');
         if (!a.p_solicitud) err('Falta la identificación de la operación.');
@@ -1033,6 +1113,7 @@ export function crearDbDemo() {
     },
     // Imita la Edge Function admin-usuarios
     async funcion(nombre, a) {
+      if (nombre === 'circular-documentos' && a?.accion === 'preparar_envio') return prepararEnvioDemo(a);
       if (nombre !== 'admin-usuarios') err('Función desconocida');
       if (!esAdmin(a.colegio_id)) err('Solo el administrador del colegio puede hacer esto');
       const clave = () => Math.random().toString(36).slice(2, 6).replace(/^./, (c) => c.toUpperCase()) + String(1000 + Math.floor(Math.random() * 9000));
@@ -1089,8 +1170,16 @@ export function crearDbDemo() {
     },
     urlPublica(bucket, ruta) { return leerArchivos()[bucket + '/' + ruta] || null; },
     async urlsArchivos(bucket, rutas) { const a = leerArchivos(); return Object.fromEntries(rutas.filter((r) => a[bucket + '/' + r]).map((r) => [r, a[bucket + '/' + r]])); },
+    async rpcTodo(n, a) { return db.rpc(n, a); },
+    async archivoBytes(bucket, ruta) {
+      const url = await db.urlArchivo(bucket, ruta);
+      const [cab, b64] = url.split(',');
+      const bin = atob(b64);
+      return new Blob([Uint8Array.from(bin, (c) => c.charCodeAt(0))], { type: (cab.match(/^data:([^;]+)/) || [])[1] || 'application/octet-stream' });
+    },
     async urlArchivo(bucket, ruta) {
       if (bucket === 'firmas' && ruta.split('/')[1] !== usuario()) err('Archivo no encontrado'); // la firma solo la ve su dueño
+      if (bucket === 'mensajes' && !puedoVerAdjuntos(ruta.split('/')[1])) err('Archivo no encontrado');
       const url = leerArchivos()[bucket + '/' + ruta];
       if (!url) err('Archivo no encontrado');
       return url;

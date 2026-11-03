@@ -463,3 +463,12 @@ input[type=file] { padding: 10px; background: var(--superficie-2); }
 .sala-escribir { display: flex; gap: 8px; align-items: flex-end; }
 .sala-escribir textarea { flex: 1; min-width: 0; }
 .oculto-visual { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; }
+
+/* Circular enviada: el PDF es el documento principal del mensaje (3-nov-2026) */
+.doc-principal { border: 1px solid var(--borde); border-radius: 12px; background: var(--superficie); padding: 12px; margin: 12px 0; }
+.doc-principal .circ-acciones { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 8px; }
+.visor-pdf-caja { margin-top: 10px; }
+.visor-pdf { width: 100%; height: 78vh; border: 1px solid var(--borde); border-radius: 8px; background: #fff; }
+.chip-pdf { font-size: .8em; }
+.envio-paso { border-top: 1px solid var(--borde); padding-top: 10px; margin-top: 10px; }
+.envio-alcance { display: flex; flex-wrap: wrap; gap: 6px 14px; max-height: 220px; overflow: auto; }

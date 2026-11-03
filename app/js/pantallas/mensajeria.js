@@ -28,6 +28,16 @@ const refrescarSi = (prefijo) => { if (location.hash.startsWith(prefijo)) window
 async function completarEnvio(pe) {
   pe.estado = 'enviando'; pe.error = null;
   try {
+    // El mensaje y TODAS sus entregas en una sola operación del servidor (input 3-nov-2026): los grupos completos se resuelven allá,
+    // sin el límite de 1.000 filas, y cada destinatario se comprueba con la relación vigente. Repetirlo no duplica (mismo id).
+    if (!pe.creado) {
+      try {
+        await E.db.rpc('mensaje_enviar', { p_mensaje: pe.fila, p_para: pe.para, p_grupos: pe.grupos || [] });
+        pe.creado = pe.conDestinos = true;
+      } catch (e) {
+        if (!/mensaje_enviar|PGRST202|Could not find the function/i.test(e.message)) throw e; // servidor sin la migración: como antes
+      }
+    }
     // Reintentos sin duplicar (3-nov-2026, A07): si un intento anterior sí quedó guardado (la respuesta se perdió), se sigue desde ahí
     if (!pe.creado) {
       try { await E.db.insert('mensajes', [pe.fila]); }
@@ -80,20 +90,51 @@ export async function contarNoLeidos() {
 // ---------------------------------------------------------------- Bandeja
 const TABS = [['entrada', 'Entrada'], ['archivados', 'Archivados'], ['eliminados', 'Eliminados']];
 
+// Una página de la bandeja desde el servidor (3-nov-2026): más reciente primero, con los filtros de la pantalla. Antes se bajaban TODAS
+// las filas y con más de 1.000 se cortaban sin aviso. null = el servidor aún no tiene la función (se hace como antes).
+const POR_PAGINA = 50;
+async function paginaBandeja(tab, p, despues) {
+  try {
+    const r = await E.db.rpc('bandeja_mia', { p_colegio: E.colegio.id, p_vista: tab, p_tipo: p.tipo || null, p_ver: p.ver || null, p_buscar: null,
+      p_limite: POR_PAGINA, p_antes: despues?.creado_en || null, p_antes_id: despues?.id || null });
+    return r.map((x) => ({ x: { id: x.mensaje_id, autor_id: x.autor_id, asunto: x.asunto, cuerpo: x.cuerpo, creado_en: x.creado_en, editado_en: x.editado_en, destacado: x.destacado,
+      tipo_id: x.tipo_id, numero: x.numero, con_pdf: x.con_pdf }, d: { mensaje_id: x.mensaje_id, leido_en: x.leido_en, archivado: x.archivado, eliminado: x.eliminado } }));
+  } catch (e) {
+    if (/bandeja_mia|PGRST202|Could not find the function/i.test(e.message)) return null;
+    throw e;
+  }
+}
+
 export async function bandeja(m, p) {
   const tab = TABS.some((t) => t[0] === p.tab) ? p.tab : 'entrada';
-  const [todas, tipos] = await Promise.all([misFilas(), tiposMensaje()]);
-  const filas = todas.filter((d) => (tab === 'eliminados' ? d.eliminado : !d.eliminado && (tab === 'archivados' ? d.archivado : !d.archivado)));
-  const ahoraIso = new Date().toISOString();
-  // los mensajes vencidos ya no se ven (en modo real lo hace la RLS; así el demo se comporta igual)
-  const fila = new Map(filas.map((d) => [d.mensaje_id, d]));
-  const msgs = (filas.length ? await E.db.select('mensajes', { in: { id: filas.map((d) => d.mensaje_id) }, order: 'creado_en desc' }) : [])
-    .filter((x) => !x.expira_en || x.expira_en > ahoraIso)
-    .filter((x) => !p.tipo || (p.tipo === 'ninguno' ? !x.tipo_id : x.tipo_id === p.tipo))
-    .filter((x) => !p.ver || (p.ver === 'no' ? !fila.get(x.id).leido_en : !!fila.get(x.id).leido_en));
-  await perfiles(msgs.map((x) => x.autor_id));
+  const [pagina, tipos] = await Promise.all([paginaBandeja(tab, p), tiposMensaje()]);
+  let filasMsg, noLeidos;
+  if (pagina) {
+    filasMsg = pagina;
+    noLeidos = tab === 'entrada' && !p.tipo && !p.ver ? await contarNoLeidos() : 0;
+  } else { // como antes (servidor sin bandeja_mia)
+    const todas = await misFilas();
+    const filas = todas.filter((d) => (tab === 'eliminados' ? d.eliminado : !d.eliminado && (tab === 'archivados' ? d.archivado : !d.archivado)));
+    const ahoraIso = new Date().toISOString();
+    const fila = new Map(filas.map((d) => [d.mensaje_id, d]));
+    filasMsg = (filas.length ? await E.db.select('mensajes', { in: { id: filas.map((d) => d.mensaje_id) }, order: 'creado_en desc' }) : [])
+      .filter((x) => !x.expira_en || x.expira_en > ahoraIso)
+      .filter((x) => !p.tipo || (p.tipo === 'ninguno' ? !x.tipo_id : x.tipo_id === p.tipo))
+      .filter((x) => !p.ver || (p.ver === 'no' ? !fila.get(x.id).leido_en : !!fila.get(x.id).leido_en))
+      .map((x) => ({ x, d: fila.get(x.id) }));
+    noLeidos = filas.filter((d) => !d.leido_en).length;
+  }
+  await perfiles(filasMsg.map(({ x }) => x.autor_id));
   const filtrando = !!(p.tipo || p.ver);
-  const noLeidos = filas.filter((d) => !d.leido_en).length;
+  const filaHTML = ({ x, d }) => `
+          <div class="fila fila-mensaje ${d.leido_en ? '' : 'sin-leer'}" data-buscar="${esc(remitente(x) + ' ' + x.asunto + ' ' + x.cuerpo)}" data-mensaje="${x.id}">
+            <input type="checkbox" data-sel="${x.id}" aria-label="Seleccionar mensaje">
+            <a class="crece" href="#/mensaje/${x.id}">
+              <span class="linea1"><b>${esc(remitente(x))}</b><small>${fechaHora(x.creado_en)}${x.editado_en ? ' · editado' : ''}</small></span>
+              <span class="asunto">${chipTipo(tipos, x)}${x.destacado ? '📌 ' : ''}${x.con_pdf ? '<span class="chip chip-pdf" title="Trae el documento en PDF">📄 PDF</span> ' : ''}${esc(x.asunto)}</span>
+              <small>${esc(corto(x.cuerpo))}</small>
+            </a>
+          </div>`;
 
   m.innerHTML = cabecera('Bandeja de entrada', { acciones: '<a class="btn btn-primario" href="#/redactar">✏️ Redactar</a>' }) +
     pestanas(TABS, tab, '#/bandeja?tab=') + `
@@ -102,7 +143,7 @@ export async function bandeja(m, p) {
         ${tipos.length ? `<label>Tipo de mensaje <select data-f-tipo><option value="">Todos</option>${tipos.map((t) => `<option value="${t.id}" ${p.tipo === t.id ? 'selected' : ''}>${esc(t.nombre)}</option>`).join('')}<option value="ninguno" ${p.tipo === 'ninguno' ? 'selected' : ''}>Sin tipo</option></select></label>` : ''}
         <label>Ver <select data-f-ver><option value="">Leídos y no leídos</option><option value="no" ${p.ver === 'no' ? 'selected' : ''}>No leídos</option><option value="si" ${p.ver === 'si' ? 'selected' : ''}>Leídos</option></select></label>
       </div>
-      ${msgs.length ? `
+      ${filasMsg.length ? `
         <div class="barra-acciones" data-acciones hidden>
           <span data-cuantos></span>
           ${tab !== 'archivados' && tab !== 'eliminados' ? '<button class="btn btn-chico" data-accion="archivar">🗄 Archivar</button>' : ''}
@@ -110,21 +151,10 @@ export async function bandeja(m, p) {
           ${tab !== 'eliminados' ? '<button class="btn btn-chico btn-peligro" data-accion="eliminar">🗑 Eliminar</button>' : ''}
           <button class="btn btn-chico" data-accion="leido">✓ Marcar leído</button>
         </div>
-        ${tab === 'entrada' && noLeidos ? `<p class="ayuda">${noLeidos} sin leer</p>` : ''}
+        ${tab === 'entrada' && noLeidos ? `<p class="ayuda" data-no-leidos>${noLeidos} sin leer</p>` : ''}
         ${buscar('Buscar en mensajes…')}
-        <div class="lista bandeja">${msgs.map((x) => {
-          const d = fila.get(x.id);
-          const autor = E.perfiles.get(x.autor_id);
-          return `
-          <div class="fila fila-mensaje ${d.leido_en ? '' : 'sin-leer'}" data-buscar="${esc(remitente(x) + ' ' + x.asunto + ' ' + x.cuerpo)}">
-            <input type="checkbox" data-sel="${x.id}" aria-label="Seleccionar mensaje">
-            <a class="crece" href="#/mensaje/${x.id}">
-              <span class="linea1"><b>${esc(remitente(x))}</b><small>${fechaHora(x.creado_en)}${x.editado_en ? ' · editado' : ''}</small></span>
-              <span class="asunto">${chipTipo(tipos, x)}${x.destacado ? '📌 ' : ''}${esc(x.asunto)}</span>
-              <small>${esc(corto(x.cuerpo))}</small>
-            </a>
-          </div>`;
-        }).join('')}</div>` : vacio(filtrando ? 'No hay mensajes con ese filtro.' : tab === 'entrada' ? 'No tienes mensajes.' : 'No hay mensajes aquí.')}
+        <div class="lista bandeja">${filasMsg.map(filaHTML).join('')}</div>
+        ${pagina && pagina.length === POR_PAGINA ? '<p><button class="btn btn-ancho" data-mas>Cargar mensajes anteriores</button></p>' : ''}` : vacio(filtrando ? 'No hay mensajes con ese filtro.' : tab === 'entrada' ? 'No tienes mensajes.' : 'No hay mensajes aquí.')}
     </div>`;
   conectarBuscador(m);
   const filtrar = () => {
@@ -135,14 +165,28 @@ export async function bandeja(m, p) {
     location.hash = '#/bandeja?' + q;
   };
   m.querySelectorAll('[data-f-tipo], [data-f-ver]').forEach((s) => (s.onchange = filtrar));
+  // Más antiguos: la página siguiente desde el último que se ve (sin repetir ni saltarse ninguno)
+  let ultima = filasMsg.at(-1)?.x;
+  m.querySelector('[data-mas]')?.addEventListener('click', async (ev) => {
+    const b = ev.currentTarget;
+    b.disabled = true;
+    try {
+      const mas = await paginaBandeja(tab, p, ultima);
+      await perfiles(mas.map(({ x }) => x.autor_id));
+      m.querySelector('.lista.bandeja').insertAdjacentHTML('beforeend', mas.map(filaHTML).join(''));
+      ultima = mas.at(-1)?.x || ultima;
+      if (mas.length < POR_PAGINA) b.remove(); else b.disabled = false;
+    } catch (e) { b.disabled = false; aviso(e.message, 'error'); }
+  });
   const barra = m.querySelector('[data-acciones]');
   if (!barra) return;
   const sel = () => $$('[data-sel]:checked', m).map((c) => c.dataset.sel);
-  m.querySelectorAll('[data-sel]').forEach((c) => (c.onchange = () => {
+  m.addEventListener('change', (e) => {
+    if (!e.target.matches('[data-sel]')) return;
     const n = sel().length;
     barra.hidden = !n;
     barra.querySelector('[data-cuantos]').textContent = `${n} seleccionado(s)`;
-  }));
+  });
   m.querySelectorAll('[data-accion]').forEach((b) => (b.onclick = async () => {
     const ids = sel();
     const cambio = { archivar: { archivado: true }, eliminar: { eliminado: true }, mover: { archivado: false, eliminado: false }, leido: { leido_en: new Date().toISOString() } }[b.dataset.accion];
@@ -179,28 +223,39 @@ export async function enviados(m) {
     m.querySelectorAll('[data-descartar]').forEach((b) => (b.onclick = () => { const i = enviando.findIndex((x) => x.fila.id === b.dataset.descartar); if (i >= 0) enviando.splice(i, 1); enviados(m); }));
   };
   if (pend.length) { m.innerHTML = cab + `<div class="contenido">${htmlPend([])}<p class="ayuda">Cargando los demás mensajes…</p></div>`; conectarPend(); }
-  const [todos, tipos] = await Promise.all([
-    E.db.select('mensajes', { eq: { colegio_id: E.colegio.id, autor_id: E.yo.id }, order: 'creado_en desc' }),
+  // Los conteos (destinatarios, leídos) los hace el servidor (3-nov-2026): una circular a todo el colegio ya no baja miles de filas
+  // ni se queda en las primeras 1.000. Si el servidor no tiene la función, como antes.
+  const [resumen, tipos] = await Promise.all([
+    E.db.rpc('enviados_mios', { p_colegio: E.colegio.id, p_limite: 200, p_antes: null, p_antes_id: null })
+      .catch((e) => { if (/enviados_mios|PGRST202|Could not find the function/i.test(e.message)) return null; throw e; }),
     tiposMensaje(),
     perfiles(pend.flatMap((pe) => pe.para)),
   ]);
-  const msgs = todos.filter((x) => !x.autor_eliminado && !enCurso.has(x.id));
-  const dest = msgs.length ? await E.db.select('mensaje_destinatarios', { in: { mensaje_id: msgs.map((x) => x.id) } }) : [];
-  await perfiles(dest.map((d) => d.perfil_id));
+  let msgs, dest = [];
+  if (resumen) {
+    msgs = resumen.filter((r) => !enCurso.has(r.mensaje_id)).map((r) => ({ id: r.mensaje_id, asunto: r.asunto, cuerpo: r.cuerpo, creado_en: r.creado_en, editado_en: r.editado_en,
+      destacado: r.destacado, tipo_id: r.tipo_id, numero: r.numero, con_pdf: r.con_pdf, total: Number(r.total), leidos: Number(r.leidos), primeros: r.primeros || [] }));
+    await perfiles(msgs.flatMap((x) => x.primeros));
+  } else {
+    const todos = await E.db.select('mensajes', { eq: { colegio_id: E.colegio.id, autor_id: E.yo.id }, order: 'creado_en desc' });
+    msgs = todos.filter((x) => !x.autor_eliminado && !enCurso.has(x.id));
+    dest = msgs.length ? await E.db.select('mensaje_destinatarios', { in: { mensaje_id: msgs.map((x) => x.id) } }) : [];
+    await perfiles(dest.map((d) => d.perfil_id));
+  }
   if (turno !== turnoEnviados) return;
   m.innerHTML = cab + `
     <div class="contenido">
       ${htmlPend(tipos)}
       ${msgs.length ?`${buscar('Buscar en enviados…')}<div class="lista bandeja">${msgs.map((x) => {
-        const ds = dest.filter((d) => d.mensaje_id === x.id);
-        const leidos = ds.filter((d) => d.leido_en).length;
-        const para = ds.slice(0, 3).map((d) => nombre(E.perfiles.get(d.perfil_id))).join(', ') + (ds.length > 3 ? ` y ${ds.length - 3} más` : '');
+        const ds = x.primeros ? x.primeros.map((perfil_id) => ({ perfil_id })) : dest.filter((d) => d.mensaje_id === x.id);
+        const total = x.total ?? ds.length, leidos = x.leidos ?? ds.filter((d) => d.leido_en).length;
+        const para = ds.slice(0, 3).map((d) => nombre(E.perfiles.get(d.perfil_id))).join(', ') + (total > 3 ? ` y ${total - 3} más` : '');
         return `
           <a class="fila fila-boton fila-mensaje" href="#/mensaje/${x.id}" data-buscar="${esc(para + ' ' + x.asunto + ' ' + x.cuerpo)}">
             <span class="crece">
               <span class="linea1"><b>Para: ${esc(para || '—')}</b><small>${fechaHora(x.creado_en)}${x.editado_en ? ' · editado' : ''}</small></span>
-              <span class="asunto">${chipTipo(tipos, x)}${x.destacado ? '📌 ' : ''}${esc(x.asunto)}</span>
-              <small class="${leidos === ds.length && ds.length ? 'ok' : ''}">${leidos === ds.length && ds.length ? '✓✓ Leído por todos' : `✓ Leído por ${leidos} de ${ds.length}`}</small>
+              <span class="asunto">${chipTipo(tipos, x)}${x.destacado ? '📌 ' : ''}${x.con_pdf ? '<span class="chip chip-pdf">📄 PDF</span> ' : ''}${esc(x.asunto)}</span>
+              <small class="${leidos === total && total ? 'ok' : ''}">${leidos === total && total ? '✓✓ Leído por todos' : `✓ Leído por ${leidos} de ${total}`}</small>
             </span>
           </a>`;
       }).join('')}</div>` : pend.length ? '' : vacio('No has enviado mensajes.')}
@@ -223,25 +278,31 @@ export async function detalle(m, p) {
     // sin esperar: el mensaje se muestra ya y el "leído" se guarda mientras tanto
     E.db.update('mensaje_destinatarios', { leido_en: new Date().toISOString() }, { mensaje_id: x.id, perfil_id: E.yo.id }).then(() => window.dispatchEvent(new Event('complex:mensajes'))).catch(() => {});
   }
+  // El PDF de una circular es el documento PRINCIPAL del mensaje (3-nov-2026); los demás adjuntos, como siempre
+  const principal = adj.find((a) => a.principal) || null, otros = adj.filter((a) => a !== principal);
+  // Muchos destinatarios (una circular a todo el colegio): el autor ve totales y una página, sin bajar miles de filas
+  const lect = soyAutor && (principal || dest.length >= 200) ? await E.db.rpc('mensaje_lecturas', { p_mensaje: x.id, p_limite: 100 }).catch(() => null) : null;
+  const listaDest = lect ? lect.filas : dest, totalDest = lect ? lect.total : dest.length, leidosDest = lect ? lect.leidos : dest.filter((d) => d.leido_en).length;
   // hilo: el mensaje al que responde
-  const [[original], tipos] = await Promise.all([
+  const [[original], tipos, envio] = await Promise.all([
     x.responde_a ? E.db.select('mensajes', { eq: { id: x.responde_a } }) : [],
     x.tipo_id ? E.db.select('tipos_mensaje', { eq: { id: x.tipo_id } }).catch(() => []) : [],
-    perfiles([x.autor_id, ...dest.map((d) => d.perfil_id)]),
+    soyAutor && principal ? E.db.rpc('circular_envio_estado', { p_envio: x.id }).catch(() => null) : null,
+    perfiles([x.autor_id, ...listaDest.map((d) => d.perfil_id)]),
   ]);
   if (original) await perfiles([original.autor_id]);
   const autor = E.perfiles.get(x.autor_id);
-  const visibles = soyAutor || !x.ocultar_destinatarios || !mia ? dest : dest.filter((d) => d.perfil_id === E.yo.id);
+  const visibles = soyAutor || !x.ocultar_destinatarios || !mia ? listaDest : dest.filter((d) => d.perfil_id === E.yo.id);
   const soloLectura = !soyAutor && !mia; // la familia viendo la bandeja de su hijo
   const puedeResponder = !soyAutor && !soloLectura && x.permite_respuesta;
   const puedeResponderTodos = puedeResponder && x.permite_responder_todos && !x.ocultar_destinatarios && dest.length > 1;
-  const puedeReenviar = !soloLectura && (soyAutor || x.permite_reenviar !== false);
+  const puedeReenviar = !soloLectura && !principal && (soyAutor || x.permite_reenviar !== false); // una circular se envía de nuevo desde Circulares
 
   m.innerHTML = cabecera('', { volver: soloLectura ? '#/bandeja-hijo' : soyAutor ? '#/enviados' : '#/bandeja', acciones: soloLectura ? '<span class="chip">Solo lectura</span>' : `
       ${puedeResponder ? `<a class="btn btn-primario" href="#/redactar?responder=${x.id}">↩️ Responder</a>` : ''}
       ${puedeResponderTodos ? `<a class="btn" href="#/redactar?responder=${x.id}&todos=1">↩️ Responder a todos</a>` : ''}
       ${puedeReenviar ? `<a class="btn" href="#/redactar?reenviar=${x.id}">↪️ Reenviar</a>` : ''}
-      ${soyAutor ? '<button class="btn" data-editar>✏️ Editar</button>' : ''}
+      ${soyAutor && !principal ? '<button class="btn" data-editar>✏️ Editar</button>' : ''}
       ${mia ? `<button class="btn" data-archivar>${mia.archivado ? '📥 A entrada' : '🗄 Archivar'}</button>` : ''}
       <button class="btn" data-imprimir>🖨</button>
       <button class="btn btn-peligro" data-eliminar aria-label="Eliminar">🗑</button>` }) + `
@@ -252,9 +313,10 @@ export async function detalle(m, p) {
         <span class="avatar">${x.autor_id ? esc(iniciales(autor)) : '🔔'}</span>
         <span><b>${esc(remitente(x))}</b><small>${fechaHora(x.creado_en)}${x.editado_en ? ` · <span class="chip chip-editado" title="Editado el ${fechaHora(x.editado_en)}">Editado ${fechaHora(x.editado_en)}</span>` : ''}</small></span>
       </div>
-      <p class="ayuda">Para: ${visibles.map((d) => `${esc(nombre(E.perfiles.get(d.perfil_id)))}${soyAutor ? (d.leido_en ? ` <span class="ok" title="Leído ${fechaHora(d.leido_en)}">✓✓</span>` : ' <span title="Sin leer">✓</span>') : ''}`).join(', ')}${x.ocultar_destinatarios && !soyAutor ? ' (destinatarios ocultos)' : ''}</p>
+      ${principal ? docPrincipalHTML(principal) : ''}
+      <p class="ayuda">Para: ${visibles.map((d) => `${esc(nombre(E.perfiles.get(d.perfil_id)))}${soyAutor ? (d.leido_en ? ` <span class="ok" title="Leído ${fechaHora(d.leido_en)}">✓✓</span>` : ' <span title="Sin leer">✓</span>') : ''}`).join(', ')}${soyAutor && totalDest > visibles.length ? ` y ${totalDest - visibles.length} más` : ''}${x.ocultar_destinatarios && !soyAutor ? ' (destinatarios ocultos)' : ''}</p>
       <div class="mensaje-cuerpo">${cuerpoHTML(x.cuerpo)}</div>
-      ${adj.length ? `<h3 class="sub">Adjuntos</h3><div class="lista">${adj.map((a) => `<button class="fila fila-boton tarjeta-archivo" data-adj="${a.id}"><span class="avatar">📎</span><span><b>${esc(a.nombre)}</b><small>${peso(a.bytes)}</small></span><span class="flecha">↗</span></button>`).join('')}</div>` : ''}
+      ${otros.length ? `<h3 class="sub">Adjuntos</h3><div class="lista">${otros.map((a) => `<button class="fila fila-boton tarjeta-archivo" data-adj="${a.id}"><span class="avatar">📎</span><span><b>${esc(a.nombre)}</b><small>${peso(a.bytes)}</small></span><span class="flecha">↗</span></button>`).join('')}</div>` : ''}
       ${x.evento_inicio ? `<p class="aviso-caja">📅 Marcado en el calendario: <b>${x.evento_todo_el_dia ? fecha(x.evento_inicio) : fechaHora(x.evento_inicio)}</b>${x.evento_fin ? ' – ' + (x.evento_todo_el_dia ? fecha(x.evento_fin) : fechaHora(x.evento_fin)) : ''}</p>` : ''}
       ${x.expira_en ? `<p class="ayuda">⏳ Disponible hasta el ${fechaHora(x.expira_en)}${soyAutor ? ' (después los destinatarios ya no lo ven)' : ''}.</p>` : ''}
       ${!x.permite_respuesta && !soyAutor ? '<p class="ayuda">Este mensaje no admite respuestas.</p>' : ''}
@@ -262,9 +324,16 @@ export async function detalle(m, p) {
       ${x.editado_en && (soyAutor || E.rol === 'admin') ? '<details class="hilo" data-versiones><summary>Versiones anteriores</summary><div data-versiones-lista><p class="ayuda">Cargando…</p></div></details>' : ''}
       ${original ? `<details class="hilo"><summary>Mensaje original de ${esc(nombre(E.perfiles.get(original.autor_id)))} · ${fecha(original.creado_en)}</summary><p><b>${esc(original.asunto)}</b></p><div class="mensaje-cuerpo">${esc(original.cuerpo).replace(/\n/g, '<br>')}</div></details>` : ''}
     </article>
-    ${soyAutor ? `<section class="tarjeta"><h2>Confirmación de lectura</h2><div class="lista">${dest.map((d) => `<div class="fila"><span class="crece"><b>${esc(nombreLista(E.perfiles.get(d.perfil_id)))}</b></span>${d.leido_en ? `<small class="ok">✓✓ ${fechaHora(d.leido_en)}</small>` : '<small>Sin leer</small>'}</div>`).join('')}</div></section>` : ''}`;
+    ${envio ? envioHTML(envio) : ''}
+    ${soyAutor ? `<section class="tarjeta"><h2>Confirmación de lectura</h2><p class="ayuda" data-lecturas>Leído por ${leidosDest} de ${totalDest}${listaDest.length < totalDest ? ` · se muestran ${listaDest.length}` : ''}</p><div class="lista">${listaDest.map((d) => `<div class="fila"><span class="crece"><b>${esc(nombreLista(E.perfiles.get(d.perfil_id)))}</b></span>${d.leido_en ? `<small class="ok">✓✓ ${fechaHora(d.leido_en)}</small>` : '<small>Sin leer</small>'}</div>`).join('')}</div></section>` : ''}`;
 
   m.querySelectorAll('[data-adj]').forEach((b) => (b.onclick = () => abrirAdjunto(adj.find((a) => a.id === b.dataset.adj))));
+  if (principal) conectarDocPrincipal(m, principal);
+  m.querySelector('[data-reponer]')?.addEventListener('click', async (ev) => {
+    ev.currentTarget.disabled = true;
+    try { const r = await E.db.rpc('circular_envio_reponer', { p_envio: x.id }); aviso(r.repuestas ? `Se repusieron ${r.repuestas} entrega(s)` : 'No faltaba ninguna entrega'); detalle(m, p); }
+    catch (e) { aviso(e.message, 'error'); ev.currentTarget.disabled = false; }
+  });
   // Editar lo enviado: queda "Editado" con la fecha y la versión anterior se guarda (la ven el autor y el administrador)
   m.querySelector('[data-editar]')?.addEventListener('click', async () => {
     const ok = await ventana({
@@ -307,6 +376,51 @@ export async function detalle(m, p) {
   };
 }
 
+// ---------------------------------------------------------------- Documento principal (PDF de la circular)
+const hex = (buf) => [...new Uint8Array(buf)].map((b) => b.toString(16).padStart(2, '0')).join('');
+function docPrincipalHTML(a) {
+  return `<section class="doc-principal" data-doc-principal>
+        <div class="fila"><span class="avatar">📄</span><span class="crece"><b>${esc(a.nombre)}</b><small>Documento oficial · PDF · ${peso(a.bytes)}${a.sha256 ? ` · huella <code>${esc(a.sha256.slice(0, 12))}…</code>` : ''}</small></span></div>
+        <div class="circ-acciones"><button class="btn btn-primario" data-pdf-abrir>Abrir el PDF</button><button class="btn" data-pdf-bajar>Descargar</button></div>
+        <p class="ayuda" data-pdf-estado></p>
+        <div class="visor-pdf-caja" data-pdf-visor hidden></div>
+      </section>`;
+}
+// Abrir y descargar piden un enlace NUEVO cada vez (la RLS revisa el permiso; un enlace vencido no se reutiliza). En pantallas
+// grandes el PDF se ve aquí mismo, después de comprobar que es el archivo registrado (misma huella); en el celular se abre con su visor.
+async function conectarDocPrincipal(m, a) {
+  const caja = m.querySelector('[data-doc-principal]');
+  if (!caja) return;
+  caja.querySelector('[data-pdf-abrir]').onclick = () => abrirAdjunto(a);
+  caja.querySelector('[data-pdf-bajar]').onclick = async () => {
+    try {
+      const url = await E.db.urlArchivo(BUCKET, a.ruta, a.nombre);
+      const el = document.createElement('a'); el.href = url; el.download = a.nombre; document.body.appendChild(el); el.click(); el.remove();
+    } catch (e) { aviso('No se pudo descargar: ' + e.message, 'error'); }
+  };
+  if (!matchMedia('(min-width: 900px) and (pointer: fine)').matches || !E.db.archivoBytes) return;
+  const estado = caja.querySelector('[data-pdf-estado]'), visor = caja.querySelector('[data-pdf-visor]');
+  try {
+    const blob = await E.db.archivoBytes(BUCKET, a.ruta);
+    const huella = hex(await crypto.subtle.digest('SHA-256', await blob.arrayBuffer()));
+    if (a.sha256 && huella !== a.sha256) { estado.textContent = '⚠ El archivo no coincide con el registrado: no se muestra. Avísale a Administración.'; return; }
+    if (!caja.isConnected) return;
+    const url = URL.createObjectURL(new Blob([blob], { type: 'application/pdf' }));
+    estado.textContent = a.sha256 ? '✓ Es el archivo enviado (misma huella).' : '';
+    visor.innerHTML = `<iframe class="visor-pdf" src="${url}" title="${esc(a.nombre)}"></iframe>`;
+    visor.hidden = false;
+  } catch { estado.textContent = 'No se pudo mostrar aquí: usa «Abrir el PDF» o «Descargar».'; }
+}
+// Resultado del envío de una circular (lo ve quien la envió): previstas, entregadas, en bandeja y excluidas con su causa
+function envioHTML(e) {
+  const faltan = e.total_entregado - e.en_bandeja;
+  return `<section class="tarjeta" data-envio-resumen><h2>Envío de la circular</h2>
+      <p>Entregada en <b>${e.en_bandeja}</b> bandeja(s) de <b>${e.total_previsto}</b> previstas · versión ${e.version} · ${esc(fechaHora(e.enviado_en))}</p>
+      ${e.total_excluido ? `<p class="ayuda">${e.total_excluido} persona(s) no recibieron: ${Object.entries(e.motivos || {}).map(([k, v]) => `${esc(k)} (${v})`).join(' · ')}</p>` : ''}
+      ${faltan > 0 ? `<p class="error">Faltan ${faltan} entrega(s).</p><button class="btn" data-reponer>Reponer las que faltan</button>` : ''}
+    </section>`;
+}
+
 async function abrirAdjunto(a) {
   const w = E.db.modo === 'demo' ? null : window.open('', '_blank');
   try {
@@ -318,7 +432,19 @@ async function abrirAdjunto(a) {
 
 // ---------------------------------------------------------------- Redactar
 export async function redactar(m, p) {
-  const [contactos, tipos] = await Promise.all([E.db.rpc('mis_contactos', { p_colegio: E.colegio.id }), tiposMensaje()]);
+  // Contactos siempre del servidor y completos (por páginas): la relación vigente, sin copia vieja del equipo (3-nov-2026). Si no
+  // cargan, se dice (no se muestra como «no tienes contactos»).
+  let contactos, tipos;
+  try {
+    [contactos, tipos] = await Promise.all([(E.db.rpcTodo || E.db.rpc).call(E.db, 'mis_contactos', { p_colegio: E.colegio.id }), tiposMensaje()]);
+  } catch (e) {
+    m.innerHTML = cabecera('Redactar mensaje', { volver: '#/bandeja' }) + vacio('No se pudo cargar tu lista de contactos: ' + e.message, '<button class="btn" data-recargar-contactos>Reintentar</button>');
+    m.querySelector('[data-recargar-contactos]').onclick = () => redactar(m, p);
+    return;
+  }
+  // El estudiante sin «Mis docentes»: el porqué, sin inventar vínculos (sin matrícula vigente, curso sin docentes asignados…)
+  const diagDocentes = E.rol === 'estudiante' && !contactos.some((c) => c.grupo === 'Mis docentes')
+    ? await E.db.rpc('mis_docentes_diagnostico', { p_colegio: E.colegio.id }).catch(() => ({ error: true })) : null;
   const puedoEnviar = tipos.filter((t) => t.activo !== false && (!t.roles?.length || t.roles.includes(E.rol) || E.rol === 'admin'));
   let tipoOriginal = null;
   const elegidos = new Set();
@@ -356,7 +482,12 @@ export async function redactar(m, p) {
   }
   const grupos = new Map();
   for (const c of contactos) { if (!grupos.has(c.grupo)) grupos.set(c.grupo, []); grupos.get(c.grupo).push(c); }
-  const ordenGrupo = (g) => (g === 'Conversación' ? 0 : g === 'Administración' ? 2 : g === 'Mi familia' ? 1 : 3);
+  // «Mis docentes» del estudiante va primero (Fabio, 3-nov-2026); después la conversación, la familia y lo demás permitido
+  const ordenGrupo = (g) => (g === 'Mis docentes' ? -1 : g === 'Conversación' ? 0 : g === 'Administración' ? 2 : g === 'Mi familia' ? 1 : 3);
+  const avisoDocentes = !diagDocentes ? '' : diagDocentes.error ? 'No se pudo comprobar quiénes son tus docentes. Reintenta en un momento.'
+    : !diagDocentes.matricula_vigente ? 'No tienes una matrícula vigente este año, por eso no aparecen tus docentes. Avísale a Administración.'
+    : !diagDocentes.materias ? `Tu curso (${(diagDocentes.cursos || []).join(', ')}) aún no tiene materias con docente asignado. Avísale a Administración.`
+    : `Tu curso tiene ${diagDocentes.materias} materia(s), pero ${diagDocentes.materias_sin_docente} sin docente${diagDocentes.docentes_inactivos ? ` y ${diagDocentes.docentes_inactivos} docente(s) inactivo(s)` : ''}. Avísale a Administración.`;
   const listaGrupos = [...grupos.entries()].sort((a, b) => ordenGrupo(a[0]) - ordenGrupo(b[0]) || a[0].localeCompare(b[0]));
   const puedeDestacar = E.rol === 'admin' || E.rol === 'profesor';
 
@@ -426,9 +557,9 @@ export async function redactar(m, p) {
   m.querySelector('[data-elegir]').onclick = async () => {
     const sel = await ventana({
       titulo: 'Elegir destinatarios',
-      html: `${buscar('Buscar persona…')}
+      html: `${buscar('Buscar persona…')}${avisoDocentes ? `<p class="aviso-caja" data-aviso-docentes>${esc(avisoDocentes)}</p>` : ''}
         ${listaGrupos.length ? listaGrupos.map(([g, l]) => `
-          <details class="grupo-contactos" ${listaGrupos.length <= 3 || l.some((c) => elegidos.has(c.perfil_id)) ? 'open' : ''}>
+          <details class="grupo-contactos" data-grupo="${esc(g)}" ${g === 'Mis docentes' || listaGrupos.length <= 3 || l.some((c) => elegidos.has(c.perfil_id)) ? 'open' : ''}>
             <summary><b>${esc(g)}</b> <small>(${l.length})</small> <button class="btn-link" data-todos="${esc(g)}">Todos</button></summary>
             <div class="lista">${l.sort((a, b) => nombreLista(a).localeCompare(nombreLista(b))).map((c) => `
               <label class="fila check" data-buscar="${esc(nombreLista(c) + ' ' + g + ' ' + (c.detalle || ''))}"><input type="checkbox" data-c="${c.perfil_id}" data-g="${esc(g)}" ${elegidos.has(c.perfil_id) ? 'checked' : ''}><span><b>${esc(nombreLista(c))}</b>${c.detalle ? `<small>${esc(c.detalle)}</small>` : ''}</span></label>`).join('')}</div>
