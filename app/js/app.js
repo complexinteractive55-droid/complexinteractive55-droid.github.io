@@ -3,7 +3,8 @@ import { crearDbSupabase, crearDbDemo, cargarSemillaDemo, huellaEnEsteEquipo } f
 import { E, pref, base, cargarYo, elegirColegio, cambiarRol, refrescarMembresias, cargarPersonas, elegirPersona, personaActiva, viendoHijo, logoHTML, aplicarMarca, fotos, olvidarFoto, olvidarFotos } from './estado.js';
 import { esc, $, aviso, ventana, leerForm, confirmar, ROL, nombre, iniciales, etiquetarTablas, fecha, fechaHora, vacio } from './ui.js';
 import { APP_VERSION } from './config.js';
-import { enIngles, preferenciaIdioma, idiomaDispositivo, elegirIdioma, activarTraduccion } from './i18n.js';
+import { icono, iconoRuta, ICONO_GRUPO, vigilarBotones } from './iconos.js';
+import { enIngles, preferenciaIdioma, idiomaDispositivo, elegirIdioma, activarTraduccion, t } from './i18n.js';
 
 // ---------------------------------------------------------------- Cargo en vez del rol genérico (1-nov-2026)
 // Quien lidera un área con cargo (ej. Gerencia → «Gerente») ve su cargo en lugar de «Profesor»/«Docente». Solo es lo que se
@@ -198,7 +199,9 @@ const RUTAS = [
   ['boletin/:est/:periodo', async (p, m) => (await pant.familia()).boletin(m, p)],
   ['circulares', async (_, m) => (await pant.circulares()).lista(m)],
   ['circular/:id', async (p, m) => (await pant.circulares()).detalle(m, p)],
-  ['circulares-institucionales', async (_, m) => (await pant.circularInst()).lista(m)],
+  // 3-nov-2026 noche (Fabio): sin acceso aparte a los borradores: la dirección vieja abre Circulares, donde ahora están
+  ['circulares-institucionales', async (_, m) => (await pant.circulares()).lista(m)],
+  ['circulares/ajustes', async (_, m) => (await pant.circularInst()).ajustes(m)],
   ['circular-institucional/:id', async (p, m) => (await pant.circularInst()).editor(m, p)],
   ['planeaciones', async (p, m) => (await pant.planeaciones()).lista(m, p)],
   ['bandeja', async (p, m) => (await pant.mensajeria()).bandeja(m, p)],
@@ -240,7 +243,7 @@ const RUTAS = [
 // permisos, no los del docente). La base de datos ya lo impide (RLS); así tampoco ve los botones de gestión. Las circulares de
 // texto que ya recibió siguen abriendo desde sus avisos (#/circular/…), solo para leer.
 const SOLO_PERSONAL = new Set(['estructura', 'personas', 'curso/:id', 'ajustes-colegio', 'clases', 'grupo/:asig', 'direccion', 'consolidado/:asig', 'salidas',
-  'docentes', 'docente/:id', 'notas/:asig', 'observaciones-boletin/:asig', 'remediales/:asig', 'seguimientos', 'asistencia/:asig', 'circulares-institucionales',
+  'docentes', 'docente/:id', 'notas/:asig', 'observaciones-boletin/:asig', 'remediales/:asig', 'seguimientos', 'asistencia/:asig', 'circulares-institucionales', 'circulares/ajustes',
   'circular-institucional/:id', 'planeaciones', 'tesoreria', 'ausencias', 'album', 'album/:curso', 'salas', 'sala/:id', 'aviso/:id', 'espacios',
   'espacios-solicitudes', 'reportes', 'certificado/:tipo/:est', 'bandeja-hijo', 'obligaciones']);
 export const rutaPermitida = (patron) => !(E.rol === 'estudiante' && SOLO_PERSONAL.has(patron));
@@ -338,18 +341,10 @@ window.addEventListener('complex:datos-nuevos', async () => {
 // Menú lateral izquierdo agrupado (Tablero · Comunicación · Comunidad · Academia · Perfil),
 // con buscador "Filtrar menú" y, para acudientes, pestañas de persona (yo + cada hijo).
 const COMUNICACION = { t: 'Comunicación', ic: '💬', items: [['bandeja', 'Bandeja de entrada', 'noLeidos'], ['redactar', 'Redactar mensaje'], ['enviados', 'Enviados'], ['cartelera', 'Cartelera'], ['circulares', 'Circulares'], ['pqrs', 'PQRS']] };
-// Circulares institucionales de quien el administrador designó (Gerencia, directores de sección…; 2-nov-2026): las ve en su
-// menú. Administración entra como siempre por Circulares. Se pregunta una vez por colegio y persona (circular_mi_perfil).
-let circ = { clave: null, puede: false };
-const comunicacion = () => (circ.puede && circ.clave === E.colegio?.id + '|' + E.yo?.id
-  ? { ...COMUNICACION, items: COMUNICACION.items.flatMap((x) => (x[0] === 'circulares' ? [x, ['circulares-institucionales', 'Circulares institucionales']] : [x])) } : COMUNICACION);
-async function revisarCirculares(patron) {
-  const clave = E.colegio.id + '|' + E.yo.id;
-  if (circ.clave === clave || E.rol === 'admin' || !ROLES_PERSONAL.includes(E.rol)) return;
-  circ = { clave, puede: false };
-  try { circ.puede = (await (await import('./firma_circular.js')).perfilCircular()).puede_preparar === true; } catch { /* sin la migración: como antes */ }
-  if (circ.puede && circ.clave === E.colegio?.id + '|' + E.yo?.id) pintarArmazon(patron);
-}
+// Circulares institucionales de quien el administrador designó (Gerencia, directores de sección…; 2-nov-2026): hasta el 3-nov
+// tenían una entrada aparte en su menú. Desde el 3-nov-2026 noche (Fabio: sin recorridos paralelos) «Circulares» muestra
+// «Nueva circular» y sus borradores a quien puede prepararlas, así que el menú es el mismo para todos.
+const comunicacion = () => COMUNICACION;
 // Orden como Phidias: Tablero · Perfil · Comunicación · Comunidad · … · Pasarelas (al final)
 function menuDe() {
   const lista = menuBase();
@@ -398,7 +393,7 @@ function menuBase() {
     { t: 'Tesorería', ic: '💰', items: [[`estado-cuenta/${est}`, 'Consolidado']] }];
   return [tablero, perfilG(), COMUNICACION, { t: 'Comunidad', ic: '👥', items: [['calendario', 'Calendario'], ['procesos', 'Procesos'], ['archivos', 'Archivos globales']] }, { t: 'Matrícula', ic: '🎒', items: [['obligaciones', 'Obligaciones']] }, { t: 'Tesorería', ic: '💰', items: [['tesoreria', 'Consolidado']] }];
 }
-const SECCION = { 'curso/:id': 'estructura', 'notas/:asig': 'clases', 'asistencia/:asig': 'clases', 'circular/:id': 'circulares', 'circulares-institucionales': 'circulares', 'circular-institucional/:id': 'circulares', 'mensaje/:id': 'bandeja', 'pqrs/:id': 'pqrs', 'aula/:asig': 'aula', 'tarea/:id': 'aula', 'examen/:id': 'aula', 'estado-cuenta/:est': 'tesoreria', 'proceso/:id': 'procesos', 'proceso/:id/respuestas': 'procesos', 'seguimiento/:id': 'seguimientos', 'docente/:id': 'docentes', 'grupo/:asig': 'clases', 'consolidado/:asig': 'clases', 'observaciones-boletin/:asig': 'clases', 'remediales/:asig': 'clases' };
+const SECCION = { 'curso/:id': 'estructura', 'notas/:asig': 'clases', 'asistencia/:asig': 'clases', 'circular/:id': 'circulares', 'circulares-institucionales': 'circulares', 'circulares/ajustes': 'circulares', 'circular-institucional/:id': 'circulares', 'mensaje/:id': 'bandeja', 'pqrs/:id': 'pqrs', 'aula/:asig': 'aula', 'tarea/:id': 'aula', 'examen/:id': 'aula', 'estado-cuenta/:est': 'tesoreria', 'proceso/:id': 'procesos', 'proceso/:id/respuestas': 'procesos', 'seguimiento/:id': 'seguimientos', 'docente/:id': 'docentes', 'grupo/:asig': 'clases', 'consolidado/:asig': 'clases', 'observaciones-boletin/:asig': 'clases', 'remediales/:asig': 'clases' };
 
 function itemActivo(ruta, patron) {
   const h = (location.hash || '#/inicio').slice(2);
@@ -414,9 +409,9 @@ function pintarArmazon(patron) {
     app.dataset.armado = '1';
     app.innerHTML = `
       <header class="barra">
-        <button class="btn-icono btn-menu" id="btn-menu" aria-label="Abrir menú" aria-controls="menu" aria-expanded="false">☰</button>
+        <button class="btn-icono btn-menu" id="btn-menu" aria-label="Abrir menú" aria-controls="menu" aria-expanded="false">${icono('menu')}</button>
         <button class="barra-colegio" id="btn-colegio" title="Cambiar de colegio"></button>
-        <button class="btn-icono" id="btn-exportar" title="Exportar esta pantalla a Excel (CSV)" aria-label="Exportar a Excel" hidden>⬇</button>
+        <button class="btn-icono" id="btn-exportar" title="Exportar esta pantalla a Excel (CSV)" aria-label="Exportar a Excel" hidden>${icono('descargar')}</button>
         <button class="chip-rol" id="btn-rol"></button>
       </header>
       <div class="menu-fondo" id="menu-fondo"></div>
@@ -462,7 +457,6 @@ function pintarArmazon(patron) {
   $('#btn-rol').textContent = etiquetaRol() + (E.roles.length > 1 ? ' ▾' : '');
   $('#btn-rol').disabled = E.roles.length < 2;
   pintarCargo();
-  revisarCirculares(patron);
 
   // Pestañas de persona (acudiente)
   const pp = $('#personas');
@@ -479,15 +473,15 @@ function pintarArmazon(patron) {
       <span class="avatar grande" data-foto-de="${E.yo.id}">${esc(iniciales(E.yo))}</span>
       <span><b>${esc(nombre(E.yo))}</b><small>${esc(etiquetaRol())} · ${esc(E.colegio.nombre)}</small></span>
     </div>
-    <input class="filtro-menu" type="search" placeholder="🔍 Filtrar menú" aria-label="Filtrar menú">
+    <input class="filtro-menu" type="search" placeholder="${esc(t('Filtrar menú'))}" aria-label="${esc(t('Filtrar menú'))}">
     ${menuDe().map((g) => g.r
-      ? `<a href="#/${g.r}" data-texto="${esc(g.t)}" class="${itemActivo(g.r, patron) ? 'activo' : ''}"><span class="ic">${g.ic}</span><span>${g.t}</span></a>`
-      : `<details class="menu-grupo" open><summary><span class="ic">${g.ic}</span><span>${g.t}</span></summary>
-          ${g.items.map(([r, t, badge]) => `<a href="#/${r}" data-texto="${esc(g.t + ' ' + t)}" class="sub ${itemActivo(r, patron) ? 'activo' : ''}" ${itemActivo(r, patron) ? 'aria-current="page"' : ''}><span>${t}</span>${badge ? `<span class="contador" data-contador="${badge}" hidden></span>` : ''}</a>`).join('')}
+      ? `<a href="#/${g.r}" data-texto="${esc(g.t)}" class="${itemActivo(g.r, patron) ? 'activo' : ''}"><span class="ic">${icono(ICONO_GRUPO[g.t]) || iconoRuta(g.r) || g.ic}</span><span>${g.t}</span></a>`
+      : `<details class="menu-grupo" open><summary><span class="ic">${icono(ICONO_GRUPO[g.t]) || g.ic}</span><span>${g.t}</span></summary>
+          ${g.items.map(([r, t, badge]) => `<a href="#/${r}" data-texto="${esc(g.t + ' ' + t)}" class="sub ${itemActivo(r, patron) ? 'activo' : ''}" ${itemActivo(r, patron) ? 'aria-current="page"' : ''}><span class="ic ic-sub">${iconoRuta(r)}</span><span>${t}</span>${badge ? `<span class="contador" data-contador="${badge}" hidden></span>` : ''}</a>`).join('')}
         </details>`).join('')}
     <div class="menu-pie">
-      ${E.roles.length > 1 ? '<button class="menu-boton" data-ver-como><span class="ic">🔁</span><span>Ver como…</span></button>' : ''}
-      <button class="menu-boton" data-salir><span class="ic">🚪</span><span>Cerrar sesión</span></button>
+      ${E.roles.length > 1 ? `<button class="menu-boton" data-ver-como><span class="ic">${icono('cambiar')}</span><span>Ver como…</span></button>` : ''}
+      <button class="menu-boton" data-salir><span class="ic">${icono('salir')}</span><span>Cerrar sesión</span></button>
     </div>`;
   pintarContadores();
   ponerFotos($('#app'));
@@ -996,7 +990,7 @@ async function recuperar() {
   let c = null;
   try { c = await refrescarMembresias(); } catch { /* sin conexión: se intenta en la próxima */ }
   if (!c) return refrescarVista();
-  E.db.olvidar?.(); E.base = null; E._personasDe = null; circ = { clave: null, puede: false };
+  E.db.olvidar?.(); E.base = null; E._personasDe = null;
   if (c.sinColegio) { aviso('Ya no tienes acceso a ese colegio.', 'error'); return navegar(); }
   if (c.rolCambio) aviso('Tus permisos en el colegio cambiaron.');
   ir(c.rolCambio ? '#/inicio' : location.hash || '#/inicio');
@@ -1025,6 +1019,7 @@ async function arrancar() {
   if ('scrollRestoration' in history) history.scrollRestoration = 'manual';
   aplicarTema();
   activarTraduccion();
+  vigilarBotones(); // iconos de los botones de toda la app, según su verbo (3-nov-2026, §17)
   window.addEventListener('hashchange', navegar);
   try {
     E.db = pref('modo') === 'demo' ? (await cargarSemillaDemo(), crearDbDemo()) : await crearDbSupabase();

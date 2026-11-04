@@ -3,6 +3,7 @@
 import { E, base, perfiles, avisarPorCorreo } from '../estado.js';
 import { esc, aviso, ventana, leerForm, confirmar, nombre, vacio, fechaHora, ROL } from '../ui.js';
 import { cabecera, camposHTML } from './comun.js';
+import { icono } from '../iconos.js';
 
 function destino(b, c) {
   const partes = [];
@@ -21,17 +22,23 @@ export async function lista(m) {
   if (!admin) circ = await visiblesParaMi(b, circ);
   const leidas = new Set((await E.db.select('circular_lecturas', { eq: { perfil_id: E.yo.id } })).map((l) => l.circular_id));
   // La entrada a las circulares institucionales: Administración y quien el administrador designó (2-nov-2026)
-  const prepara = admin || (['profesor', 'director_seccion', 'enfermeria'].includes(E.rol) && (await (await import('../firma_circular.js')).perfilCircular().catch(() => ({}))).puede_preparar === true);
-  // «Nueva» abre la circular institucional: para quién, el documento, Ver PDF y Enviar (Fabio, 3-nov-2026: «la otra sobra»).
-  // Las circulares de texto que ya existen se siguen viendo, editando y publicando desde su detalle.
-  m.innerHTML = cabecera('Circulares', { acciones: prepara ? '<a class="btn btn-primario" data-nueva href="#/circular-institucional/nueva">＋ Nueva</a>' : '' }) + (prepara ? `
-    <a class="tarjeta fila fila-boton circ-entrada" href="#/circulares-institucionales"><span class="avatar">📄</span><span class="crece"><b>Circulares institucionales (PDF)</b><small>Formato oficial del colegio: borradores y PDF de revisión</small></span><span aria-hidden="true">›</span></a>` : '') + (circ.length ? `
-    <div class="lista">${circ.map((c) => `
+  const perfil = !admin && ['profesor', 'director_seccion', 'enfermeria'].includes(E.rol) ? await (await import('../firma_circular.js')).perfilCircular(true).catch(() => ({})) : null; // fresco: una designación nueva (o retirada) se ve sin recargar
+  const prepara = admin || perfil?.puede_preparar === true;
+  // La tuerca: Administración y quien fue designado EN UN ÁREA (Gerencia, direcciones de sección, Rectoría; Fabio, 3-nov-2026 noche)
+  const configura = admin || (prepara && !!perfil?.emisor?.area);
+  // «Nueva circular» abre la circular institucional: para quién, el documento, Ver PDF y Enviar (Fabio, 3-nov-2026: «la otra sobra»).
+  // 3-nov-2026 noche: al lado, la tuerca «Ajustes» (Administración: todo; quien fue designado en un área: las series de su área); sin el acceso
+  // aparte a «Circulares institucionales (PDF)»: sus borradores y emitidas se ven aquí mismo. Las circulares de texto que ya
+  // existen se siguen viendo, editando y publicando desde su detalle.
+  m.innerHTML = cabecera('Circulares', { acciones: prepara ? `<a class="btn btn-primario" data-nueva href="#/circular-institucional/nueva">${icono('mas')}Nueva circular</a>${configura ? `<a class="btn btn-solo-icono" data-ajustes href="#/circulares/ajustes" aria-label="Ajustes" title="Ajustes">${icono('ajustes')}</a>` : ''}` : '' })
+    + (prepara ? '<section class="circ-inst" data-institucionales aria-live="polite"><p class="ayuda">Cargando las circulares institucionales…</p></section>' : '') + (circ.length ? `
+    ${prepara ? '<h2 class="sub">Circulares de texto</h2>' : ''}<div class="lista">${circ.map((c) => `
       <a class="fila fila-boton ${!admin && !leidas.has(c.id) ? 'sin-leer' : ''}" href="#/circular/${c.id}">
-        <span class="avatar">${c.publicada_en ? '📣' : '📝'}</span>
+        <span class="avatar avatar-ico">${icono(c.publicada_en ? 'megafono' : 'redactar')}</span>
         <span class="crece"><b>${c.numero ? `<span class="num-circ">N.º ${c.numero}</span> ` : ""}${esc(c.titulo)}</b><small>${c.publicada_en ? fechaHora(c.publicada_en) : 'Borrador'}${admin ? ' · ' + esc(destino(b, c)) : ''}</small></span>
         ${!admin && !leidas.has(c.id) ? '<span class="punto" aria-label="Sin leer"></span>' : ''}
-      </a>`).join('')}</div>` : vacio(admin ? 'Aún no has escrito circulares.' : 'No tienes circulares.'));
+      </a>`).join('')}</div>` : prepara ? '' : vacio('No tienes circulares.'));
+  if (prepara) (await import('./circular_institucional.js')).seccionBorradores(m.querySelector('[data-institucionales]')).catch((e) => { const s = m.querySelector('[data-institucionales]'); if (s) s.innerHTML = `<p class="error">${esc(e.message)}</p>`; });
 }
 
 // Circulares publicadas que me llegan (en el demo filtramos aquí como lo haría la RLS)
@@ -74,7 +81,7 @@ export async function detalle(m, p) {
     if (!ya.length) { try { await E.db.insert('circular_lecturas', [{ colegio_id: E.colegio.id, circular_id: c.id, perfil_id: E.yo.id }]); } catch {} }
   }
   if (admin) await perfiles(lecturas.map((l) => l.perfil_id));
-  m.innerHTML = cabecera('Circular', { volver: '#/circulares', acciones: admin ? `<button class="btn" data-editar>Editar</button>${c.publicada_en ? '' : '<button class="btn btn-primario" data-publicar>Publicar</button>'}` : '' }) + `
+  m.innerHTML = cabecera('Circular', { volver: '#/circulares', acciones: admin ? `<button class="btn" data-editar>${icono('editar')}Editar</button>${c.publicada_en ? '' : `<button class="btn btn-primario" data-publicar>${icono('megafono')}Publicar</button>`}` : '' }) + `
     <article class="tarjeta circular">
       <h2>${c.numero ? `Circular N.º ${c.numero} · ` : ""}${esc(c.titulo)}</h2>
       <p class="ayuda">${c.publicada_en ? 'Publicada ' + fechaHora(c.publicada_en) : 'Borrador (nadie la ve todavía)'} · ${esc(nombre(E.perfiles.get(c.autor_id)))}${admin ? ' · Para: ' + esc(destino(b, c)) : ''}</p>

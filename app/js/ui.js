@@ -1,4 +1,5 @@
 // Ayudas de interfaz: escapar texto, avisos, ventanas a pantalla completa, fechas.
+import { icono, iconoDeTexto } from './iconos.js';
 
 export const esc = (s) => String(s ?? '').replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
 
@@ -6,31 +7,40 @@ export const $ = (sel, raiz = document) => raiz.querySelector(sel);
 export const $$ = (sel, raiz = document) => [...raiz.querySelectorAll(sel)];
 
 export function aviso(msg, tipo = 'ok') {
+  // Los avisos que coinciden se apilan (3-nov-2026 noche: «Circular … enviada» y «Te llegó un mensaje nuevo» quedaban uno encima del otro)
+  let pila = document.querySelector('body > .avisos');
+  if (!pila) { pila = document.createElement('div'); pila.className = 'avisos'; document.body.appendChild(pila); }
   const el = document.createElement('div');
   el.className = `aviso aviso-${tipo}`;
   el.setAttribute('role', 'status');
   el.textContent = msg;
-  document.body.appendChild(el);
+  pila.appendChild(el);
   requestAnimationFrame(() => el.classList.add('ver'));
   setTimeout(() => { el.classList.remove('ver'); setTimeout(() => el.remove(), 300); }, tipo === 'error' ? 5000 : 2600);
 }
 
 // Ventana a pantalla completa. Devuelve una promesa con el valor del botón pulsado
-// (o null si se cierra). `alAbrir(caja, cerrar)` permite conectar eventos del contenido.
-export function ventana({ titulo, html, botones = [], alAbrir }) {
+// (o null si se cierra). `alAbrir(caja, cerrar)` permite conectar eventos del contenido. `clase`: p. ej. «ventana-pdf» (visor).
+// Mientras hay una abierta, la página de atrás no se desplaza (3-nov-2026 noche, §13) y se devuelve como estaba al cerrar.
+// Los botones llevan el icono de su verbo (Guardar, Eliminar, Enviar…; §17): la etiqueta no cambia.
+export function ventana({ titulo, html, botones = [], alAbrir, clase = '' }) {
   return new Promise((resolver) => {
     const fondo = document.createElement('div');
-    fondo.className = 'ventana';
+    fondo.className = 'ventana' + (clase ? ' ' + clase : '');
     fondo.innerHTML = `
       <div class="ventana-caja" role="dialog" aria-modal="true" aria-label="${esc(titulo)}">
         <header class="ventana-cab">
-          <button class="btn-icono" data-cerrar aria-label="Cerrar">✕</button>
+          <button class="btn-icono" data-cerrar aria-label="Cerrar">${icono('cerrar')}</button>
           <h2>${esc(titulo)}</h2>
         </header>
         <div class="ventana-cuerpo">${html}</div>
-        ${botones.length ? `<footer class="ventana-pie">${botones.map((b, i) => `<button class="btn ${b.clase || (i === botones.length - 1 ? 'btn-primario' : '')}" data-valor="${i}">${esc(b.texto)}</button>`).join('')}</footer>` : ''}
+        ${botones.length ? `<footer class="ventana-pie">${botones.map((b, i) => `<button class="btn ${b.clase || (i === botones.length - 1 ? 'btn-primario' : '')}" data-valor="${i}">${iconoDeTexto(b.texto)}${esc(b.texto)}</button>`).join('')}</footer>` : ''}
       </div>`;
-    const cerrar = (v) => { fondo.remove(); document.removeEventListener('keydown', tecla); resolver(v); };
+    const cerrar = (v) => {
+      fondo.remove(); document.removeEventListener('keydown', tecla);
+      if (!document.querySelector('.ventana')) document.documentElement.classList.remove('con-ventana');
+      resolver(v);
+    };
     const tecla = (e) => { if (e.key === 'Escape') cerrar(null); };
     document.addEventListener('keydown', tecla);
     fondo.addEventListener('click', async (e) => {
@@ -47,6 +57,7 @@ export function ventana({ titulo, html, botones = [], alAbrir }) {
       cerrar(def.valor);
     });
     document.body.appendChild(fondo);
+    document.documentElement.classList.add('con-ventana');
     alAbrir?.(fondo, cerrar);
     const primero = fondo.querySelector('.ventana-cuerpo input, .ventana-cuerpo select, .ventana-cuerpo textarea');
     (primero || fondo.querySelector('[data-cerrar]')).focus();

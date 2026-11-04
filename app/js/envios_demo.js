@@ -1,7 +1,10 @@
 // Modo demo: las mismas reglas que la base para la circular enviada a la bandeja y la mensajería resuelta en el servidor
 // (supabase/migrations/20261104100000_circular_envio_bandeja.sql y 20261104110000_mensajeria_servidor_mis_docentes.sql).
 // Datos ficticios en el navegador; nada sale del equipo.
-export function crearEnviosDemo({ tabla, usuario, guardar, ahora, err, esAdmin, contactos, emitir, existeArchivo }) {
+export function crearEnviosDemo({ tabla, usuario, guardar, ahora, err, esAdmin, contactos, emitir, existeArchivo, emisorCirc }) {
+  // «Enviar» (20261105120000): Administración, o quien fue designado en un área (solo SU circular de SU área)
+  const envia = (col) => esAdmin(col) || !!emisorCirc?.(col)?.area_id;
+  const enviaBorrador = (b) => esAdmin(b.colegio_id) || (b.autor_id === usuario() && !!b.area_id && emisorCirc?.(b.colegio_id)?.area_id === b.area_id);
   const activo = (col, pid, rol) => tabla('miembros').some((m) => m.colegio_id === col && m.perfil_id === pid && m.activo !== false && (!rol || m.rol === rol));
   const miembro = (col, pid) => tabla('miembros').some((m) => m.colegio_id === col && m.perfil_id === pid);
   const huella = (ids) => { let h = 0x811c9dc5; for (const ch of [...ids].sort().join(',')) h = Math.imul(h ^ ch.charCodeAt(0), 0x01000193) >>> 0; return 'demo' + h.toString(16).padStart(8, '0') + ids.length; };
@@ -47,7 +50,7 @@ export function crearEnviosDemo({ tabla, usuario, guardar, ahora, err, esAdmin, 
     });
   }
   function previa(col, c) {
-    if (!esAdmin(col)) err('Solo Administración envía circulares a la comunidad del colegio.');
+    if (!envia(col)) err('Solo Administración, o quien fue designado en un área, envía circulares a la comunidad del colegio.');
     const a = resolver(col, c), inc = a.filter((x) => x.incluido), exc = a.filter((x) => !x.incluido);
     const cuenta = (l, k) => l.reduce((o, x) => { for (const v of [].concat(k(x))) o[v] = (o[v] || 0) + 1; return o; }, {});
     const P = new Map(tabla('perfiles').map((p) => [p.id, p]));
@@ -70,7 +73,7 @@ export function crearEnviosDemo({ tabla, usuario, guardar, ahora, err, esAdmin, 
     if (ya) { if (!esAdmin(ya.colegio_id) && ya.enviado_por !== yo) err('Ese envío no existe o no tienes acceso.'); return { ...resumen(ya), repetido: true }; }
     if (tabla('mensajes').some((m) => m.id === a.p_envio)) err('Esa identificación de envío ya se usó: vuelve a revisar el envío.');
     const b = tabla('circular_borradores').find((x) => x.id === a.p_borrador);
-    if (!b || !esAdmin(b.colegio_id)) err('Solo Administración envía circulares a la comunidad del colegio.');
+    if (!b || !enviaBorrador(b)) err('Solo Administración, o quien fue designado en un área, envía circulares a la comunidad del colegio.');
     if (b.estado === 'anulada') err('Esa circular está anulada: no se envía.');
     if (b.version !== a.p_version) throw msg(`La circular cambió después de generar el PDF (versión ${a.p_version} → ${b.version}): genera el PDF otra vez y revísalo antes de enviar.`, { pista: 'version_cambio' });
     if (!b.consecutivo) err('La circular aún no tiene su número: guárdala con su área y serie antes de enviarla.');
