@@ -378,16 +378,18 @@ export async function detalle(m, p) {
 
 // ---------------------------------------------------------------- Documento principal (PDF de la circular)
 const hex = (buf) => [...new Uint8Array(buf)].map((b) => b.toString(16).padStart(2, '0')).join('');
+// El documento se ve COMPLETO aquí mismo, hoja por hoja, en el celular y en el computador (Fabio, 4-nov-2026: «como tipo documento»);
+// debajo, el archivo con «Abrir el PDF» (para ampliarlo con el visor del equipo) y «Descargar».
 function docPrincipalHTML(a) {
   return `<section class="doc-principal" data-doc-principal>
-        <div class="fila"><span class="avatar">📄</span><span class="crece"><b>${esc(a.nombre)}</b><small>Documento oficial · PDF · ${peso(a.bytes)}${a.sha256 ? ` · huella <code>${esc(a.sha256.slice(0, 12))}…</code>` : ''}</small></span></div>
-        <div class="circ-acciones"><button class="btn btn-primario" data-pdf-abrir>Abrir el PDF</button><button class="btn" data-pdf-bajar>Descargar</button></div>
-        <p class="ayuda" data-pdf-estado></p>
-        <div class="visor-pdf-caja" data-pdf-visor hidden></div>
+        <div class="doc-hojas" data-pdf-visor aria-busy="true"><div class="hoja-pdf hoja-cargando"><span class="ayuda">Cargando el documento…</span></div></div>
+        <p class="ayuda" data-pdf-estado role="status"></p>
+        <div class="fila doc-archivo"><span class="avatar">📄</span><span class="crece"><b>${esc(a.nombre)}</b><small>Documento oficial · PDF · ${peso(a.bytes)}${a.sha256 ? ` · huella <code>${esc(a.sha256.slice(0, 12))}…</code>` : ''}</small></span></div>
+        <div class="circ-acciones"><button class="btn" data-pdf-abrir>Abrir el PDF</button><button class="btn" data-pdf-bajar>Descargar</button></div>
       </section>`;
 }
-// Abrir y descargar piden un enlace NUEVO cada vez (la RLS revisa el permiso; un enlace vencido no se reutiliza). En pantallas
-// grandes el PDF se ve aquí mismo, después de comprobar que es el archivo registrado (misma huella); en el celular se abre con su visor.
+// Abrir y descargar piden un enlace NUEVO cada vez (la RLS revisa el permiso; un enlace vencido no se reutiliza). Las hojas se dibujan
+// después de comprobar que es el archivo registrado (misma huella). Si el visor no carga: en pantallas grandes, el visor del navegador.
 async function conectarDocPrincipal(m, a) {
   const caja = m.querySelector('[data-doc-principal]');
   if (!caja) return;
@@ -398,18 +400,30 @@ async function conectarDocPrincipal(m, a) {
       const el = document.createElement('a'); el.href = url; el.download = a.nombre; document.body.appendChild(el); el.click(); el.remove();
     } catch (e) { aviso('No se pudo descargar: ' + e.message, 'error'); }
   };
-  if (!matchMedia('(min-width: 900px) and (pointer: fine)').matches || !E.db.archivoBytes) return;
   const estado = caja.querySelector('[data-pdf-estado]'), visor = caja.querySelector('[data-pdf-visor]');
+  const sinVisor = (txt) => { visor.hidden = true; visor.removeAttribute('aria-busy'); estado.textContent = txt; };
+  if (!E.db.archivoBytes) return sinVisor('Usa «Abrir el PDF» o «Descargar».');
+  let datos;
   try {
-    const blob = await E.db.archivoBytes(BUCKET, a.ruta);
-    const huella = hex(await crypto.subtle.digest('SHA-256', await blob.arrayBuffer()));
-    if (a.sha256 && huella !== a.sha256) { estado.textContent = '⚠ El archivo no coincide con el registrado: no se muestra. Avísale a Administración.'; return; }
-    if (!caja.isConnected) return;
-    const url = URL.createObjectURL(new Blob([blob], { type: 'application/pdf' }));
+    datos = await (await E.db.archivoBytes(BUCKET, a.ruta)).arrayBuffer();
+    const huella = hex(await crypto.subtle.digest('SHA-256', datos));
+    if (a.sha256 && huella !== a.sha256) return sinVisor('⚠ El archivo no coincide con el registrado: no se muestra. Avísale a Administración.');
+  } catch { return sinVisor('No se pudo traer el documento: usa «Abrir el PDF» o «Descargar».'); }
+  if (!caja.isConnected) return;
+  try {
+    const { dibujarPdf } = await import('../visor_pdf.js');
+    await dibujarPdf(visor, datos, { titulo: a.nombre });
+    visor.removeAttribute('aria-busy');
     estado.textContent = a.sha256 ? '✓ Es el archivo enviado (misma huella).' : '';
+  } catch {
+    if (!caja.isConnected) return;
+    // Sin el visor de la app: en un computador, el del navegador (como antes); en el celular, abrirlo aparte
+    if (!matchMedia('(min-width: 900px) and (pointer: fine)').matches) return sinVisor('No se pudo mostrar aquí: usa «Abrir el PDF» o «Descargar».');
+    const url = URL.createObjectURL(new Blob([datos], { type: 'application/pdf' }));
+    visor.removeAttribute('aria-busy');
     visor.innerHTML = `<iframe class="visor-pdf" src="${url}" title="${esc(a.nombre)}"></iframe>`;
-    visor.hidden = false;
-  } catch { estado.textContent = 'No se pudo mostrar aquí: usa «Abrir el PDF» o «Descargar».'; }
+    estado.textContent = a.sha256 ? '✓ Es el archivo enviado (misma huella).' : '';
+  }
 }
 // Resultado del envío de una circular (lo ve quien la envió): previstas, entregadas, en bandeja y excluidas con su causa
 function envioHTML(e) {
