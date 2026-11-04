@@ -4,7 +4,7 @@ import { E, pref, base, cargarYo, elegirColegio, cambiarRol, refrescarMembresias
 import { esc, $, aviso, ventana, leerForm, confirmar, ROL, nombre, iniciales, etiquetarTablas, fecha, fechaHora, vacio } from './ui.js';
 import { APP_VERSION } from './config.js';
 import { icono, iconoRuta, ICONO_GRUPO, vigilarBotones } from './iconos.js';
-import { enIngles, preferenciaIdioma, idiomaDispositivo, elegirIdioma, activarTraduccion } from './i18n.js';
+import { enIngles, preferenciaIdioma, idiomaDispositivo, elegirIdioma, activarTraduccion, t } from './i18n.js';
 
 // ---------------------------------------------------------------- Cargo en vez del rol genérico (1-nov-2026)
 // Quien lidera un área con cargo (ej. Gerencia → «Gerente») ve su cargo en lugar de «Profesor»/«Docente». Solo es lo que se
@@ -473,7 +473,7 @@ function pintarArmazon(patron) {
       <span class="avatar grande" data-foto-de="${E.yo.id}">${esc(iniciales(E.yo))}</span>
       <span><b>${esc(nombre(E.yo))}</b><small>${esc(etiquetaRol())} · ${esc(E.colegio.nombre)}</small></span>
     </div>
-    <input class="filtro-menu" type="search" placeholder="Filtrar menú" aria-label="Filtrar menú">
+    <input class="filtro-menu" type="search" placeholder="${esc(t('Filtrar menú'))}" aria-label="${esc(t('Filtrar menú'))}">
     ${menuDe().map((g) => g.r
       ? `<a href="#/${g.r}" data-texto="${esc(g.t)}" class="${itemActivo(g.r, patron) ? 'activo' : ''}"><span class="ic">${icono(ICONO_GRUPO[g.t]) || iconoRuta(g.r) || g.ic}</span><span>${g.t}</span></a>`
       : `<details class="menu-grupo" open><summary><span class="ic">${icono(ICONO_GRUPO[g.t]) || g.ic}</span><span>${g.t}</span></summary>

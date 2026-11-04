@@ -13,6 +13,7 @@
 // acceso aparte); la configuración vive en la tuerca «Ajustes» (#/circulares/ajustes); cada circular ELIGE su serie en
 // «Consecutivo» (varias por área y período) y, con «número al emitir», el número oficial se asigna al confirmar el envío.
 import { E, perfiles, logoHTML, base } from '../estado.js';
+import { t } from '../i18n.js';
 import { esc, aviso, ventana, confirmar, leerForm, nombre, nombreLista, vacio, fechaHora } from '../ui.js';
 import { cabecera } from './comun.js';
 import { AREAS, CARGO_DE_AREA, LIMITES, hoyBogota, fechaLarga, textoDestinatarios, saludoSugerido, textoPlano, contenidoHTML, leerEditor, datosParaServidor, numeracion } from '../circular_contenido.js';
@@ -130,7 +131,7 @@ export async function ajustes(m) {
   m.innerHTML = cabecera(`${icono('ajustes')} Ajustes de circulares`, { volver: VOLVER }) + `
     <section class="tarjeta" data-ajustes-numeracion><h2>Numeración: series y consecutivos</h2><div data-numeracion-cuerpo><p class="ayuda">Cargando…</p></div></section>
     <section class="tarjeta" data-ajustes-emisores><h2>Quién prepara circulares</h2><p class="ayuda">Además de Administración: Gerencia, direcciones de sección… con su cargo, su área y el formato del PDF de cada área.</p><div data-emisores-cuerpo><p class="ayuda">Cargando…</p></div></section>
-    <section class="tarjeta"><h2>Firma</h2><p class="ayuda">Cada persona carga su propia firma en <a href="#/perfil">Mi cuenta y ajustes → Mi firma</a>; nadie puede poner la firma de otra. ${yo.firma ? 'Tu firma ya está cargada.' : 'Tú aún no has cargado la tuya.'}</p></section>`;
+    <section class="tarjeta"><h2>Firma</h2><p class="ayuda">Cada persona carga su propia firma en <a href="#/perfil">Mi cuenta y ajustes → Mi firma</a>; <span>nadie puede poner la firma de otra.</span> ${yo.firma ? 'Tu firma ya está cargada.' : 'Tú aún no has cargado la tuya.'}</p></section>`;
   numeracion_(m.querySelector('[data-numeracion-cuerpo]'));
   emisores_(m.querySelector('[data-emisores-cuerpo]'));
 }
@@ -396,7 +397,7 @@ export async function editor(m, p) {
           <button type="button" class="btn btn-chico" data-cmd="outdent" title="Mayús + Tab">← Sangría</button>
           <button type="button" class="btn btn-chico" data-saludo hidden>Empezar con el saludo</button>
         </div>
-        <div class="circ-editor" data-editor contenteditable="true" role="textbox" aria-multiline="true" aria-label="Contenido de la circular" spellcheck="true" data-ph="Escribe aquí el contenido de la circular…"></div>
+        <div class="circ-editor" data-editor contenteditable="true" role="textbox" aria-multiline="true" aria-label="${esc(t('Contenido de la circular'))}" spellcheck="true" data-ph="${esc(t('Escribe aquí el contenido de la circular…'))}"></div>
         <small class="ayuda" data-cuenta></small>
         <div class="circ-firma-form">
           <h3>Firma</h3>
@@ -579,7 +580,7 @@ export async function editor(m, p) {
         + (!emitida && su?.provisional ? ` <span class="circ-alerta">Su serie es provisional: para enviar, Administración debe validarla en ${yo.admin ? `<a href="${AJUSTES}">Ajustes</a>` : 'Ajustes'}.</span>` : '');
     }
     $c('[data-consec]').value = srv.consecutivo;
-    $c('[data-consec]').placeholder = !srv.consecutivo && prevista?.siguiente ? 'Previsto: ' + prevista.siguiente : (disponibles || prevista)?.asignar_numero === 'emitir' ? 'Se asigna al enviar' : 'Se asigna al guardar';
+    $c('[data-consec]').placeholder = !srv.consecutivo && prevista?.siguiente ? t('Previsto:') + ' ' + prevista.siguiente : t((disponibles || prevista)?.asignar_numero === 'emitir' ? 'Se asigna al enviar' : 'Se asigna al guardar');
     if (libre || srv.consecutivo) { /* ya se escribió arriba */ } else if (prevista && (prevista.hay_serie || prevista.area)) {
       $c('[data-consec-ayuda]').textContent = prevista.hay_serie
         ? `Próximo previsto: ${prevista.siguiente || '(la serie se agotó: crea una nueva)'}. Es una vista previa, NO queda reservado: ${prevista.asignar_numero === 'emitir' ? 'el número definitivo se asigna al emitir' : 'se asigna al guardar por primera vez'}; si otra persona guarda antes, toma el siguiente.${prevista.provisional ? ' Serie provisional: para emitir hay que validarla.' : ''}`
@@ -896,7 +897,7 @@ function vistaHTML(x, plantilla, firmaUrl = null) {
   // «Atentamente,», nombre en negrita sin mayúsculas, cargo en cursiva y recuadro de recibido
   if (plantilla?.configuracion?.estructura === 'memorando-gerencia-v1') {
     const f = (x.fecha_emision || '').split('-'), num = x.consecutivo.trim() || SIN_NUMERO;
-    return `<div class="circ-hoja circ-gerencia">
+    return `<div class="circ-hoja circ-gerencia" translate="no">
     <header class="circ-membrete">${logoHTML('circ-logo')}<b>${esc(E.colegio.nombre)}</b></header>
     <table class="circ-cuadro circ-cuadro-gerencia">
       <tr><td><b>Fecha:&nbsp; ${esc(f.length === 3 ? f[2] + '/' + f[1] + '/' + f[0] : '')}</b></td><td><b>De: ${esc(x.dependencia || '—')}</b></td></tr>
@@ -909,14 +910,14 @@ function vistaHTML(x, plantilla, firmaUrl = null) {
     <p class="circ-marca">VISTA RÁPIDA · el PDF de revisión trae el encabezado, la marca de agua y el pie del colegio</p>
   </div>`;
   }
-  if (plantilla?.configuracion?.estructura === 'carta-institucional-v1') return `<div class="circ-hoja circ-carta">
+  if (plantilla?.configuracion?.estructura === 'carta-institucional-v1') return `<div class="circ-hoja circ-carta" translate="no">
     <header class="circ-membrete">${logoHTML('circ-logo')}<b>${esc(E.colegio.nombre)}</b></header>
     <p class="circ-carta-cab"><span>${esc(plantilla.configuracion.carta?.ciudad || '')} ${esc(fechaLarga(x.fecha_emision).replace(/ (\d{4})$/, ' de $1'))}</span><b>${esc(x.consecutivo.trim() || SIN_NUMERO)}</b></p>
     <div class="circ-cuerpo">${contenidoHTML(x.contenido) || '<p class="ayuda">(sin contenido)</p>'}</div>
     <div class="circ-firma circ-firma-negrita">${imgFirma}<b>${esc((x.responsable || 'Nombre de quien firma').toLocaleUpperCase('es-CO'))}</b><b>${esc(x.cargo || 'Cargo')}</b>${colegio ? `<b>${esc(colegio)}</b>` : ''}</div>
     <p class="circ-marca">VISTA RÁPIDA · el PDF de revisión trae el encabezado, la marca de agua y el pie del colegio</p>
   </div>`;
-  return `<div class="circ-hoja">
+  return `<div class="circ-hoja" translate="no">
     <header class="circ-membrete">${logoHTML('circ-logo')}<b>${esc(E.colegio.nombre)}</b></header>
     <table class="circ-cuadro">
       <tr><td><b>Fecha:</b> ${esc(fechaLarga(x.fecha_emision))}</td><td><b>De:</b> ${esc(x.dependencia || '—')}</td></tr>
