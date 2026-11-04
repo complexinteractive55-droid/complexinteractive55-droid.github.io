@@ -3,14 +3,21 @@
 .filtro-menu { margin: 4px 0 10px; min-height: 40px !important; font-size: 15px; }
 /* La lupa del filtro, del mismo juego de iconos (antes, el emoji 🔍 en el texto de ayuda) */
 .filtro-menu { padding-left: 38px !important; background: var(--superficie) url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%238a94a6' stroke-width='2' stroke-linecap='round'%3E%3Ccircle cx='11' cy='11' r='7'/%3E%3Cpath d='m20 20-4-4'/%3E%3C/svg%3E") no-repeat 12px 50% / 18px 18px; }
+/* Grupos del menú (Fabio, 3-nov-2026 noche, con la imagen de referencia): el grupo abierto queda resaltado y sus opciones van más
+   adentro, con letra más pequeña y una línea guía a la izquierda, como la sangría de un bloque de código desplegado */
 .menu-grupo { border-radius: 10px; }
-.menu-grupo > summary { list-style: none; display: flex; align-items: center; gap: 14px; padding: 12px; border-radius: 10px; cursor: pointer; font-weight: 600; color: var(--texto); }
+.menu-grupo[open] { padding-bottom: 6px; }
+.menu-grupo > summary { list-style: none; display: flex; align-items: center; gap: 12px; padding: 10px 12px; border-radius: 10px; cursor: pointer; font-size: 15px; font-weight: 600; color: var(--texto); }
 .menu-grupo > summary::-webkit-details-marker { display: none; }
-.menu-grupo > summary::after { content: "›"; margin-left: auto; transition: transform .15s; color: var(--texto-2); font-size: 20px; }
-.menu-grupo[open] > summary::after { transform: rotate(90deg); }
-.menu-grupo > summary:hover { background: var(--superficie-2); }
-.menu a.sub { padding: 9px 12px 9px 52px; font-size: 15px; }
-.menu a.sub.activo { background: var(--primario-suave); }
+/* flecha: a la derecha si está cerrado, hacia abajo si está abierto */
+.menu-grupo > summary::after { content: ""; flex: none; margin: 0 6px 0 auto; width: 7px; height: 7px; border-right: 2px solid var(--texto-2); border-bottom: 2px solid var(--texto-2); transform: rotate(-45deg); transition: transform .15s; }
+.menu-grupo[open] > summary::after { transform: translateY(-2px) rotate(45deg); }
+.menu-grupo > summary:hover, .menu-grupo[open] > summary { background: var(--superficie-2); }
+/* las opciones: la línea guía cae bajo el icono del grupo (12 px de margen + la mitad de su caja de 22 px) */
+.menu .menu-grupo > a.sub { margin: 0 0 0 23px; width: calc(100% - 23px); padding: 7px 10px 7px 14px; gap: 9px; flex-wrap: nowrap; font-size: 14px; font-weight: 500; border-left: 1px solid var(--borde); border-radius: 0 8px 8px 0; }
+.menu .menu-grupo > summary + a.sub { margin-top: 4px; }
+.menu .menu-grupo > a.sub:hover { border-left-color: var(--texto-2); }
+.menu .menu-grupo > a.sub.activo { background: var(--primario-suave); border-left: 2px solid var(--primario); padding-left: 13px; }
 .contador { margin-left: auto; min-width: 22px; height: 22px; padding: 0 6px; border-radius: 999px; background: #e8710a; color: #fff; font-size: 12px; font-weight: 800; display: inline-grid; place-items: center; }
 .btn-menu.con-aviso { position: relative; }
 .btn-menu.con-aviso::after { content: ""; position: absolute; top: 8px; right: 8px; width: 9px; height: 9px; border-radius: 50%; background: #e8710a; }
@@ -91,10 +98,8 @@
   .mes-ev, .mes-mas { display: none; }
   .mes-puntos { display: flex; }
 }
-.menu a.sub { display: flex; align-items: center; gap: 8px; }
 .menu a.sub > span:first-child { flex: 1; min-width: 0; }
-/* Con icono (3-nov-2026, §17): el icono no crece y la etiqueta queda donde estaba (52 px, alineada con la del grupo) */
-.menu a.sub:has(> .ic-sub) { padding-left: 18px; }
+/* Con icono (3-nov-2026, §17): el icono, pequeño, no crece; la etiqueta ocupa el resto */
 .menu a.sub > .ic-sub:first-child { flex: none; }
 .menu a.sub > .ic-sub + span { flex: 1; min-width: 0; }
 .menu a.sub .contador { flex: none; }

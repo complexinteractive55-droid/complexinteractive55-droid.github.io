@@ -891,6 +891,7 @@ export function crearDbDemo() {
       if (n === 'circular_borradores') filas = filas.filter(borradorMio); // como la RLS: Administración todos; quien prepara, los suyos
       if (n === 'circular_firmas') filas = filas.filter((f) => f.perfil_id === usuario()); // la firma solo la ve su dueño
       if (n === 'circular_emisores') filas = filas.filter((f) => esAdmin(f.colegio_id) || f.perfil_id === usuario());
+      if (n === 'circular_series') filas = filas.filter((f) => esAdmin(f.colegio_id)); // como la RLS (serie_circular_ver): solo Administración
       filas = ordenar(copia(filas), q.order);
       return q.limit ? filas.slice(0, q.limit) : filas;
     },

@@ -84,6 +84,7 @@ export default {
   'Serie provisional: para enviar, Administración debe validarla en Ajustes.': 'Provisional series: to send, Administration must validate it in Settings.',
   'Su serie es provisional: para enviar, Administración debe validarla en Ajustes.': 'Its series is provisional: to send, Administration must validate it in Settings.',
   'Para emitir con ella, valídala en': 'To issue with it, validate it in',
+  'huella': 'fingerprint',
   '(las series de tu área), indicando con qué registro del colegio comprobó el formato y el último número usado.': '(your area’s series), stating which school record was used to check the format and the last number used.',
   'Solo Administración, o quien fue designado en un área, envía circulares a la comunidad del colegio.': 'Only Administration, or whoever was designated in an area, sends circulars to the school community.',
   'Hoy está fuera de su vigencia.': 'It is outside its validity period today.', '(la serie se agotó: crea otra)': '(the series is exhausted: create another one)',

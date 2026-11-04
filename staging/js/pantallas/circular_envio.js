@@ -38,7 +38,7 @@ export async function revisarEnvioPendiente(borradorId) {
 export async function enviarCircular({ borrador, plantilla, criterios: fijos = null, serie = null }) {
   if (!plantilla) { aviso('Esta circular no tiene un formato de PDF asignado: asígnalo antes de enviarla.', 'error'); return null; }
   borrador = { ...borrador };
-  let porNumerar = !borrador.consecutivo, numerada = false;
+  let porNumerar = !borrador.consecutivo, numerada = false, verMensaje = false;
   const b = await base();
   let personas = [];
   try { personas = await (E.db.rpcTodo || E.db.rpc).call(E.db, 'mis_contactos', { p_colegio: E.colegio.id }); } catch { /* sin la lista se puede enviar por roles */ }
@@ -197,12 +197,13 @@ export async function enviarCircular({ borrador, plantilla, criterios: fijos = n
         $('[data-resultado]').innerHTML = `<p class="ok"><b>✓ Enviada.</b> Llegó a <b>${r.en_bandeja}</b> bandeja(s) de entrada (${r.total_previsto} previstas)${r.repetido ? ' — ya se había enviado; no se repitió' : ''}.</p>
           ${r.total_excluido ? `<p class="ayuda">${r.total_excluido} no la recibieron: ${Object.entries(r.motivos || {}).map(([k, v]) => `${esc(k)} (${v})`).join(' · ')}</p>` : ''}
           <p><a class="btn btn-primario" href="#/mensaje/${r.mensaje_id}" data-ver-envio>${icono('ver')}Ver el mensaje enviado</a></p>`;
-        caja.querySelector('[data-ver-envio]').onclick = () => document.querySelector('.ventana [data-cerrar], .ventana-pie button')?.click();
+        caja.querySelector('[data-ver-envio]').onclick = () => { verMensaje = true; document.querySelector('.ventana [data-cerrar], .ventana-pie button')?.click(); };
       };
       if (fijos) btnRev.onclick(); // ya se sabe a quién: se revisa enseguida
     },
     botones: [{ texto: 'Cerrar' }],
   });
-  // Enviada, o numerada aunque no se haya terminado de enviar: la circular cambió de versión y el editor se vuelve a abrir
-  return resultado || (numerada ? { numerada: true, consecutivo: borrador.consecutivo } : null);
+  // Enviada (verMensaje: se fue a «Ver el mensaje enviado»), o numerada aunque no se haya terminado de enviar: la circular cambió
+  // de versión y el editor se vuelve a abrir
+  return resultado ? { ...resultado, verMensaje } : numerada ? { numerada: true, consecutivo: borrador.consecutivo } : null;
 }

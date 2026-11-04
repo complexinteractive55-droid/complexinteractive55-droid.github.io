@@ -343,6 +343,12 @@ export async function editor(m, p) {
     E.db.modo === 'demo' ? PLANTILLAS_DEMO : E.db.select('circular_plantillas', { eq: { colegio_id: E.colegio.id, estado: 'aprobada' }, order: 'revision desc' }).catch(() => []),
   ]);
   const plantillas = plantillasTodas.filter((x) => formatoPermitido(yo, x));
+  // Quien fue designado no lee la tabla de series (su RLS es de Administración): las de su área se piden al servidor; sin esto no se
+  // sabía que su serie es provisional y el envío se abría para fallar al confirmar (Fabio, 3-nov-2026 noche, serie «MEMO Z-»)
+  let seriesArea = [];
+  const recargarSeriesArea = async () => { if (!yo.admin && yo.emisor?.area) seriesArea = (await E.db.rpc('circular_series_disponibles', { p_colegio: E.colegio.id, p_area: yo.emisor.area.id }).catch(() => null))?.series || seriesArea; };
+  await recargarSeriesArea();
+  const serieDe = (id) => (id ? series.find((y) => y.id === id) || seriesArea.find((y) => y.id === id) || null : null);
   let plantilla = null; // el formato del área que emite (ponerFormato)
   // Numeración por área (si la migración 20261029130000 está en la base): áreas configuradas y número PREVISTO (no reservado)
   const num = await E.db.rpc('circular_numeracion', { p_colegio: E.colegio.id }).catch(() => null);
@@ -593,7 +599,7 @@ export async function editor(m, p) {
           + (sx.provisional ? ` <span class="circ-alerta">Serie provisional: para enviar, ${configura ? `valídala en ${`<a href="${AJUSTES}">Ajustes</a>`}` : 'Administración debe validarla en Ajustes'}.</span>` : '')
           + (sx.vigente_hoy === false ? ' <span class="circ-alerta">Hoy está fuera de su vigencia.</span>' : '');
     } else if (srv.consecutivo) {
-      const su = series.find((y) => y.id === (fila?.serie_id || srv.datos?.serie_id));
+      const su = serieDe(fila?.serie_id || srv.datos?.serie_id);
       $c('[data-consec-ayuda]').innerHTML = (emitida ? 'Quedó al emitir la circular y no cambia.' : 'Reservado para esta circular: no cambia al editar, previsualizar ni descargar; queda definitivo al enviarla.')
         + (!emitida && su?.provisional ? ` <span class="circ-alerta">Su serie es provisional: para enviar, ${configura ? `valídala en ${`<a href="${AJUSTES}">Ajustes</a>`}` : 'Administración debe validarla en Ajustes'}.</span>` : '');
     }
@@ -885,12 +891,16 @@ export async function editor(m, p) {
     }
     // §7/§9: lo que falta se explica ANTES de abrir el envío (serie por elegir, provisional o fuera de vigencia). No se gasta número.
     const sx = !srv.consecutivo && disponibles ? disponibles.series.find((y) => y.id === srv.datos?.serie_id) : null;
-    const suSerie = srv.consecutivo ? series.find((y) => y.id === (fila?.serie_id || srv.datos?.serie_id)) : sx;
+    if (srv.consecutivo && !yo.admin) await recargarSeriesArea(); // fresca: pudo validarla en Ajustes hace un momento
+    const suSerie = srv.consecutivo ? serieDe(fila?.serie_id || srv.datos?.serie_id) : sx;
     if (!emitida && !srv.consecutivo && disponibles && !sx) { aviso(disponibles.series.length ? 'Elige la serie de la circular en «Consecutivo».' : 'Esta área no tiene series de consecutivos: créala en Ajustes.', 'error'); enfocar('serie_id'); return; }
     if (!emitida && suSerie?.provisional) { await serieProvisional(suSerie); return; }
     if (!emitida && sx && sx.vigente_hoy === false) { aviso(`La serie «${sx.prefijo.trim()}» no está vigente hoy: elige otra serie o corrige su vigencia en Ajustes.`, 'error'); return; }
     const { enviarCircular } = await import('./circular_envio.js');
     const r = await enviarCircular({ borrador: { id: srv.id, version: srv.version, consecutivo: srv.consecutivo, datos: srv.datos, autor_id: fila?.autor_id || E.yo.id }, plantilla, criterios: env, serie: sx });
+    // Enviada: al cerrar, a Circulares con el aviso (Fabio, 3-nov-2026 noche: «no puede ser que me devuelva a la circular enviada»);
+    // con «Ver el mensaje enviado» ya se fue al mensaje. Numerada sin enviar: el editor se vuelve a abrir con su número.
+    if (r && !r.numerada) { if (!r.verMensaje) { aviso(`Circular ${r.consecutivo || srv.consecutivo} enviada: llegó a ${r.en_bandeja} bandeja(s) de entrada.`); location.hash = VOLVER; } return; }
     if (r) { caja.remove(); editor(m, { id: srv.id }); }
   });
   if (srv.id && envia) import('./circular_envio.js').then((x) => x.revisarEnvioPendiente(srv.id)).catch(() => {});
