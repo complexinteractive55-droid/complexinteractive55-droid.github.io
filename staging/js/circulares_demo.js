@@ -4,11 +4,15 @@
 // área, y la firma propia de cada persona (imagen PNG que solo ve su dueño).
 // 5-nov-2026 (20261105100000_circular_series_varias_numero_envio): varias series por área y período, la serie elegida en la circular
 // y el número oficial al confirmar el envío (circular_asignar_numero); el selector pide circular_series_disponibles.
+// 5-nov-2026 (20261105120000_circular_enviar_designados): también envía quien fue designado en un área (solo SU circular de SU área).
 export function crearCircularesDemo({ tabla, usuario, guardar, ahora, err, esAdmin, consecutivoCircular, numeroDeSerie, vigentesDe, hoyLocal, formatoCirc, emisorCirc, puedePreparar, existeArchivo }) {
   const soloAdmin = (c) => { if (!usuario() || !esAdmin(c)) err('Solo el administrador del colegio configura y emite las circulares.'); };
   // Ajustes por área (20261105110000): Administración, todo; quien fue designado en un área, solo las series de SU área
   const configuraArea = (c, area) => !!usuario() && (esAdmin(c) || (!!area && emisorCirc(c)?.area_id === area));
   const areaDesignada = (c) => (esAdmin(c) ? null : emisorCirc(c)?.area_id || null);
+  // «Enviar» (20261105120000): Administración, cualquiera; quien fue designado en un área, solo la circular que preparó y es de su área
+  const envia = (c) => !!usuario() && (esAdmin(c) || !!emisorCirc(c)?.area_id);
+  const enviaBorrador = (b) => !!usuario() && (esAdmin(b.colegio_id) || (b.autor_id === usuario() && !!b.area_id && emisorCirc(b.colegio_id)?.area_id === b.area_id));
   const historia = (c, objeto, id, accion, antes, despues) => tabla('circular_config_historial').push({ id: Date.now() + Math.random(), colegio_id: c, actor_id: usuario(), objeto, objeto_id: id, accion,
     antes: antes ? JSON.parse(JSON.stringify(antes)) : null, despues: despues ? JSON.parse(JSON.stringify(despues)) : null, creado_en: ahora() });
   const nombreDe = (id) => { const p = tabla('perfiles').find((x) => x.id === id); return p ? `${p.nombres || ''} ${p.apellidos || ''}`.trim() : null; };
@@ -147,7 +151,7 @@ export function crearCircularesDemo({ tabla, usuario, guardar, ahora, err, esAdm
     // Número oficial al confirmar el envío: una vez por circular (reintentos y otras pestañas reciben el mismo)
     circular_asignar_numero(a) {
       const b = tabla('circular_borradores').find((x) => x.id === a.p_borrador);
-      if (!b || !esAdmin(b.colegio_id)) err('Solo Administración envía circulares a la comunidad del colegio.');
+      if (!b || !enviaBorrador(b)) err('Solo Administración, o quien fue designado en un área, envía circulares a la comunidad del colegio.');
       if (b.estado === 'anulada') err('Esa circular está anulada: no se envía.');
       const r = (repetido) => ({ id: b.id, version: b.version, serie_id: b.serie_id, numero: b.numero, consecutivo: b.consecutivo, estado: b.estado || 'borrador', repetido });
       if (b.numero) {
@@ -165,7 +169,7 @@ export function crearCircularesDemo({ tabla, usuario, guardar, ahora, err, esAdm
       if (!yo || !tabla('miembros').some((m) => m.colegio_id === c && m.perfil_id === yo && m.activo !== false)) return { admin: false, puede_preparar: false };
       const e = emisorCirc(c), f = tabla('circular_firmas').find((x) => x.colegio_id === c && x.perfil_id === yo);
       const area = e?.area_id ? tabla('circular_areas').find((x) => x.id === e.area_id) : null;
-      return { admin: esAdmin(c), puede_preparar: puedePreparar(c), nombre: nombreDe(yo),
+      return { admin: esAdmin(c), puede_preparar: puedePreparar(c), envia: envia(c), nombre: nombreDe(yo),
         emisor: e ? { cargo: e.cargo, area: area ? { id: area.id, nombre: area.nombre } : null } : null,
         firma: f ? { ruta: f.ruta, sha256: f.sha256, ancho: f.ancho, alto: f.alto, actualizado_en: f.actualizado_en } : null, formatos: formatosDe(c, yo) };
     },
@@ -231,6 +235,12 @@ export function crearCircularesDemo({ tabla, usuario, guardar, ahora, err, esAdm
       const b = tabla('circular_borradores').find((x) => x.id === a.p_id);
       if (!b) err('Esa circular no existe o no tienes acceso.');
       soloAdmin(b.colegio_id);
+      return F._emitir_nucleo(a);
+    },
+    // Núcleo de la emisión (circular_emitir sin el permiso): solo lo usa el envío, que ya revisó quién envía
+    _emitir_nucleo(a) {
+      const b = tabla('circular_borradores').find((x) => x.id === a.p_id);
+      if (!b) err('Esa circular no existe o no tienes acceso.');
       if (!a.p_solicitud) err('Falta la identificación de la operación.');
       if (b.estado === 'emitida') return { ...b, repetido: true };
       if (b.estado === 'anulada') err('Esa circular está anulada.');
@@ -256,9 +266,9 @@ export function crearCircularesDemo({ tabla, usuario, guardar, ahora, err, esAdm
       return { ...b, repetido: false };
     },
   };
-  return (nombre, a) => {
+  return (nombre, a, interno = false) => {
     const f = F[nombre];
-    if (!f) err(`Función desconocida: ${nombre}`);
+    if (!f || (nombre.startsWith('_') && !interno)) err(`Función desconocida: ${nombre}`);
     const r = f(a || {});
     guardar();
     return JSON.parse(JSON.stringify(r));

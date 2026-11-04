@@ -79,6 +79,13 @@ export default {
   'Es una estimación: el número se reserva al guardar por primera vez; si otra circular toma ese número antes, recibe el siguiente.': 'It is an estimate: the number is reserved when it is first saved; if another circular takes that number first, it gets the next one.',
   'Serie provisional: para enviar, Administración debe validarla en': 'Provisional series: to send, Administration must validate it in',
   'Su serie es provisional: para enviar, Administración debe validarla en': 'Its series is provisional: to send, Administration must validate it in',
+  // «Enviar» y Ajustes para quien fue designado en un área (20261105120000)
+  'Serie provisional: para enviar, valídala en': 'Provisional series: to send, validate it in', 'Su serie es provisional: para enviar, valídala en': 'Its series is provisional: to send, validate it in',
+  'Serie provisional: para enviar, Administración debe validarla en Ajustes.': 'Provisional series: to send, Administration must validate it in Settings.',
+  'Su serie es provisional: para enviar, Administración debe validarla en Ajustes.': 'Its series is provisional: to send, Administration must validate it in Settings.',
+  'Para emitir con ella, valídala en': 'To issue with it, validate it in',
+  '(las series de tu área), indicando con qué registro del colegio comprobó el formato y el último número usado.': '(your area’s series), stating which school record was used to check the format and the last number used.',
+  'Solo Administración, o quien fue designado en un área, envía circulares a la comunidad del colegio.': 'Only Administration, or whoever was designated in an area, sends circulars to the school community.',
   'Hoy está fuera de su vigencia.': 'It is outside its validity period today.', '(la serie se agotó: crea otra)': '(the series is exhausted: create another one)',
   'Quedó al emitir la circular y no cambia.': 'It was set when the circular was issued and does not change.',
   'Reservado para esta circular: no cambia al editar, previsualizar ni descargar; queda definitivo al enviarla.': 'Reserved for this circular: it does not change when editing, previewing or downloading; it becomes final when sent.',

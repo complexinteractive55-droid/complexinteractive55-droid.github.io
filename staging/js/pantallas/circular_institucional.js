@@ -312,8 +312,13 @@ async function numeracion_(caja, { soloArea = null } = {}) {
 
 // ---------------------------------------------------------------- Editor
 export async function editor(m, p) {
-  const yo = await perfilCircular();
+  // Al abrirla, el perfil fresco (lo que Administración acaba de cambiar: designación, área); al volver a pintarla, el de memoria
+  const yo = await perfilCircular(!m.querySelector(`[data-circ][data-id="${CSS.escape(p.id)}"]`));
   if (!yo.puede_preparar) return soloAdmin(m, 'Circular institucional');
+  // Envía Administración, o quien fue designado en un área (Gerencia, direcciones de sección, Rectoría): solo SU circular, a todo el
+  // colegio (Fabio, 3-nov-2026 noche, opción 2; el servidor lo exige). Quien fue designado en un área valida las series de su área.
+  const envia = yo.admin || yo.envia === true;
+  const configura = yo.admin || !!yo.emisor?.area;
   // La app vuelve a pintar la pantalla cuando llegan datos nuevos del servidor; el editor ya abierto de este mismo
   // borrador se deja quieto (si no, se perdería el cursor de quien está escribiendo).
   if (m.querySelector(`[data-circ][data-id="${CSS.escape(p.id)}"]`)) return;
@@ -386,7 +391,7 @@ export async function editor(m, p) {
         </details>
         <p class="circ-elegidas" data-elegidas></p>
         <label>Agregar al «Para» del documento (opcional)<input name="destinatarios_otros" maxlength="300" placeholder="Ej.: Monitoras de transporte"></label>
-        ${yo.admin ? '<p class="circ-llegara" data-llegara role="status" aria-live="polite"></p>' : '<p class="ayuda">Tú la preparas; Administración la envía a estas personas.</p>'}
+        ${envia ? '<p class="circ-llegara" data-llegara role="status" aria-live="polite"></p>' : '<p class="ayuda">Tú la preparas; Administración la envía a estas personas.</p>'}
       </section>
       <section class="tarjeta circ-paso circ-paso-doc">
         <h2><span class="circ-num">2</span> La circular</h2>
@@ -423,15 +428,15 @@ export async function editor(m, p) {
       </section>
     </form>
     <div class="circ-mas">
-      <small class="ayuda">Referencia interna del borrador: <span data-ref>${esc(referencia(srv.id))}</span>${yo.admin ? ' · Al enviarla queda emitida con su número oficial (la serie debe estar validada) y su contenido ya no cambia.' : ''}</small>
+      <small class="ayuda">Referencia interna del borrador: <span data-ref>${esc(referencia(srv.id))}</span>${envia ? ' · Al enviarla queda emitida con su número oficial (la serie debe estar validada) y su contenido ya no cambia.' : ''}</small>
       <button class="btn btn-peligro btn-chico" data-eliminar ${srv.id ? '' : 'hidden'}>${icono('eliminar')}Eliminar borrador</button>
     </div>
     <div class="pie-fijo circ-pie">
       <p class="circ-estado" data-estado role="status" aria-live="polite"></p>
       <div class="circ-acciones">
         <button type="button" class="btn" data-guardar>${icono('guardar')}Guardar borrador</button>
-        <button type="button" class="btn ${yo.admin ? '' : 'btn-primario'}" data-vista data-pdf>${icono('ver')}Ver PDF</button>
-        ${yo.admin ? `<button type="button" class="btn btn-primario" data-enviar-circ>${icono('enviar')}Enviar</button>` : ''}
+        <button type="button" class="btn ${envia ? '' : 'btn-primario'}" data-vista data-pdf>${icono('ver')}Ver PDF</button>
+        ${envia ? `<button type="button" class="btn btn-primario" data-enviar-circ>${icono('enviar')}Enviar</button>` : ''}
       </div>
     </div>
     </div>`;
@@ -446,7 +451,7 @@ export async function editor(m, p) {
   // ----- 1. ¿Para quién? Grupos, alcance (sedes, grados o cursos) y personas una por una. El «Para» del documento sale de aquí.
   const elegidas = new Map(); // perfil_id → contacto
   const contactos = new Map();
-  if (yo.admin) (E.db.rpcTodo || E.db.rpc).call(E.db, 'mis_contactos', { p_colegio: E.colegio.id })
+  if (envia) (E.db.rpcTodo || E.db.rpc).call(E.db, 'mis_contactos', { p_colegio: E.colegio.id })
     .then((l) => { for (const c of l || []) if (!contactos.has(c.perfil_id)) contactos.set(c.perfil_id, c); for (const id of elegidas.keys()) elegidas.set(id, contactos.get(id) || elegidas.get(id)); pintarElegidas(); })
     .catch(() => { /* sin la lista se envía por grupos */ });
   const listaDe = (a) => (a === 'sede' ? bas.sedes : a === 'grado' ? bas.grados : a === 'curso' ? bas.cursos : []) || [];
@@ -575,7 +580,7 @@ export async function editor(m, p) {
     const sinSeries = libre && !disponibles.series.length, conSelector = libre && !sinSeries;
     sel.hidden = !conSelector; $c('[data-consec]').hidden = conSelector;
     $c('[data-num-estado]').textContent = emitida && srv.consecutivo ? 'Número definitivo' : srv.consecutivo ? 'Número reservado' : conSelector ? 'Número estimado (no reservado)' : '';
-    const ajustesLink = yo.admin ? ` <a href="${AJUSTES}">Créala en Ajustes</a>.` : ' Pídele a Administración que la cree.';
+    const ajustesLink = configura ? ` <a href="${AJUSTES}">Créala en Ajustes</a>.` : ' Pídele a Administración que la cree.';
     if (sinSeries) {
       // Sin series: el colegio sin área y con «número al guardar» recibe la serie provisional PROV- (como hasta hoy); un área, no
       $c('[data-consec-ayuda]').innerHTML = !disponibles.area_id && disponibles.asignar_numero === 'guardar'
@@ -585,12 +590,12 @@ export async function editor(m, p) {
       const sx = disponibles.series.find((y) => y.id === sel.value);
       $c('[data-consec-ayuda]').innerHTML = !sx ? (serieDesaparecio ? 'La serie que tenía esta circular ya no está disponible: elige otra. El borrador sigue guardado.' : 'Elige la serie de esta circular.')
         : `Próximo: <b>${esc(sx.siguiente || '(la serie se agotó: crea otra)')}</b>. Es una estimación: ${disponibles.asignar_numero === 'emitir' ? 'el número definitivo se asigna al enviar la circular' : 'el número se reserva al guardar por primera vez'}; si otra circular toma ese número antes, recibe el siguiente.`
-          + (sx.provisional ? ` <span class="circ-alerta">Serie provisional: para enviar, Administración debe validarla en ${yo.admin ? `<a href="${AJUSTES}">Ajustes</a>` : 'Ajustes'}.</span>` : '')
+          + (sx.provisional ? ` <span class="circ-alerta">Serie provisional: para enviar, ${configura ? `valídala en ${`<a href="${AJUSTES}">Ajustes</a>`}` : 'Administración debe validarla en Ajustes'}.</span>` : '')
           + (sx.vigente_hoy === false ? ' <span class="circ-alerta">Hoy está fuera de su vigencia.</span>' : '');
     } else if (srv.consecutivo) {
       const su = series.find((y) => y.id === (fila?.serie_id || srv.datos?.serie_id));
       $c('[data-consec-ayuda]').innerHTML = (emitida ? 'Quedó al emitir la circular y no cambia.' : 'Reservado para esta circular: no cambia al editar, previsualizar ni descargar; queda definitivo al enviarla.')
-        + (!emitida && su?.provisional ? ` <span class="circ-alerta">Su serie es provisional: para enviar, Administración debe validarla en ${yo.admin ? `<a href="${AJUSTES}">Ajustes</a>` : 'Ajustes'}.</span>` : '');
+        + (!emitida && su?.provisional ? ` <span class="circ-alerta">Su serie es provisional: para enviar, ${configura ? `valídala en ${`<a href="${AJUSTES}">Ajustes</a>`}` : 'Administración debe validarla en Ajustes'}.</span>` : '');
     }
     $c('[data-consec]').value = srv.consecutivo;
     $c('[data-consec]').placeholder = !srv.consecutivo && prevista?.siguiente ? t('Previsto:') + ' ' + prevista.siguiente : t((disponibles || prevista)?.asignar_numero === 'emitir' ? 'Se asigna al enviar' : 'Se asigna al guardar');
@@ -621,7 +626,7 @@ export async function editor(m, p) {
     // emitida: el documento ya no cambia; elegir a quién más enviarla no es un cambio del borrador
     const comparable = (y) => (emitida ? { ...y, envio: null, destinatarios: null } : y);
     const cambios = !srv.datos || !igual(comparable(x), comparable(srv.datos));
-    if (yo.admin) contar(x.envio);
+    if (envia) contar(x.envio);
     $c('[data-estado]').textContent = guardando ? 'Guardando…'
       : !srv.id ? (textoPlano(x.contenido).trim() || x.titulo ? 'Aún no se guarda en el servidor (lo escrito queda en este equipo).' : 'Nueva circular: aún sin guardar.')
       : cambios ? 'Cambios sin guardar (a salvo en este equipo).'
@@ -844,9 +849,9 @@ export async function editor(m, p) {
   const serieProvisional = async (sx) => {
     const r = await ventana({
       titulo: 'Falta validar la serie',
-      html: `<p>La serie <b>${esc(nombreSerie({ ...sx, area: sx.area ?? areasCfg.find((a) => a.id === sx.area_id)?.nombre }))}</b> todavía es <b>provisional</b>. Para emitir con ella, Administración debe validarla en <b>Ajustes → Numeración</b>, indicando con qué registro del colegio comprobó el formato y el último número usado.</p>
+      html: `<p>La serie <b>${esc(nombreSerie({ ...sx, area: sx.area ?? areasCfg.find((a) => a.id === sx.area_id)?.nombre }))}</b> todavía es <b>provisional</b>. Para emitir con ella, ${yo.admin ? 'Administración debe validarla en <b>Ajustes → Numeración</b>' : configura ? 'valídala en <b>Ajustes</b> (las series de tu área)' : 'Administración debe validarla en <b>Ajustes → Numeración</b>'}, indicando con qué registro del colegio comprobó el formato y el último número usado.</p>
         <p class="ayuda">La circular sigue guardada y no se gastó ningún número.${srv.consecutivo ? ' Ya tiene su número reservado en esa serie.' : ' También puedes elegir en «Consecutivo» otra serie ya validada.'}</p>`,
-      botones: [{ texto: 'Cerrar' }, ...(yo.admin ? [{ texto: 'Ir a Ajustes', valor: 'ajustes' }] : [])],
+      botones: [{ texto: 'Cerrar' }, ...(configura ? [{ texto: 'Ir a Ajustes', valor: 'ajustes' }] : [])],
     });
     if (r === 'ajustes') location.hash = AJUSTES;
   };
@@ -888,7 +893,7 @@ export async function editor(m, p) {
     const r = await enviarCircular({ borrador: { id: srv.id, version: srv.version, consecutivo: srv.consecutivo, datos: srv.datos, autor_id: fila?.autor_id || E.yo.id }, plantilla, criterios: env, serie: sx });
     if (r) { caja.remove(); editor(m, { id: srv.id }); }
   });
-  if (srv.id && yo.admin) import('./circular_envio.js').then((x) => x.revisarEnvioPendiente(srv.id)).catch(() => {});
+  if (srv.id && envia) import('./circular_envio.js').then((x) => x.revisarEnvioPendiente(srv.id)).catch(() => {});
   // Emitida (enviada) o anulada: su contenido y número ya no cambian; se puede volver a enviar a más personas
   if (fila?.estado && fila.estado !== 'borrador') {
     btnGuardar.disabled = true;

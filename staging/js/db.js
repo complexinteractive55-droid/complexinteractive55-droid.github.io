@@ -508,9 +508,12 @@ export function crearDbDemo() {
   // PDF del envío en el demo: como la acción «preparar_envio» de la Edge Function, con la versión GUARDADA y un PDF de demostración
   async function prepararEnvioDemo(a) {
     await lento();
-    if (!esAdmin(a.colegio_id)) err('Solo Administración envía circulares a la comunidad del colegio.');
+    // Como la función: Administración, o quien fue designado en un área con SU circular de SU área (20261105120000)
+    const yo = usuario(), area = emisorCirc(a.colegio_id)?.area_id || null;
+    if (!esAdmin(a.colegio_id) && !area) err('Solo Administración, o quien fue designado en un área, envía circulares a la comunidad del colegio.');
     const b = tabla('circular_borradores').find((x) => x.id === a.borrador_id && x.colegio_id === a.colegio_id);
     if (!b) err('Esa circular no existe o no tienes acceso.');
+    if (!esAdmin(a.colegio_id) && (b.autor_id !== yo || !b.area_id || b.area_id !== area)) err('Solo Administración, o quien fue designado en un área, envía circulares a la comunidad del colegio.');
     if (b.version !== a.version) err('La circular cambió después de abrirla (hay otra versión guardada): recarga y genera el PDF de la versión actual.');
     if (b.estado === 'anulada') err('Esa circular está anulada: no se envía.');
     if (!b.consecutivo) err('La circular aún no tiene su número: guárdala con su área y serie antes de enviarla.');
@@ -1067,8 +1070,8 @@ export function crearDbDemo() {
       }
       // Envío de la circular a la bandeja y mensajería del servidor (envios_demo.js, mismas reglas que las migraciones 20261104*)
       if (RPC_ENVIOS_DEMO.includes(nombre)) {
-        enviosDemo ||= (await import('./envios_demo.js')).crearEnviosDemo({ tabla, usuario, guardar, ahora, err, esAdmin, contactos: contactosDemo,
-          emitir: async (id, sol) => (await circDemo())('circular_emitir', { p_id: id, p_solicitud: sol }), existeArchivo: (b, r) => !!leerArchivos()[b + '/' + r] });
+        enviosDemo ||= (await import('./envios_demo.js')).crearEnviosDemo({ tabla, usuario, guardar, ahora, err, esAdmin, emisorCirc, contactos: contactosDemo,
+          emitir: async (id, sol) => (await circDemo())('_emitir_nucleo', { p_id: id, p_solicitud: sol }, true), existeArchivo: (b, r) => !!leerArchivos()[b + '/' + r] });
         const r = await enviosDemo(nombre, a);
         if (nombre !== 'mensaje_enviar' || r.repetido) return r;
         // la escritura, como un insert normal (tipo, número y valores por defecto del demo), ya comprobados los destinatarios
