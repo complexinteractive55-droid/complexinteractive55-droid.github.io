@@ -531,10 +531,16 @@ input[type=file] { padding: 10px; background: var(--superficie-2); }
 .sala-escribir textarea { flex: 1; min-width: 0; }
 .oculto-visual { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; }
 
-/* Circular enviada: el PDF es el documento principal del mensaje (3-nov-2026) */
-.doc-principal { border: 1px solid var(--borde); border-radius: 12px; background: var(--superficie); padding: 12px; margin: 12px 0; }
+/* Circular enviada: el PDF es el documento principal del mensaje (3-nov-2026). Se ve COMPLETO, hoja por hoja, como un documento
+   (4-nov-2026); debajo, el archivo con «Abrir el PDF» y «Descargar». La hoja es papel blanco también en modo oscuro. */
+.doc-principal { margin: 12px 0; }
+.doc-hojas { display: flex; flex-direction: column; align-items: center; gap: 12px; }
+.hoja-pdf { display: block; width: 100%; max-width: 860px; height: auto; background: #fff; border-radius: 4px; box-shadow: 0 0 0 1px var(--borde), 0 2px 8px rgba(0, 0, 0, .14); }
+.hoja-cargando { aspect-ratio: 8.5 / 11; display: grid; place-items: center; }
+.hoja-cargando .ayuda { color: #5b6472; }
+@media (max-width: 600px) { .mensaje .doc-hojas { margin-inline: -8px; } }
+.doc-archivo { margin-top: 12px; border: 1px solid var(--borde); border-radius: 12px; padding: 8px 10px; }
 .doc-principal .circ-acciones { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 8px; }
-.visor-pdf-caja { margin-top: 10px; }
 .visor-pdf { width: 100%; height: 78vh; border: 1px solid var(--borde); border-radius: 8px; background: #fff; }
 .chip-pdf { font-size: .8em; }
 .envio-paso { border-top: 1px solid var(--borde); padding-top: 10px; margin-top: 10px; }

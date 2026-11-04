@@ -16,7 +16,7 @@ import { E, perfiles, logoHTML, base } from '../estado.js';
 import { t } from '../i18n.js';
 import { esc, aviso, ventana, confirmar, leerForm, nombre, nombreLista, vacio, fechaHora } from '../ui.js';
 import { cabecera } from './comun.js';
-import { AREAS, CARGO_DE_AREA, LIMITES, hoyBogota, fechaLarga, textoDestinatarios, saludoSugerido, textoPlano, contenidoHTML, leerEditor, datosParaServidor, numeracion } from '../circular_contenido.js';
+import { CARGO_DE_AREA, LIMITES, hoyBogota, fechaLarga, textoDestinatarios, saludoSugerido, textoPlano, contenidoHTML, leerEditor, datosParaServidor, numeracion } from '../circular_contenido.js';
 import { perfilCircular, urlFirma } from '../firma_circular.js';
 import { icono } from '../iconos.js';
 
@@ -49,10 +49,15 @@ const normalEnvio = (e) => ({
   personas: Array.isArray(e?.personas) ? [...new Set(e.personas.filter((x) => typeof x === 'string'))] : [],
 });
 const nuevaCircular = () => ({ fecha_emision: hoyBogota(), consecutivo: '', dependencia: 'Rectoría', destinatarios: [], destinatarios_otros: '', titulo: '', contenido: { version: 1, bloques: [] }, responsable: '', cargo: CARGO_DE_AREA['Rectoría'], firmar: false, envio: sinEnvio() });
+// «De (área que emite)» NO se elige (Fabio, 4-nov-2026): sale del perfil de quien emite. Quien fue designado en un área emite
+// como esa área (Rectoría, direcciones de sección, Dirección curricular…; también un administrador designado); Administración
+// sin designación emite como Gerencia («Gerencia es Administración»).
+const AREA_ADMIN = 'Gerencia';
+const areaDelPerfil = (yo) => yo.emisor?.area?.nombre || (yo.admin ? AREA_ADMIN : '');
 // Una nueva lleva los datos de quien la prepara: su área y cargo designados y, si ya cargó su firma, su nombre y su firma
 const nuevaDeMi = (yo) => {
   const n = nuevaCircular();
-  if (!yo.admin && yo.emisor) Object.assign(n, { dependencia: yo.emisor.area?.nombre || '', cargo: yo.emisor.cargo || '' });
+  if (yo.emisor || yo.admin) Object.assign(n, { dependencia: areaDelPerfil(yo), cargo: yo.emisor?.cargo || '' });
   if (yo.firma && yo.nombre) Object.assign(n, { firmar: true, responsable: yo.nombre });
   return n;
 };
@@ -405,7 +410,7 @@ export async function editor(m, p) {
         <h2><span class="circ-num">2</span> La circular</h2>
         <div class="circ-cuadro-form">
           <div><span>Fecha</span><b data-fecha-txt></b><small class="ayuda">Hora de Colombia. <button type="button" class="btn-link" data-hoy hidden>Usar la de hoy</button></small></div>
-          <label><span>De (área que emite)</span><input name="dependencia" list="circ-areas" maxlength="${LIMITES.dependencia}" placeholder="Ej.: Rectoría"><datalist id="circ-areas">${[...new Set([...areasCfg.map((a) => a.nombre), ...AREAS])].map((a) => `<option value="${esc(a)}">`).join('')}</datalist></label>
+          <div data-de><span>De (área que emite)</span><b data-de-txt>—</b><small class="ayuda" data-de-ayuda></small><input type="hidden" name="dependencia"></div>
           <div class="circ-consec-celda"><span id="circ-consec-tit">Consecutivo</span>
             <select name="serie_id" data-serie aria-labelledby="circ-consec-tit" aria-describedby="circ-consec-ayuda" hidden></select>
             <input data-consec readonly aria-readonly="true" aria-labelledby="circ-consec-tit" placeholder="Se asigna al guardar">
@@ -503,10 +508,14 @@ export async function editor(m, p) {
     plantilla = formatoDe(form.elements.dependencia.value);
     $c('[data-formato-txt]').textContent = plantilla ? plantilla.nombre || 'Plantilla rev. ' + plantilla.revision : (yo.emisor?.area ? 'Tu área todavía no tiene formato: pídeselo al administrador.' : 'Esa área no tiene formato: asígnalo en «Formato del PDF de cada área».');
   };
+  // El área que emite no se elige: es la del perfil de quien la prepara (areaDelPerfil; a quien fue designado el servidor también se
+  // la fija). La circular de otra persona (Administración abre la de Rectoría), la emitida y la que ya tiene número conservan la suya.
+  const mia = nueva || !fila?.autor_id || fila.autor_id === E.yo.id;
+  const propia = areaDelPerfil(yo), areaFija = mia && !emitida && !srv.consecutivo && propia ? areaDe(propia)?.nombre || propia : null;
   const poner = (x) => {
     for (const k of ['dependencia', 'destinatarios_otros', 'titulo', 'responsable', 'cargo']) form.elements[k].value = x[k];
-    // Quien fue designado en un área emite como esa área: el «De:» no se cambia (el servidor también lo fija)
-    if (yo.emisor?.area?.nombre) form.elements.dependencia.value = yo.emisor.area.nombre;
+    if (areaFija) form.elements.dependencia.value = areaFija;
+    $c('[data-de-txt]').textContent = form.elements.dependencia.value || '—';
     form.elements.alcance.value = x.envio.alcance;
     pintarItems(x.envio.ids);
     for (const cb of form.querySelectorAll('[name=grupo]')) cb.checked = !cb.disabled && x.envio.roles.includes(cb.value);
@@ -519,7 +528,10 @@ export async function editor(m, p) {
   };
   poner(d);
   pintarFirmar();
-  if (yo.emisor?.area?.nombre) { form.elements.dependencia.readOnly = true; form.elements.dependencia.removeAttribute('list'); form.elements.dependencia.title = 'Es tu área: la asignó el administrador'; }
+  $c('[data-de-ayuda]').textContent = emitida ? 'Quedó al emitirla y no cambia.' : !mia ? 'Es el área de quien la preparó.'
+    : srv.consecutivo ? 'Es el área con la que se reservó su número.' : yo.emisor?.area ? 'Es tu área: la asignó Administración.'
+    : yo.admin ? 'Administración emite como Gerencia. Rectoría, las direcciones de sección y la Dirección curricular emiten desde su propio perfil.'
+    : 'Tu perfil no tiene área: pídele a Administración que te la asigne (Ajustes → Quién prepara circulares).';
   form.elements.firmar.addEventListener('change', pintarFirmar);
 
   // ----- Leer el formulario
@@ -669,17 +681,6 @@ export async function editor(m, p) {
   $c('[data-resultados]').addEventListener('click', (e) => { const b = e.target.closest('[data-persona]'); if (!b) return; elegidas.set(b.dataset.persona, contactos.get(b.dataset.persona)); pintarElegidas(); cambio(); });
   $c('[data-elegidas]').addEventListener('click', (e) => { const b = e.target.closest('[data-quitar]'); if (!b) return; elegidas.delete(b.dataset.quitar); pintarElegidas(); cambio(); });
 
-  // El área sugiere el cargo (si el cargo está vacío o era la sugerencia del área anterior)
-  let areaAntes = d.dependencia;
-  form.elements.dependencia.addEventListener('change', () => {
-    const area = form.elements.dependencia.value.trim();
-    const cargo = form.elements.cargo;
-    if (CARGO_DE_AREA[area] && (!cargo.value.trim() || cargo.value === CARGO_DE_AREA[areaAntes])) { cargo.value = CARGO_DE_AREA[area]; cambio(); }
-    areaAntes = area;
-    ponerFormato();
-    cambio();
-    cargarSeries();
-  });
   $c('[data-hoy]').addEventListener('click', () => { d = { ...d, fecha_emision: hoyBogota() }; cambio(); });
 
   // ----- Editor de contenido: párrafos, negrita y listas (lo que acepta el formato del servidor)

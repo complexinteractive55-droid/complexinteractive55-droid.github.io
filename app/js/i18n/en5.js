@@ -154,4 +154,13 @@ export default {
   'Solo el administrador del colegio, o quien fue designado en esa área, configura sus series.': 'Only the school administrator, or whoever was designated in that area, configures its series.',
   'Solo el administrador del colegio, o quien fue designado en esa área, valida sus series.': 'Only the school administrator, or whoever was designated in that area, validates its series.',
   'Solo el administrador del colegio configura y emite las circulares.': 'Only the school administrator configures and issues circulars.',
+  // 4-nov-2026: «De (área que emite)» sale del perfil (no se elige) y la circular se ve completa en el mensaje
+  'Quedó al emitirla y no cambia.': 'Set when it was issued; it does not change.', 'Es el área de quien la preparó.': 'It is the area of whoever prepared it.',
+  'Es el área con la que se reservó su número.': 'It is the area its number was reserved with.', 'Es tu área: la asignó Administración.': 'It is your area: Administration assigned it.',
+  'Administración emite como Gerencia. Rectoría, las direcciones de sección y la Dirección curricular emiten desde su propio perfil.': 'Administration issues as Management. The Rector’s office, the section heads and Curriculum issue from their own profile.',
+  'Tu perfil no tiene área: pídele a Administración que te la asigne (Ajustes → Quién prepara circulares).': 'Your profile has no area: ask Administration to assign one (Settings → Who prepares circulars).',
+  'Cargando el documento…': 'Loading the document…', 'Abrir el PDF': 'Open the PDF',
+  '✓ Es el archivo enviado (misma huella).': '✓ It is the file that was sent (same fingerprint).', 'Usa «Abrir el PDF» o «Descargar».': 'Use “Open the PDF” or “Download”.',
+  'No se pudo traer el documento: usa «Abrir el PDF» o «Descargar».': 'The document could not be loaded: use “Open the PDF” or “Download”.',
+  'No se pudo mostrar aquí: usa «Abrir el PDF» o «Descargar».': 'It could not be shown here: use “Open the PDF” or “Download”.',
 };
