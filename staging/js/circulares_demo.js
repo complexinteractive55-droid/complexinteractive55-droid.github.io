@@ -6,6 +6,9 @@
 // y el número oficial al confirmar el envío (circular_asignar_numero); el selector pide circular_series_disponibles.
 export function crearCircularesDemo({ tabla, usuario, guardar, ahora, err, esAdmin, consecutivoCircular, numeroDeSerie, vigentesDe, hoyLocal, formatoCirc, emisorCirc, puedePreparar, existeArchivo }) {
   const soloAdmin = (c) => { if (!usuario() || !esAdmin(c)) err('Solo el administrador del colegio configura y emite las circulares.'); };
+  // Ajustes por área (20261105110000): Administración, todo; quien fue designado en un área, solo las series de SU área
+  const configuraArea = (c, area) => !!usuario() && (esAdmin(c) || (!!area && emisorCirc(c)?.area_id === area));
+  const areaDesignada = (c) => (esAdmin(c) ? null : emisorCirc(c)?.area_id || null);
   const historia = (c, objeto, id, accion, antes, despues) => tabla('circular_config_historial').push({ id: Date.now() + Math.random(), colegio_id: c, actor_id: usuario(), objeto, objeto_id: id, accion,
     antes: antes ? JSON.parse(JSON.stringify(antes)) : null, despues: despues ? JSON.parse(JSON.stringify(despues)) : null, creado_en: ahora() });
   const nombreDe = (id) => { const p = tabla('perfiles').find((x) => x.id === id); return p ? `${p.nombres || ''} ${p.apellidos || ''}`.trim() : null; };
@@ -42,8 +45,10 @@ export function crearCircularesDemo({ tabla, usuario, guardar, ahora, err, esAdm
       return { ...x };
     },
     circular_serie_guardar(a) {
-      soloAdmin(a.p_colegio);
-      const c = a.p_colegio, area = a.p_area || null, suf = a.p_sufijo || null, ultimo = Number(a.p_ultimo_usado);
+      // una serie que ya existe se juzga por su área, no por la que diga la petición
+      const c = a.p_colegio, area = a.p_id ? (tabla('circular_series').find((x) => x.id === a.p_id && x.colegio_id === c)?.area_id || null) : a.p_area || null;
+      if (!configuraArea(c, area)) err('Solo el administrador del colegio, o quien fue designado en esa área, configura sus series.');
+      const suf = a.p_sufijo || null, ultimo = Number(a.p_ultimo_usado);
       if (area && !tabla('circular_areas').some((x) => x.id === area && x.colegio_id === c)) err('Esa área no es de este colegio.');
       if (!String(a.p_prefijo || '').trim() || a.p_prefijo.length > 30) err('Escribe el código de la serie (hasta 30 caracteres), p. ej. «Memo E2-» o «CT Q-».');
       if (!/^[0-9]{4}(-[0-9]{4})?$/.test(a.p_periodo || '')) err('El período va como 2026 o 2026-2027.');
@@ -79,10 +84,11 @@ export function crearCircularesDemo({ tabla, usuario, guardar, ahora, err, esAdm
       return { ...s, siguiente: sig };
     },
     circular_serie_validar(a) {
-      soloAdmin(a.p_colegio);
+      if (!usuario() || !(esAdmin(a.p_colegio) || areaDesignada(a.p_colegio))) err('Solo el administrador del colegio configura y emite las circulares.');
       if (String(a.p_constancia || '').trim().length < 10) err('Escribe con qué registro del colegio comprobaste el área, el formato y el último número (mínimo 10 letras).');
       const s = tabla('circular_series').find((x) => x.id === a.p_id && x.colegio_id === a.p_colegio);
       if (!s) err('Esa serie no es de este colegio.');
+      if (!configuraArea(a.p_colegio, s.area_id || null)) err('Solo el administrador del colegio, o quien fue designado en esa área, valida sus series.');
       const antes = { ...s };
       Object.assign(s, { provisional: false, validada_por: usuario(), validada_en: ahora(), nota: a.p_constancia.trim().slice(0, 500) });
       historia(a.p_colegio, 'serie', s.id, 'validada', antes, s);
@@ -99,12 +105,14 @@ export function crearCircularesDemo({ tabla, usuario, guardar, ahora, err, esAdm
       return { ...x };
     },
     circular_numeracion(a) {
-      soloAdmin(a.p_colegio);
-      const c = a.p_colegio;
+      const c = a.p_colegio, admin = !!usuario() && esAdmin(c), soloArea = admin ? null : areaDesignada(c);
+      if (!admin && !soloArea) err('Solo el administrador del colegio configura y emite las circulares.');
+      const mia = (s) => admin || s.area_id === soloArea;
+      const misSeries = new Set(tabla('circular_series').filter((s) => s.colegio_id === c && mia(s)).map((s) => s.id));
       return {
-        asignar_numero: tabla('circular_ajustes').find((x) => x.colegio_id === c)?.asignar_numero || 'guardar',
-        areas: tabla('circular_areas').filter((x) => x.colegio_id === c).sort((x, y) => x.nombre.localeCompare(y.nombre)).map((x) => ({ ...x })),
-        series: tabla('circular_series').filter((s) => s.colegio_id === c).sort((x, y) => (y.vigente - x.vigente) || String(y.creado_en).localeCompare(String(x.creado_en))).map((s) => {
+        asignar_numero: tabla('circular_ajustes').find((x) => x.colegio_id === c)?.asignar_numero || 'guardar', solo_area: soloArea,
+        areas: tabla('circular_areas').filter((x) => x.colegio_id === c && (admin || x.id === soloArea)).sort((x, y) => x.nombre.localeCompare(y.nombre)).map((x) => ({ ...x })),
+        series: tabla('circular_series').filter((s) => s.colegio_id === c && mia(s)).sort((x, y) => (y.vigente - x.vigente) || String(y.creado_en).localeCompare(String(x.creado_en))).map((s) => {
           const ult = tabla('circular_borradores').filter((b) => b.serie_id === s.id).sort((x, y) => y.numero - x.numero)[0];
           return { ...s, area: tabla('circular_areas').find((x) => x.id === s.area_id)?.nombre || null,
             ultimo_texto: s.ultimo > 0 ? texto({ ...s, area_id: null }, s.ultimo) : null, ultimo_texto_area: s.ultimo > 0 ? texto(s, s.ultimo) : null,
@@ -112,7 +120,7 @@ export function crearCircularesDemo({ tabla, usuario, guardar, ahora, err, esAdm
             ultimo_documento: ult ? { id: ult.id, consecutivo: ult.consecutivo, titulo: ult.datos?.titulo || null, estado: ult.estado || 'borrador', version: ult.version, actualizado_en: ult.actualizado_en } : null,
             anulados: tabla('circular_numeros_anulados').filter((x) => x.serie_id === s.id).length };
         }),
-        historial: tabla('circular_config_historial').filter((h) => h.colegio_id === c).slice(-50).reverse().map((h) => ({ ...h, actor: nombreDe(h.actor_id) })),
+        historial: tabla('circular_config_historial').filter((h) => h.colegio_id === c && (admin || (h.objeto === 'serie' && misSeries.has(h.objeto_id)))).slice(-50).reverse().map((h) => ({ ...h, actor: nombreDe(h.actor_id) })),
       };
     },
     circular_previsualizar_numero(a) {

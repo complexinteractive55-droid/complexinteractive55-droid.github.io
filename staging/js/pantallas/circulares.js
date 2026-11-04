@@ -22,12 +22,15 @@ export async function lista(m) {
   if (!admin) circ = await visiblesParaMi(b, circ);
   const leidas = new Set((await E.db.select('circular_lecturas', { eq: { perfil_id: E.yo.id } })).map((l) => l.circular_id));
   // La entrada a las circulares institucionales: Administración y quien el administrador designó (2-nov-2026)
-  const prepara = admin || (['profesor', 'director_seccion', 'enfermeria'].includes(E.rol) && (await (await import('../firma_circular.js')).perfilCircular().catch(() => ({}))).puede_preparar === true);
+  const perfil = !admin && ['profesor', 'director_seccion', 'enfermeria'].includes(E.rol) ? await (await import('../firma_circular.js')).perfilCircular(true).catch(() => ({})) : null; // fresco: una designación nueva (o retirada) se ve sin recargar
+  const prepara = admin || perfil?.puede_preparar === true;
+  // La tuerca: Administración y quien fue designado EN UN ÁREA (Gerencia, direcciones de sección, Rectoría; Fabio, 3-nov-2026 noche)
+  const configura = admin || (prepara && !!perfil?.emisor?.area);
   // «Nueva circular» abre la circular institucional: para quién, el documento, Ver PDF y Enviar (Fabio, 3-nov-2026: «la otra sobra»).
-  // 3-nov-2026 noche: al lado, la tuerca «Ajustes» (solo Administración: quién prepara, firma, series y numeración); sin el acceso
+  // 3-nov-2026 noche: al lado, la tuerca «Ajustes» (Administración: todo; quien fue designado en un área: las series de su área); sin el acceso
   // aparte a «Circulares institucionales (PDF)»: sus borradores y emitidas se ven aquí mismo. Las circulares de texto que ya
   // existen se siguen viendo, editando y publicando desde su detalle.
-  m.innerHTML = cabecera('Circulares', { acciones: prepara ? `<a class="btn btn-primario" data-nueva href="#/circular-institucional/nueva">${icono('mas')}Nueva circular</a>${admin ? `<a class="btn btn-solo-icono" data-ajustes href="#/circulares/ajustes" aria-label="Ajustes" title="Ajustes">${icono('ajustes')}</a>` : ''}` : '' })
+  m.innerHTML = cabecera('Circulares', { acciones: prepara ? `<a class="btn btn-primario" data-nueva href="#/circular-institucional/nueva">${icono('mas')}Nueva circular</a>${configura ? `<a class="btn btn-solo-icono" data-ajustes href="#/circulares/ajustes" aria-label="Ajustes" title="Ajustes">${icono('ajustes')}</a>` : ''}` : '' })
     + (prepara ? '<section class="circ-inst" data-institucionales aria-live="polite"><p class="ayuda">Cargando las circulares institucionales…</p></section>' : '') + (circ.length ? `
     ${prepara ? '<h2 class="sub">Circulares de texto</h2>' : ''}<div class="lista">${circ.map((c) => `
       <a class="fila fila-boton ${!admin && !leidas.has(c.id) ? 'sin-leer' : ''}" href="#/circular/${c.id}">

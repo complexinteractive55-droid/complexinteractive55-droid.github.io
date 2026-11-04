@@ -122,16 +122,27 @@ export async function seccionBorradores(div) {
 export async function lista(m) { return (await import('./circulares.js')).lista(m); }
 
 // ---------------------------------------------------------------- Ajustes (la tuerca junto a «Nueva circular»)
-// Solo Administración (el servidor también lo exige en cada operación: circular_solo_admin). Lo que antes estaba en dos paneles
-// plegados al final de «Circulares institucionales»: quién prepara circulares (y el formato de cada área), y la numeración
-// (cuándo queda el número, áreas y series). La firma de cada persona la carga ella misma en «Mi cuenta y ajustes».
+// Administración: todo (lo que antes estaba en dos paneles plegados al final de «Circulares institucionales»: quién prepara
+// circulares y el formato de cada área, y la numeración: cuándo queda el número, áreas y series). Quien fue designado EN UN ÁREA
+// (Gerencia, direcciones de sección, Rectoría; Fabio, 3-nov-2026 noche): las series de SU área, nada más (20261105110000).
+// El servidor lo exige en cada operación. La firma de cada persona la carga ella misma en «Mi cuenta y ajustes».
 export async function ajustes(m) {
-  const yo = await perfilCircular().catch(() => ({}));
-  if (!yo.admin) { m.innerHTML = cabecera('Ajustes de circulares', { volver: VOLVER }) + vacio('Solo Administración configura las circulares del colegio.'); return; }
+  const yo = await perfilCircular(true).catch(() => ({})); // fresco: lo que el administrador acaba de cambiar
+  const suArea = yo.admin ? null : yo.emisor?.area || null;
+  if (!yo.admin && !suArea) { m.innerHTML = cabecera('Ajustes de circulares', { volver: VOLVER }) + vacio('Solo Administración, o quien fue designado en un área (Gerencia, direcciones de sección, Rectoría), configura las circulares.'); return; }
+  const firma = `<section class="tarjeta"><h2>Firma</h2><p class="ayuda">Cada persona carga su propia firma en <a href="#/perfil">Mi cuenta y ajustes → Mi firma</a>; <span>nadie puede poner la firma de otra.</span> ${yo.firma ? 'Tu firma ya está cargada.' : 'Tú aún no has cargado la tuya.'}</p></section>`;
+  if (suArea) {
+    m.innerHTML = cabecera(`${icono('ajustes')} Ajustes de circulares`, { volver: VOLVER }) + `
+      <section class="tarjeta" data-ajustes-numeracion><h2>Series de ${esc(suArea.nombre)}</h2>
+        <p class="ayuda">Creas, cambias y validas las series de tu área. Cuándo queda el número, las áreas y quién prepara circulares los configura Administración.</p>
+        <div data-numeracion-cuerpo><p class="ayuda">Cargando…</p></div></section>${firma}`;
+    numeracion_(m.querySelector('[data-numeracion-cuerpo]'), { soloArea: suArea });
+    return;
+  }
   m.innerHTML = cabecera(`${icono('ajustes')} Ajustes de circulares`, { volver: VOLVER }) + `
     <section class="tarjeta" data-ajustes-numeracion><h2>Numeración: series y consecutivos</h2><div data-numeracion-cuerpo><p class="ayuda">Cargando…</p></div></section>
     <section class="tarjeta" data-ajustes-emisores><h2>Quién prepara circulares</h2><p class="ayuda">Además de Administración: Gerencia, direcciones de sección… con su cargo, su área y el formato del PDF de cada área.</p><div data-emisores-cuerpo><p class="ayuda">Cargando…</p></div></section>
-    <section class="tarjeta"><h2>Firma</h2><p class="ayuda">Cada persona carga su propia firma en <a href="#/perfil">Mi cuenta y ajustes → Mi firma</a>; <span>nadie puede poner la firma de otra.</span> ${yo.firma ? 'Tu firma ya está cargada.' : 'Tú aún no has cargado la tuya.'}</p></section>`;
+    ${firma}`;
   numeracion_(m.querySelector('[data-numeracion-cuerpo]'));
   emisores_(m.querySelector('[data-emisores-cuerpo]'));
 }
@@ -210,7 +221,8 @@ async function designar(x, areas, lista) {
 // Cada área tiene su serie y su contador. El campo pide el ÚLTIMO número oficialmente usado (el siguiente es +1).
 // Una serie nueva queda PROVISIONAL: sirve para borradores, pero solo se emite cuando el administrador la valida con los
 // registros del colegio. Nada de esto inventa los formatos oficiales: se configuran aquí cuando el colegio los confirme.
-async function numeracion_(caja) {
+// soloArea: quien fue designado en un área ve y configura solo las series de esa área (sin «cuándo queda el número» ni áreas)
+async function numeracion_(caja, { soloArea = null } = {}) {
   let n;
   try { n = await E.db.rpc('circular_numeracion', { p_colegio: E.colegio.id }); }
   catch (e) { caja.innerHTML = `<p class="ayuda">${/does not exist|no existe|function/i.test(e.message) ? 'La numeración por área aún no está instalada en la base de este colegio (migración pendiente).' : esc(e.message)}</p>`; return; }
@@ -226,18 +238,19 @@ async function numeracion_(caja) {
     <p class="ayuda">Formato: <b>código</b> + número con ceros (ancho) + <b>sufijo</b>. Ej.: «Memo E2-» + 008 + «-2026-2027». Solo sube el número; el código y el sufijo no cambian dentro de la serie.
       Una misma área puede tener <b>varias series</b> en el mismo período (p. ej. «CT MEMO-», «CT Q-», «CT K-»), cada una con su propio contador; lo que no se repite es el mismo código en el mismo período.
       No se reinicia sola al cambiar de año: abrir otra serie es una decisión explícita. <b>Los formatos oficiales de cada área están pendientes de confirmar con Gerencia.</b></p>
+    ${soloArea ? `<p class="ayuda" data-ajuste-solo>${n.asignar_numero === 'emitir' ? 'El número queda definitivo al enviar la circular (lo decide Administración).' : 'El número queda definitivo al guardar el borrador por primera vez (lo decide Administración).'}</p>` : `
     <fieldset class="form" data-ajuste><legend><b>¿Cuándo queda definitivo el número?</b> (decisión pendiente)</legend>
       <label class="check"><input type="radio" name="asignar" value="guardar" ${n.asignar_numero === 'guardar' ? 'checked' : ''}> Al guardar el borrador por primera vez (como hoy)</label>
       <label class="check"><input type="radio" name="asignar" value="emitir" ${n.asignar_numero === 'emitir' ? 'checked' : ''}> Al emitir (el borrador muestra el número previsto, sin reservarlo)</label>
     </fieldset>
     <h3>Áreas</h3>
     <div class="acciones-grupo">${n.areas.map((a) => `<button class="btn btn-chico" data-area="${esc(a.id)}">${esc(a.nombre)}${a.activo ? '' : ' (inactiva)'}</button>`).join('') || '<span class="ayuda">Aún no hay áreas.</span>'}
-      <button class="btn btn-chico" data-area-nueva>＋ Área</button></div>
+      <button class="btn btn-chico" data-area-nueva>＋ Área</button></div>`}
     <h3>Series</h3>
     <div class="lista">${n.series.map(serieHTML).join('') || '<p class="ayuda">Aún no hay series.</p>'}</div>
     <div class="acciones"><button class="btn" data-serie-nueva>＋ Serie</button></div>
     ${n.historial.length ? `<details><summary>Historial de cambios (${n.historial.length})</summary><ul class="lista-simple">${n.historial.slice(0, 20).map((h) => `<li>${esc(fechaHora(h.creado_en))} · ${esc(h.actor || '—')} · ${esc(h.objeto)} ${esc(h.accion)}${h.despues?.prefijo ? ` · ${esc(h.despues.prefijo)}` : h.despues?.nombre ? ` · ${esc(h.despues.nombre)}` : h.despues?.asignar_numero ? ` · al ${esc(h.despues.asignar_numero)}` : ''}</li>`).join('')}</ul></details>` : ''}`;
-  caja.querySelector('[data-ajuste]').addEventListener('change', async (e) => {
+  caja.querySelector('[data-ajuste]')?.addEventListener('change', async (e) => {
     try { await E.db.rpc('circular_ajustes_guardar', { p_colegio: E.colegio.id, p_asignar_numero: e.target.value }); aviso('Ajuste guardado'); otra(); }
     catch (err) { aviso(err.message, 'error'); otra(); }
   });
@@ -250,7 +263,7 @@ async function numeracion_(caja) {
   const serie = async (s) => {
     const vig = (areaId) => n.series.some((x) => x.vigente && (x.area_id || null) === (areaId || null) && x.id !== s?.id);
     const r = await ventana({ titulo: s ? 'Editar serie' : 'Nueva serie', html: `<div class="form">
-      ${s ? `<p><b>${esc(s.area || 'Colegio (sin área)')}</b></p>` : `<label>Área<select name="area"><option value="">Colegio (sin área)</option>${n.areas.filter((a) => a.activo).map((a) => `<option value="${esc(a.id)}">${esc(a.nombre)}</option>`).join('')}</select></label>`}
+      ${s || soloArea ? `<p><b>${esc(s?.area || soloArea?.nombre || 'Colegio (sin área)')}</b></p>` : `<label>Área<select name="area"><option value="">Colegio (sin área)</option>${n.areas.filter((a) => a.activo).map((a) => `<option value="${esc(a.id)}">${esc(a.nombre)}</option>`).join('')}</select></label>`}
       <label>Código de la serie (constante)<input name="prefijo" maxlength="30" value="${esc(s?.prefijo || '')}" placeholder="Ej.: Memo E2- · CT Q- · Z-"></label>
       <label>Ancho del número (cifras con ceros)<input name="ancho" type="number" min="1" max="6" value="${esc(s?.ancho ?? 3)}"></label>
       <label>Sufijo (constante; vacío = «-» + período)<input name="sufijo" maxlength="40" value="${esc(s?.sufijo || '')}" placeholder="Ej.: -2026-2027"></label>
@@ -266,7 +279,7 @@ async function numeracion_(caja) {
         const ver = () => {
           const d = leerForm(c), anc = Number(d.ancho) || 3, sig = String((Number(d.ultimo) || 0) + 1);
           c.querySelector('[data-ejemplo]').textContent = sig.length > anc ? `El siguiente número (${sig}) no cabe en ${anc} cifras.` : `Último: ${Number(d.ultimo) ? d.prefijo + String(Number(d.ultimo)).padStart(anc, '0') + (d.sufijo || '-' + d.periodo) : '(ninguno)'} → siguiente: ${d.prefijo}${sig.padStart(anc, '0')}${d.sufijo || '-' + d.periodo}`;
-          const rem = c.querySelector('[data-reemplazar]'); if (rem) rem.hidden = s ? true : !vig(d.area);
+          const rem = c.querySelector('[data-reemplazar]'); if (rem) rem.hidden = s ? true : !vig(soloArea?.id || d.area);
         };
         c.addEventListener('input', ver); c.addEventListener('change', ver); ver();
       },
@@ -275,7 +288,7 @@ async function numeracion_(caja) {
         if (!String(d.prefijo || '').trim()) throw new Error('Escribe el código de la serie, p. ej. «CT Q-».');
         if (!/^[0-9]{4}(-[0-9]{4})?$/.test(String(d.periodo || '').trim())) throw new Error('El período va como 2026 o 2026-2027.');
         d.periodo = String(d.periodo).trim();
-        return E.db.rpc('circular_serie_guardar', { p_colegio: E.colegio.id, p_id: s?.id || null, p_area: s ? s.area_id : d.area || null, p_prefijo: d.prefijo, p_periodo: d.periodo, p_ancho: Number(d.ancho),
+        return E.db.rpc('circular_serie_guardar', { p_colegio: E.colegio.id, p_id: s?.id || null, p_area: s ? s.area_id : soloArea?.id || d.area || null, p_prefijo: d.prefijo, p_periodo: d.periodo, p_ancho: Number(d.ancho),
           p_sufijo: d.sufijo || null, p_ultimo_usado: Number(d.ultimo), p_vigente_desde: d.desde || null, p_vigente_hasta: d.hasta || null, p_nota: d.nota || null, p_reemplazar: !!d.reemplazar }); } }] });
     if (r) { aviso(`Serie guardada · siguiente: ${r.siguiente}`); otra(); }
   };

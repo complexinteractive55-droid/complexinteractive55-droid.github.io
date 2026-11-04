@@ -96,6 +96,7 @@ const PATRONES = [
   [/^La circular cambió mientras la enviabas \(versión (\d+) → (\d+)\): ábrela otra vez y revisa antes de enviar\.$/, 'The circular changed while you were sending it (version $1 → $2): open it again and review before sending.'],
   [/^(.+) ya existe en el colegio: revisa el último número usado\.$/, '$1 already exists in the school: check the last number used.'],
   [/^Serie guardada · siguiente: (.+)$/, 'Series saved · next: $1'],
+  [/^Series de (.+)$/, 'Series of $1'],
 ];
 
 // ---------------------------------------------------------------- Traducir lo que se pinta

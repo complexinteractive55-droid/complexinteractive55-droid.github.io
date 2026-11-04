@@ -138,4 +138,12 @@ export default {
   'Circular': 'Circular', 'Borrador (nadie la ve todavía)': 'Draft (no one sees it yet)', 'Nadie la ha leído todavía.': 'No one has read it yet.', '¿Publicar la circular?': 'Publish the circular?',
   'Editar circular': 'Edit circular', 'Una sede': 'One campus', 'Un grado': 'One grade', 'Un curso': 'One class', 'Solo para (si no marcas ninguno, les llega a todos)': 'Only for (if you mark none, everyone gets it)',
   'Escribe el título y el mensaje.': 'Type the title and the message.', 'Circular publicada': 'Circular published', 'Esa circular no existe.': 'That circular does not exist.',
+  // Ajustes por área (Gerencia, direcciones de sección, Rectoría)
+  'Creas, cambias y validas las series de tu área. Cuándo queda el número, las áreas y quién prepara circulares los configura Administración.': 'You create, change and validate your area’s series. When the number becomes final, the areas and who prepares circulars are set by Administration.',
+  'El número queda definitivo al enviar la circular (lo decide Administración).': 'The number becomes final when the circular is sent (Administration decides).',
+  'El número queda definitivo al guardar el borrador por primera vez (lo decide Administración).': 'The number becomes final when the draft is first saved (Administration decides).',
+  'Solo Administración, o quien fue designado en un área (Gerencia, direcciones de sección, Rectoría), configura las circulares.': 'Only Administration, or whoever was designated in an area (Management, section directors, Rectory), configures circulars.',
+  'Solo el administrador del colegio, o quien fue designado en esa área, configura sus series.': 'Only the school administrator, or whoever was designated in that area, configures its series.',
+  'Solo el administrador del colegio, o quien fue designado en esa área, valida sus series.': 'Only the school administrator, or whoever was designated in that area, validates its series.',
+  'Solo el administrador del colegio configura y emite las circulares.': 'Only the school administrator configures and issues circulars.',
 };
