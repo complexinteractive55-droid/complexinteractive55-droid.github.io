@@ -337,6 +337,8 @@ export async function editor(m, p) {
       return;
     }
   }
+  // Emitida (enviada) o anulada: su contenido y número ya no cambian y no se vuelve a enviar (Fabio, 4-nov-2026: «ya fue emitida»)
+  const emitida = !!fila?.estado && fila.estado !== 'borrador';
   // La serie de consecutivos vigente (para decir si es provisional) y la plantilla vigente (firma y revisión)
   const [series, plantillasTodas] = await Promise.all([
     E.db.select('circular_series', { eq: { colegio_id: E.colegio.id, vigente: true } }).catch(() => []),
@@ -397,7 +399,7 @@ export async function editor(m, p) {
         </details>
         <p class="circ-elegidas" data-elegidas></p>
         <label>Agregar al «Para» del documento (opcional)<input name="destinatarios_otros" maxlength="300" placeholder="Ej.: Monitoras de transporte"></label>
-        ${envia ? '<p class="circ-llegara" data-llegara role="status" aria-live="polite"></p>' : '<p class="ayuda">Tú la preparas; Administración la envía a estas personas.</p>'}
+        ${emitida ? '' : envia ? '<p class="circ-llegara" data-llegara role="status" aria-live="polite"></p>' : '<p class="ayuda">Tú la preparas; Administración la envía a estas personas.</p>'}
       </section>
       <section class="tarjeta circ-paso circ-paso-doc">
         <h2><span class="circ-num">2</span> La circular</h2>
@@ -434,15 +436,15 @@ export async function editor(m, p) {
       </section>
     </form>
     <div class="circ-mas">
-      <small class="ayuda">Referencia interna del borrador: <span data-ref>${esc(referencia(srv.id))}</span>${envia ? ' · Al enviarla queda emitida con su número oficial (la serie debe estar validada) y su contenido ya no cambia.' : ''}</small>
+      <small class="ayuda">Referencia interna del borrador: <span data-ref>${esc(referencia(srv.id))}</span>${envia && !emitida ? ' · Al enviarla queda emitida con su número oficial (la serie debe estar validada) y su contenido ya no cambia.' : ''}</small>
       <button class="btn btn-peligro btn-chico" data-eliminar ${srv.id ? '' : 'hidden'}>${icono('eliminar')}Eliminar borrador</button>
     </div>
     <div class="pie-fijo circ-pie">
       <p class="circ-estado" data-estado role="status" aria-live="polite"></p>
       <div class="circ-acciones">
         <button type="button" class="btn" data-guardar>${icono('guardar')}Guardar borrador</button>
-        <button type="button" class="btn ${envia ? '' : 'btn-primario'}" data-vista data-pdf>${icono('ver')}Ver PDF</button>
-        ${envia ? `<button type="button" class="btn btn-primario" data-enviar-circ>${icono('enviar')}Enviar</button>` : ''}
+        <button type="button" class="btn ${envia && !emitida ? '' : 'btn-primario'}" data-vista data-pdf>${icono('ver')}Ver PDF</button>
+        ${envia && !emitida ? `<button type="button" class="btn btn-primario" data-enviar-circ>${icono('enviar')}Enviar</button>` : ''}
       </div>
     </div>
     </div>`;
@@ -452,7 +454,6 @@ export async function editor(m, p) {
   const ed = caja.querySelector('[data-editor]');
   const $c = (sel) => caja.querySelector(sel);
   form.addEventListener('submit', (e) => e.preventDefault());
-  const emitida = !!fila?.estado && fila.estado !== 'borrador';
 
   // ----- 1. ¿Para quién? Grupos, alcance (sedes, grados o cursos) y personas una por una. El «Para» del documento sale de aquí.
   const elegidas = new Map(); // perfil_id → contacto
@@ -629,7 +630,7 @@ export async function editor(m, p) {
     btnS.dataset.modo = cambiar ? 'cambiar' : 'insertar';
     btnS.hidden = !saludo || (!cambiar && /^\s*(estimad|apreciad|querid|señor|respetad)/i.test(plano));
     btnS.textContent = !saludo ? '' : cambiar ? `Cambiar el saludo a «${saludo}»` : `Empezar con «${saludo}»`;
-    // emitida: el documento ya no cambia; elegir a quién más enviarla no es un cambio del borrador
+    // emitida: el documento ya no cambia; tocar las casillas de «¿Para quién?» no es un cambio del borrador
     const comparable = (y) => (emitida ? { ...y, envio: null, destinatarios: null } : y);
     const cambios = !srv.datos || !igual(comparable(x), comparable(srv.datos));
     if (envia) contar(x.envio);
@@ -879,7 +880,7 @@ export async function editor(m, p) {
   });
 
   // ----- Enviar a la Bandeja de entrada (solo Administración, 3-nov-2026) a quienes se marcaron arriba: siempre de la versión
-  // GUARDADA; si hay cambios sin guardar, primero se guardan (si no se puede, no se envía nada). Ya emitida: a más personas.
+  // GUARDADA; si hay cambios sin guardar, primero se guardan (si no se puede, no se envía nada). Emitida: no hay «Enviar».
   $c('[data-enviar-circ]')?.addEventListener('click', async () => {
     const x = actual(), env = x.envio;
     if (!env.roles.length && !env.personas.length) { aviso('Marca para quién es la circular.', 'error'); enfocar('destinatarios'); return; }
@@ -905,12 +906,12 @@ export async function editor(m, p) {
     if (r) { caja.remove(); editor(m, { id: srv.id }); }
   });
   if (srv.id && envia) import('./circular_envio.js').then((x) => x.revisarEnvioPendiente(srv.id)).catch(() => {});
-  // Emitida (enviada) o anulada: su contenido y número ya no cambian; se puede volver a enviar a más personas
-  if (fila?.estado && fila.estado !== 'borrador') {
+  // Emitida (enviada) o anulada: su contenido y número ya no cambian, y no se vuelve a enviar
+  if (emitida) {
     btnGuardar.disabled = true;
     $c('[data-eliminar]').hidden = true;
-    caja.insertAdjacentHTML('afterbegin', `<p class="aviso-caja" data-emitida>${fila.estado === 'emitida' ? '✅ Emitida' : '⛔ Anulada'}${fila.emitida_en ? ` el ${esc(fechaHora(fila.emitida_en))}` : ''}: su contenido y su número ya no cambian.${fila.estado === 'emitida' && yo.admin ? ' Puedes enviarla a más personas con «Enviar».' : ''}</p>`);
-    if (fila.estado === 'anulada') $c('[data-enviar-circ]')?.remove();
+    const cuando = fila.emitida_en ? ` el ${esc(fechaHora(fila.emitida_en))}` : ''; // «a. m.» ya termina en punto
+    caja.insertAdjacentHTML('afterbegin', `<p class="aviso-caja" data-emitida>${fila.estado === 'emitida' ? '✅ Emitida y enviada' : '⛔ Anulada'}${cuando}${cuando.endsWith('.') ? '' : '.'} Su contenido y su número ya no cambian${fila.estado === 'emitida' ? ', y no se vuelve a enviar' : ''}.</p>`);
   }
 }
 

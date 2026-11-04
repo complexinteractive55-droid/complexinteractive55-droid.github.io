@@ -98,6 +98,8 @@ const PATRONES = [
   [/^Serie guardada · siguiente: (.+)$/, 'Series saved · next: $1'],
   [/^Series de (.+)$/, 'Series of $1'],
   [/^Circular (.+) enviada: llegó a (\d+) bandeja\(s\) de entrada\.$/, 'Circular $1 sent: it reached $2 inbox(es).'],
+  [/^(✅ Emitida y enviada|⛔ Anulada)(?: el (.+?))?\.? Su contenido y su número ya no cambian(, y no se vuelve a enviar)?\.$/,
+    (_, e, f, r) => `${e[0] === '✅' ? '✅ Issued and sent' : '⛔ Cancelled'}${f ? ' on ' + f : ''}. Its content and number no longer change${r ? ', and it is not sent again' : ''}.`],
 ];
 
 // ---------------------------------------------------------------- Traducir lo que se pinta
