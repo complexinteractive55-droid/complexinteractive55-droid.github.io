@@ -411,6 +411,10 @@ input.nota:disabled { background: transparent; border-color: transparent; color:
 /* ---------- Avisos ---------- */
 .aviso { position: fixed; left: 50%; bottom: calc(20px + env(safe-area-inset-bottom)); transform: translate(-50%, 20px); opacity: 0; z-index: 200; background: var(--texto); color: var(--fondo); padding: 12px 18px; border-radius: 12px; font-weight: 600; max-width: calc(100% - 32px); transition: .25s; box-shadow: var(--sombra); }
 .aviso.ver { opacity: 1; transform: translate(-50%, 0); }
+/* Avisos apilados (3-nov-2026 noche): dos al mismo tiempo van uno sobre otro, no encimados */
+.avisos { position: fixed; left: 50%; bottom: calc(20px + env(safe-area-inset-bottom)); transform: translateX(-50%); z-index: 200; display: flex; flex-direction: column; align-items: center; gap: 8px; width: max-content; max-width: calc(100vw - 32px); pointer-events: none; }
+.avisos > .aviso { position: static; transform: translateY(20px); max-width: 100%; pointer-events: auto; }
+.avisos > .aviso.ver { transform: none; }
 .aviso-error { background: var(--peligro); color: #fff; }
 
 /* ---------- Cargando ---------- */
@@ -436,7 +440,7 @@ input.nota:disabled { background: transparent; border-color: transparent; color:
 .boletin .nota-bajo { color: #c62828; } .boletin .nota-basico { color: #b26a00; } .boletin .nota-alto { color: #1f4fd1; } .boletin .nota-superior { color: #1e8e3e; }
 
 @media print {
-  .barra, .menu, .no-imprimir, .aviso { display: none !important; }
+  .barra, .menu, .no-imprimir, .aviso, .avisos { display: none !important; }
   body, #principal { background: #fff; padding: 0; margin: 0; }
   #app[data-armado] { display: block; }
   .boletin { border: 0; padding: 0; max-width: none; }

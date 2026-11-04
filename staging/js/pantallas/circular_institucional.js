@@ -114,7 +114,7 @@ export async function seccionBorradores(div) {
       ${sinGuardar ? fila('#/circular-institucional/nueva', normal({ ...sinGuardar.datos, consecutivo: '' }), 'Sin guardar · solo en este equipo · aún sin consecutivo') : ''}
       ${filas.map((f) => fila(`#/circular-institucional/${f.id}`, deFila(f),
         `${estado(f)} · guardado ${esc(fechaHora(f.actualizado_en))} por ${esc(nombre(E.perfiles.get(f.actualizado_por || f.autor_id)))}`,
-        leerLocal(f.id) ? ' · <b>con cambios sin guardar en este equipo</b>' : '')).join('')}
+        (f.estado || 'borrador') === 'borrador' && leerLocal(f.id) ? ' · <b>con cambios sin guardar en este equipo</b>' : '')).join('')}
     </div>` : `<p class="ayuda">${yo.admin ? 'Aún no hay circulares institucionales. Toca «Nueva circular».' : 'Aún no has preparado circulares institucionales. Toca «Nueva circular».'}</p>`}`;
 }
 
@@ -900,7 +900,8 @@ export async function editor(m, p) {
     const r = await enviarCircular({ borrador: { id: srv.id, version: srv.version, consecutivo: srv.consecutivo, datos: srv.datos, autor_id: fila?.autor_id || E.yo.id }, plantilla, criterios: env, serie: sx });
     // Enviada: al cerrar, a Circulares con el aviso (Fabio, 3-nov-2026 noche: «no puede ser que me devuelva a la circular enviada»);
     // con «Ver el mensaje enviado» ya se fue al mensaje. Numerada sin enviar: el editor se vuelve a abrir con su número.
-    if (r && !r.numerada) { if (!r.verMensaje) { aviso(`Circular ${r.consecutivo || srv.consecutivo} enviada: llegó a ${r.en_bandeja} bandeja(s) de entrada.`); location.hash = VOLVER; } return; }
+    if (r && !r.numerada) { clearTimeout(localT); borrarLocal(llave); borrarLocal(srv.id); // enviada: su contenido ya no cambia, la copia del equipo sobra
+      if (!r.verMensaje) { aviso(`Circular ${r.consecutivo || srv.consecutivo} enviada: llegó a ${r.en_bandeja} bandeja(s) de entrada.`); location.hash = VOLVER; } return; }
     if (r) { caja.remove(); editor(m, { id: srv.id }); }
   });
   if (srv.id && envia) import('./circular_envio.js').then((x) => x.revisarEnvioPendiente(srv.id)).catch(() => {});

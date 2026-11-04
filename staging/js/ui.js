@@ -7,11 +7,14 @@ export const $ = (sel, raiz = document) => raiz.querySelector(sel);
 export const $$ = (sel, raiz = document) => [...raiz.querySelectorAll(sel)];
 
 export function aviso(msg, tipo = 'ok') {
+  // Los avisos que coinciden se apilan (3-nov-2026 noche: «Circular … enviada» y «Te llegó un mensaje nuevo» quedaban uno encima del otro)
+  let pila = document.querySelector('body > .avisos');
+  if (!pila) { pila = document.createElement('div'); pila.className = 'avisos'; document.body.appendChild(pila); }
   const el = document.createElement('div');
   el.className = `aviso aviso-${tipo}`;
   el.setAttribute('role', 'status');
   el.textContent = msg;
-  document.body.appendChild(el);
+  pila.appendChild(el);
   requestAnimationFrame(() => el.classList.add('ver'));
   setTimeout(() => { el.classList.remove('ver'); setTimeout(() => el.remove(), 300); }, tipo === 'error' ? 5000 : 2600);
 }
