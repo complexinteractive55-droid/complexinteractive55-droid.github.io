@@ -359,7 +359,6 @@ export function crearPqrsDemo({ tabla, usuario, guardar, copia, ahora, err, arch
       const ORDEN_ROL = ['admin', 'profesor', 'acudiente', 'estudiante', 'enfermeria', 'director_seccion'];
       const rol = a.p_rol ? (roles.includes(a.p_rol) ? a.p_rol : null) : roles.sort((x, y) => ORDEN_ROL.indexOf(x) - ORDEN_ROL.indexOf(y))[0];
       if (!rol) fallo('No tienes ese perfil en el colegio.');
-      if (rol === 'estudiante') fallo('Los estudiantes no presentan PQRS: la presenta su acudiente.'); // Fabio, 2-nov-2026
       const hijos = T('acudientes').filter((x) => x.colegio_id === c && x.acudiente_id === yo()).map((x) => x.estudiante_id);
       let est = null;
       if (a.p_estudiante) { if (!(a.p_estudiante === yo() || hijos.includes(a.p_estudiante))) fallo('Solo puedes relacionar a un estudiante a tu cargo.'); est = a.p_estudiante; }

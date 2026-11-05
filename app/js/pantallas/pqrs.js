@@ -1,12 +1,13 @@
 // PQRS — Peticiones, Quejas, Reclamos y Sugerencias (pedido de Fabio, 28-oct-2026). Necesita la migración 20261028200000_pqrs.
-// Todos los perfiles presentan PQRS (#/pqrs?tab=nueva) y ven las suyas («Mis PQRS»), menos los estudiantes: la presenta su
-// acudiente (Fabio, 2-nov-2026; la base también lo impide). Los responsables de un área ven su bandeja;
+// Todos los perfiles presentan PQRS (#/pqrs?tab=nueva) y ven las suyas («Mis PQRS»), también los estudiantes: «todos en la comunidad
+// deben tener PQRS, desde los padres de familia hasta los mismos directivos» (Fabio, 4-nov-2026; del 2 al 4-nov no la presentaban).
+// El acudiente la presenta también desde la pestaña de un hijo (ese hijo queda elegido). Los responsables de un área ven su bandeja;
 // el administrador general, la supervisión y la configuración de áreas, responsables, secciones y permisos de salud.
 // Gerencia (responsables del área Gerencia, 1-nov-2026) ve TODAS las PQRS en su bandeja, escribe en nombre de Gerencia y puede
 // finalizar; cada área tiene un líder principal y, guardados en el área, el cargo y el correo que publica el colegio.
 // La base decide qué ve cada quien (lo de salud llega oculto a quien no tiene permiso): esta pantalla solo lo muestra.
 // Lo escrito se guarda en el equipo hasta que el servidor confirma, con el mismo identificador de envío (reintentar no duplica).
-import { E } from '../estado.js';
+import { E, viendoHijo } from '../estado.js';
 import { esc, aviso, ventana, vacio, fechaHora, fecha, ROL, confirmar } from '../ui.js';
 import { cabecera, pestanas } from './comun.js';
 import { TIPOS, ESTADO_AREA, ESTADO_GENERAL, AYUDA_ESTADO, MAX_ASUNTO, MAX_DESCRIPCION, MAX_TEXTO, AREAS, SECCIONES, validar, esSinRed } from '../pqrs_reglas.js';
@@ -149,10 +150,6 @@ async function miPerfil() {
 // ---------------------------------------------------------------- Inicio del módulo (pestañas según quién soy)
 export async function inicio(m, p = {}) {
   estilos();
-  if (E.rol === 'estudiante') {
-    m.innerHTML = cabecera('PQRS') + `<div class="contenido">${vacio('Los estudiantes no presentan PQRS. Si necesitas algo, cuéntale a tu acudiente para que la presente.')}</div>`;
-    return;
-  }
   const yo = await miPerfil();
   const tabs = [['nueva', 'Nueva PQRS'], ['mias', 'Mis PQRS']];
   if (yo.areas.some((a) => a.clave !== 'gerencia')) tabs.push(['area', 'Bandeja de mis áreas']);
@@ -172,7 +169,7 @@ export async function inicio(m, p = {}) {
 // ---------------------------------------------------------------- Nueva PQRS
 function formulario(c, yo) {
   const b = leer('borrador') || {};
-  const st = { tipo: b.tipo || '', asunto: b.asunto || '', descripcion: b.descripcion || '', estudiante: b.estudiante || '', solicitud: b.solicitud || nuevoId() };
+  const st = { tipo: b.tipo || '', asunto: b.asunto || '', descripcion: b.descripcion || '', estudiante: b.estudiante || (viendoHijo() ? E.persona : ''), solicitud: b.solicitud || nuevoId() };
   let enviando = false, recien = false; // recien: acaba de enviarse (un doble clic no borra la confirmación)
   c.innerHTML = `
     <form class="form" data-form novalidate autocomplete="off">

@@ -369,9 +369,9 @@ function menuBase() {
     { t: 'Docencia', ic: '🧑‍🏫', items: [['direccion', 'Dirección de grupo'], ['clases', 'Clases'], ['album', 'Álbum por curso'], ['reportes', 'Reportes']] },
     { t: 'Academia', ic: '🎓', items: [['aula', 'Aula'], ['horario', 'Mi horario'], ['planeaciones', 'Planeaciones'], ['espacios', 'Solicitud de espacios']] },
     perfilG()];
-  // Los estudiantes no presentan PQRS: la presenta su acudiente (Fabio, 2-nov-2026). Tampoco tienen el módulo de Circulares: la
-  // circular les llega a la Bandeja de entrada como PDF (Fabio, 3-nov-2026)
-  if (E.rol === 'estudiante') return [tablero, { ...COMUNICACION, items: COMUNICACION.items.filter(([r]) => r !== 'pqrs' && r !== 'circulares') },
+  // Todos en la comunidad presentan PQRS, también los estudiantes (Fabio, 4-nov-2026; antes, desde el 2-nov, la presentaba solo su
+  // acudiente). No tienen el módulo de Circulares: la circular les llega a la Bandeja de entrada como PDF (Fabio, 3-nov-2026)
+  if (E.rol === 'estudiante') return [tablero, { ...COMUNICACION, items: COMUNICACION.items.filter(([r]) => r !== 'circulares') },
     { t: 'Comunidad', ic: '👥', items: [['calendario', 'Calendario'], [`estudiante/${E.yo.id}?tab=observador`, 'Seguimientos'], [`estudiante/${E.yo.id}?tab=compromisos`, 'Compromisos'], ['procesos', 'Procesos en línea'], ['archivos', 'Archivos']] },
     { t: 'Academia', ic: '🎓', items: [['aula', 'Aula'], ['planeacion', 'Planeación'], ['horario', 'Horario'], ...hist] },
     perfilG()];
@@ -386,7 +386,7 @@ function menuBase() {
   // acudiente
   if (viendoHijo()) return [tablero,
     { t: 'Perfil', ic: '👤', items: [['info-personal', 'Información personal'], [`estudiante/${est}?tab=ficha`, 'Ficha médica'], ['edocs', 'E-docs']] },
-    { t: 'Comunicación', ic: '💬', items: [['bandeja-hijo', 'Bandeja de entrada del estudiante'], ['circulares', 'Circulares']] },
+    { t: 'Comunicación', ic: '💬', items: [['bandeja-hijo', 'Bandeja de entrada del estudiante'], ['circulares', 'Circulares'], ['pqrs', 'PQRS']] }, // sus PQRS, también desde la pestaña del hijo (4-nov-2026)
     { t: 'Comunidad', ic: '👥', items: [['calendario', 'Calendario'], [`estudiante/${est}?tab=observador`, 'Seguimientos'], [`estudiante/${est}?tab=compromisos`, 'Compromisos'], ['salidas', 'Permisos de salida'], ['procesos', 'Procesos en línea'], ['archivos', 'Archivos globales']] },
     { t: 'Academia', ic: '🎓', items: [['aula', 'Aula'], ['planeacion', 'Planeación'], [`estudiante/${est}?tab=notas`, 'Historial'], ['horario', 'Horario'], [`estudiante/${est}?tab=asistencia`, 'Asistencia']] },
     { t: 'Matrícula', ic: '🎒', items: [['obligaciones', 'Obligaciones']] },
