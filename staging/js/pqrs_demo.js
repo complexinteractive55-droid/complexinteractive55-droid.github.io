@@ -146,7 +146,7 @@ export function crearPqrsDemo({ tabla, usuario, guardar, copia, ahora, err, arch
       if (!d || d === e.actor_id || !miembroActivo(p.colegio_id, d)) continue;
       if (T('pqrs_avisos').some((a) => a.evento_id === eventoId && a.perfil_id === d)) continue;
       if (agrupar && tieneSinLeer(d)) { agrupados++; continue; }
-      const modulo = ger.includes(d);
+      const modulo = ger.includes(d) || admins.includes(d); // Gerencia y administradores: solo en el módulo («Supervisión»), como la base (4-nov-2026)
       T('pqrs_avisos').push({ evento_id: eventoId, perfil_id: d, colegio_id: p.colegio_id, pqrs_id: p.id, vista: admins.includes(d) ? 'admin' : staff.includes(d) || delArea.includes(d) || ger.includes(d) ? 'area' : 'solicitante',
         canal: modulo ? 'modulo' : 'bandeja', estado: modulo ? 'enviado' : 'pendiente', mensaje_id: null, error: null, intentos: 0, creado_en: ahora(), enviado_en: modulo ? ahora() : null });
     }
@@ -284,7 +284,7 @@ export function crearPqrsDemo({ tabla, usuario, guardar, copia, ahora, err, arch
     const con = (adjuntos?.length || 0) > 0, txt = String(a.p_contenido ?? '').trim();
     const area0 = tipo === 'aporte' ? null : a.p_area || null;
     // Gerencia escribe en cualquier caso en nombre de Gerencia (aunque no esté asignada): no cambia el estado de las áreas
-    const ger = !!area0 && area0 === areaGerencia(p.colegio_id)?.id && esGerencia(p.colegio_id);
+    const ger = !!area0 && area0 === areaGerencia(p.colegio_id)?.id && (esGerencia(p.colegio_id) || esAdmin(p.colegio_id)); // el administrador también (4-nov-2026)
     if (tipo === 'respuesta') {
       if (!misAreas(p.id).includes(area0) && !ger) fallo('Solo los responsables de esa área responden en su nombre.');
       if (txt.length < 1 && !con) fallo('Escribe la respuesta.');
@@ -359,7 +359,6 @@ export function crearPqrsDemo({ tabla, usuario, guardar, copia, ahora, err, arch
       const ORDEN_ROL = ['admin', 'profesor', 'acudiente', 'estudiante', 'enfermeria', 'director_seccion'];
       const rol = a.p_rol ? (roles.includes(a.p_rol) ? a.p_rol : null) : roles.sort((x, y) => ORDEN_ROL.indexOf(x) - ORDEN_ROL.indexOf(y))[0];
       if (!rol) fallo('No tienes ese perfil en el colegio.');
-      if (rol === 'estudiante') fallo('Los estudiantes no presentan PQRS: la presenta su acudiente.'); // Fabio, 2-nov-2026
       const hijos = T('acudientes').filter((x) => x.colegio_id === c && x.acudiente_id === yo()).map((x) => x.estudiante_id);
       let est = null;
       if (a.p_estudiante) { if (!(a.p_estudiante === yo() || hijos.includes(a.p_estudiante))) fallo('Solo puedes relacionar a un estudiante a tu cargo.'); est = a.p_estudiante; }
@@ -424,8 +423,8 @@ export function crearPqrsDemo({ tabla, usuario, guardar, copia, ahora, err, arch
         eventos: T('pqrs_eventos').filter((e) => e.pqrs_id === p.id && (acc.personal || e.publico)).sort((x, y) => x.id - y.id).map((e) => ({
           id: e.id, tipo: e.tipo, actor: e.actor_nombre, area: nombreAreaDe(e.area_id), creado_en: e.creado_en,
           detalle: acc.personal ? e.detalle : (({ motivo, razon, sin_responsables, salud, ...r }) => r)(e.detalle) })),
-        yo: { solicitante: acc.solicitante, admin: acc.admin, gerencia: acc.gerencia, area_gerencia: acc.gerencia ? areaGerencia(p.colegio_id)?.id ?? null : null, personal: acc.personal, salud: acc.salud, areas: acc.areas, puede_aportar: acc.solicitante && !p.cerrado_en,
-          puede_cerrar: (acc.admin || acc.gerencia || liderDelCaso(p.id)) && !p.cerrado_en, puede_reabrir: acc.admin && !!p.cerrado_en, puede_asignar: acc.admin && !p.cerrado_en, puede_resumen: acc.personal && acc.salud && p.sensible && !p.cerrado_en },
+        yo: { solicitante: acc.solicitante, admin: acc.admin, gerencia: acc.gerencia, area_gerencia: acc.gerencia || acc.admin ? areaGerencia(p.colegio_id)?.id ?? null : null, personal: acc.personal, salud: acc.salud, areas: acc.areas, puede_aportar: acc.solicitante && !p.cerrado_en,
+          puede_cerrar: (acc.admin || acc.gerencia || acc.solicitante || liderDelCaso(p.id)) && !p.cerrado_en, puede_reabrir: acc.admin && !!p.cerrado_en, puede_asignar: acc.admin && !p.cerrado_en, puede_resumen: acc.personal && acc.salud && p.sensible && !p.cerrado_en },
       });
     },
     pqrs_responder(a) { return intervenir(a, 'respuesta'); },
@@ -587,7 +586,8 @@ export function crearPqrsDemo({ tabla, usuario, guardar, copia, ahora, err, arch
     },
     pqrs_cerrar(a) {
       const p = tomar(a.p_id);
-      if (!(esAdmin(p.colegio_id) || esGerencia(p.colegio_id) || liderDelCaso(p.id))) fallo('Solo el administrador general, Gerencia o el líder de un área del caso finalizan la PQRS.');
+      // quien la presentó también la cierra (4-nov-2026), como la base
+      if (!(esAdmin(p.colegio_id) || esGerencia(p.colegio_id) || liderDelCaso(p.id) || p.solicitante_id === yo())) fallo('Solo quien la presentó, el administrador general, Gerencia o el líder de un área del caso finalizan la PQRS.');
       if (p.cerrado_en) return { estado: 'cerrada', igual: true };
       const mot = String(a.p_motivo ?? '').trim();
       if (mot.length < 3) fallo('Escribe la constancia del cierre.');

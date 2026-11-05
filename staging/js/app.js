@@ -369,9 +369,9 @@ function menuBase() {
     { t: 'Docencia', ic: '🧑‍🏫', items: [['direccion', 'Dirección de grupo'], ['clases', 'Clases'], ['album', 'Álbum por curso'], ['reportes', 'Reportes']] },
     { t: 'Academia', ic: '🎓', items: [['aula', 'Aula'], ['horario', 'Mi horario'], ['planeaciones', 'Planeaciones'], ['espacios', 'Solicitud de espacios']] },
     perfilG()];
-  // Los estudiantes no presentan PQRS: la presenta su acudiente (Fabio, 2-nov-2026). Tampoco tienen el módulo de Circulares: la
-  // circular les llega a la Bandeja de entrada como PDF (Fabio, 3-nov-2026)
-  if (E.rol === 'estudiante') return [tablero, { ...COMUNICACION, items: COMUNICACION.items.filter(([r]) => r !== 'pqrs' && r !== 'circulares') },
+  // Todos en la comunidad presentan PQRS, también los estudiantes (Fabio, 4-nov-2026; antes, desde el 2-nov, la presentaba solo su
+  // acudiente). No tienen el módulo de Circulares: la circular les llega a la Bandeja de entrada como PDF (Fabio, 3-nov-2026)
+  if (E.rol === 'estudiante') return [tablero, { ...COMUNICACION, items: COMUNICACION.items.filter(([r]) => r !== 'circulares') },
     { t: 'Comunidad', ic: '👥', items: [['calendario', 'Calendario'], [`estudiante/${E.yo.id}?tab=observador`, 'Seguimientos'], [`estudiante/${E.yo.id}?tab=compromisos`, 'Compromisos'], ['procesos', 'Procesos en línea'], ['archivos', 'Archivos']] },
     { t: 'Academia', ic: '🎓', items: [['aula', 'Aula'], ['planeacion', 'Planeación'], ['horario', 'Horario'], ...hist] },
     perfilG()];
@@ -386,7 +386,7 @@ function menuBase() {
   // acudiente
   if (viendoHijo()) return [tablero,
     { t: 'Perfil', ic: '👤', items: [['info-personal', 'Información personal'], [`estudiante/${est}?tab=ficha`, 'Ficha médica'], ['edocs', 'E-docs']] },
-    { t: 'Comunicación', ic: '💬', items: [['bandeja-hijo', 'Bandeja de entrada del estudiante'], ['circulares', 'Circulares']] },
+    { t: 'Comunicación', ic: '💬', items: [['bandeja-hijo', 'Bandeja de entrada del estudiante'], ['circulares', 'Circulares'], ['pqrs', 'PQRS']] }, // sus PQRS, también desde la pestaña del hijo (4-nov-2026)
     { t: 'Comunidad', ic: '👥', items: [['calendario', 'Calendario'], [`estudiante/${est}?tab=observador`, 'Seguimientos'], [`estudiante/${est}?tab=compromisos`, 'Compromisos'], ['salidas', 'Permisos de salida'], ['procesos', 'Procesos en línea'], ['archivos', 'Archivos globales']] },
     { t: 'Academia', ic: '🎓', items: [['aula', 'Aula'], ['planeacion', 'Planeación'], [`estudiante/${est}?tab=notas`, 'Historial'], ['horario', 'Horario'], [`estudiante/${est}?tab=asistencia`, 'Asistencia']] },
     { t: 'Matrícula', ic: '🎒', items: [['obligaciones', 'Obligaciones']] },
@@ -1020,7 +1020,8 @@ async function arrancar() {
   aplicarTema();
   activarTraduccion();
   vigilarBotones(); // iconos de los botones de toda la app, según su verbo (3-nov-2026, §17)
-  window.addEventListener('hashchange', navegar);
+  // Si hay una versión nueva pendiente, el cambio de pantalla la toma (la pantalla de destino abre ya en la versión nueva)
+  window.addEventListener('hashchange', () => { if (!actualizarAlNavegar()) navegar(); });
   try {
     E.db = pref('modo') === 'demo' ? (await cargarSemillaDemo(), crearDbDemo()) : await crearDbSupabase();
   } catch (e) {
@@ -1062,13 +1063,47 @@ async function arrancar() {
 }
 
 // ---------------------------------------------------------------- Versiones nuevas
-// Al abrir la app y cada vez que vuelve al frente se compara con version.txt del servidor. Si hay una nueva:
+// Al abrir la app, cada vez que vuelve al frente y, con la app abierta y a la vista, cada CADA_MIN minutos (la app instalada en el
+// PC queda abierta todo el día: Fabio, 4-nov-2026, «siempre la app debe actualizarse automáticamente») se compara con version.txt
+// del servidor. Si hay una nueva:
 //  - recién abierta (primeros 20 s): se recarga sola, una vez por versión;
-//  - en uso: aviso "Toca para actualizar" (sin borrar lo que se está escribiendo) y se aplica sola
-//    al volver después de MIN_FUERA minutos (cuando también se pide la huella otra vez).
+//  - en uso: aviso "Toca para actualizar" y se aplica SOLA en el primer momento seguro, sin borrar lo que se está escribiendo:
+//    al cambiar de pantalla (lo de la pantalla anterior se descarta igual que en cualquier navegación), tras INACTIVA_MIN minutos
+//    sin usarla si no hay nada escrito, ni una ventana abierta, ni un archivo subiendo, o al volver después de MIN_FUERA minutos.
 const cargadaEn = Date.now();
+const CADA_MIN = 5, INACTIVA_MIN = 2;
 let actualizacionPendiente = false;
 let ocultaDesde = 0;
+let versionNueva = '', ultimaActividad = Date.now(), revisadaEn = 0;
+for (const ev of ['pointerdown', 'keydown', 'wheel', 'input', 'touchstart']) document.addEventListener(ev, () => { ultimaActividad = Date.now(); }, { capture: true, passive: true });
+// ¿Se puede recargar sin perder nada? Sin ventana abierta, sin archivos subiendo, sin el cursor en un campo y sin texto escrito
+// en un área de texto o en un editor (ahí puede haber algo sin enviar)
+function seguroParaActualizar() {
+  if (document.querySelector('.ventana, progress')) return false;
+  const a = document.activeElement;
+  if (a && (a.isContentEditable || /^(INPUT|TEXTAREA|SELECT)$/.test(a.tagName))) return false;
+  if ([...document.querySelectorAll('textarea')].some((t) => t.value.trim() && t.offsetParent !== null)) return false;
+  return ![...document.querySelectorAll('[contenteditable="true"]')].some((e) => e.textContent.trim() && e.offsetParent !== null);
+}
+// Recarga a la versión nueva una sola vez por versión (si el navegador aún sirviera la vieja, no queda recargando sin fin)
+function aplicarVersion() {
+  const k = 'complexstg_recarga_' + (versionNueva || 'controlador');
+  if (sessionStorage.getItem(k)) return false;
+  sessionStorage.setItem(k, '1');
+  if (versionNueva) sessionStorage.setItem('complexstg_version_objetivo', versionNueva);
+  location.reload();
+  return true;
+}
+// Al cambiar de pantalla (la persona tocó un enlace, el menú o Atrás): el momento natural para tomar la versión nueva. No si hay un
+// archivo subiendo o un aviso a la vista (p. ej. «Circular enviada»: se deja leer y la toma después, cuando la app quede quieta)
+function actualizarAlNavegar() { return actualizacionPendiente && !document.querySelector('progress, body > .avisos .aviso') && aplicarVersion(); }
+setInterval(() => {
+  if (document.visibilityState !== 'visible') return;
+  if (Date.now() - revisadaEn >= CADA_MIN * 60000) buscarVersion(false);
+  if (actualizacionPendiente && Date.now() - ultimaActividad >= INACTIVA_MIN * 60000 && seguroParaActualizar()) aplicarVersion();
+}, 30000);
+window.addEventListener('online', () => buscarVersion(false));
+window.addEventListener('focus', () => { if (Date.now() - revisadaEn >= 60000) buscarVersion(false); }); // volver a la ventana del PC (sin minimizarla)
 
 function avisoVersion() {
   if (document.querySelector('.aviso-version')) return;
@@ -1081,9 +1116,11 @@ function avisoVersion() {
 
 async function buscarVersion(puedeRecargar) {
   if (!/^\d{14}$/.test(APP_VERSION) || !navigator.onLine) return; // en desarrollo (dev) o sin internet, nada
+  revisadaEn = Date.now();
   let v;
   try { v = (await (await fetch('version.txt', { cache: 'no-store' })).text()).trim(); } catch { return; }
   if (!/^\d{14}$/.test(v) || v <= APP_VERSION) return;
+  versionNueva = v;
   const reg = await navigator.serviceWorker?.getRegistration().catch(() => null);
   await reg?.update().catch(() => {});
   const k = 'complexstg_recarga_' + v;

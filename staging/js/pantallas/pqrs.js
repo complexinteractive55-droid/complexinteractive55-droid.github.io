@@ -1,12 +1,13 @@
 // PQRS — Peticiones, Quejas, Reclamos y Sugerencias (pedido de Fabio, 28-oct-2026). Necesita la migración 20261028200000_pqrs.
-// Todos los perfiles presentan PQRS (#/pqrs?tab=nueva) y ven las suyas («Mis PQRS»), menos los estudiantes: la presenta su
-// acudiente (Fabio, 2-nov-2026; la base también lo impide). Los responsables de un área ven su bandeja;
+// Todos los perfiles presentan PQRS (#/pqrs?tab=nueva) y ven las suyas («Mis PQRS»), también los estudiantes: «todos en la comunidad
+// deben tener PQRS, desde los padres de familia hasta los mismos directivos» (Fabio, 4-nov-2026; del 2 al 4-nov no la presentaban).
+// El acudiente la presenta también desde la pestaña de un hijo (ese hijo queda elegido). Los responsables de un área ven su bandeja;
 // el administrador general, la supervisión y la configuración de áreas, responsables, secciones y permisos de salud.
 // Gerencia (responsables del área Gerencia, 1-nov-2026) ve TODAS las PQRS en su bandeja, escribe en nombre de Gerencia y puede
 // finalizar; cada área tiene un líder principal y, guardados en el área, el cargo y el correo que publica el colegio.
 // La base decide qué ve cada quien (lo de salud llega oculto a quien no tiene permiso): esta pantalla solo lo muestra.
 // Lo escrito se guarda en el equipo hasta que el servidor confirma, con el mismo identificador de envío (reintentar no duplica).
-import { E } from '../estado.js';
+import { E, viendoHijo } from '../estado.js';
 import { esc, aviso, ventana, vacio, fechaHora, fecha, ROL, confirmar } from '../ui.js';
 import { cabecera, pestanas } from './comun.js';
 import { TIPOS, ESTADO_AREA, ESTADO_GENERAL, AYUDA_ESTADO, MAX_ASUNTO, MAX_DESCRIPCION, MAX_TEXTO, AREAS, SECCIONES, validar, esSinRed } from '../pqrs_reglas.js';
@@ -149,10 +150,6 @@ async function miPerfil() {
 // ---------------------------------------------------------------- Inicio del módulo (pestañas según quién soy)
 export async function inicio(m, p = {}) {
   estilos();
-  if (E.rol === 'estudiante') {
-    m.innerHTML = cabecera('PQRS') + `<div class="contenido">${vacio('Los estudiantes no presentan PQRS. Si necesitas algo, cuéntale a tu acudiente para que la presente.')}</div>`;
-    return;
-  }
   const yo = await miPerfil();
   const tabs = [['nueva', 'Nueva PQRS'], ['mias', 'Mis PQRS']];
   if (yo.areas.some((a) => a.clave !== 'gerencia')) tabs.push(['area', 'Bandeja de mis áreas']);
@@ -172,7 +169,7 @@ export async function inicio(m, p = {}) {
 // ---------------------------------------------------------------- Nueva PQRS
 function formulario(c, yo) {
   const b = leer('borrador') || {};
-  const st = { tipo: b.tipo || '', asunto: b.asunto || '', descripcion: b.descripcion || '', estudiante: b.estudiante || '', solicitud: b.solicitud || nuevoId() };
+  const st = { tipo: b.tipo || '', asunto: b.asunto || '', descripcion: b.descripcion || '', estudiante: b.estudiante || (viendoHijo() ? E.persona : ''), solicitud: b.solicitud || nuevoId() };
   let enviando = false, recien = false; // recien: acaba de enviarse (un doble clic no borra la confirmación)
   c.innerHTML = `
     <form class="form" data-form novalidate autocomplete="off">
@@ -407,8 +404,9 @@ export async function detalle(m, p) {
   if (!st.pendientes.size) for (const x of leer(clavePend(d.id)) || []) st.pendientes.set(x.solicitud, x);
   const yo = d.yo, personal = yo.personal, abierto = d.estado !== 'cerrada';
   const misAreas = d.areas.filter((a) => a.activa && yo.areas.includes(a.id));
-  // Gerencia escribe en cualquier caso en nombre de Gerencia (aunque no esté asignada); su mensaje no cambia el estado de las áreas
-  const enNombre = yo.gerencia && yo.area_gerencia && !misAreas.some((a) => a.id === yo.area_gerencia) ? [...misAreas, { id: yo.area_gerencia, nombre: 'Gerencia' }] : misAreas;
+  // Gerencia escribe en cualquier caso en nombre de Gerencia (aunque no esté asignada); su mensaje no cambia el estado de las áreas.
+  // El administrador también: responde al solicitante en nombre de Gerencia (Fabio, 4-nov-2026: «el Gerente (administración)»)
+  const enNombre = (yo.gerencia || yo.admin) && yo.area_gerencia && !misAreas.some((a) => a.id === yo.area_gerencia) ? [...misAreas, { id: yo.area_gerencia, nombre: 'Gerencia' }] : misAreas;
   const puedeEscribir = abierto && (enNombre.length || yo.admin || yo.puede_aportar);
   st.borrador ||= { modo: personal ? '' : 'aporte', area: enNombre[0]?.id || '', texto: '', salud: null, solicitud: nuevoId() };
   const borr = st.borrador;
@@ -539,7 +537,7 @@ export async function detalle(m, p) {
       </fieldset>
       ${enNombre.length > 1 || (enNombre.length && yo.admin) ? `<label>En nombre de<select name="area">${enNombre.map((a) => `<option value="${esc(a.id)}" ${borr.area === a.id ? 'selected' : ''}>${esc(a.nombre)}</option>`).join('')}${yo.admin ? `<option value="" ${borr.area === '' ? 'selected' : ''}>Administración general (solo comentario)</option>` : ''}</select></label>`
         : enNombre.length ? `<p class="ayuda">Escribes en nombre de <b>${esc(enNombre[0].nombre)}</b>.</p>` : '<p class="ayuda">Comentas como Administración general.</p>'}
-      ${yo.gerencia && borr.area === yo.area_gerencia ? '<p class="ayuda" data-ayuda-gerencia>Como Gerencia tu mensaje es opcional: no cambia el estado de las áreas ni es requisito para finalizar.</p>' : ''}
+      ${(yo.gerencia || yo.admin) && borr.area === yo.area_gerencia ? '<p class="ayuda" data-ayuda-gerencia>Como Gerencia tu mensaje es opcional: no cambia el estado de las áreas ni es requisito para finalizar.</p>' : ''}
       ${yo.salud && d.sensible ? '<label class="check"><input type="checkbox" name="salud"> Contiene información de salud (solo la verán Enfermería del caso y quienes tienen el permiso)</label>' : ''}
       <div class="pq-aviso-modo" data-aviso-modo id="ayuda-modo"></div>`}
       <div data-adjuntos></div>
@@ -549,7 +547,7 @@ export async function detalle(m, p) {
       </div>
       <div class="pq-msg" data-msg-int role="status" aria-live="polite"></div>
       <small class="ayuda" data-conexion aria-live="polite"></small>
-    </form>`;
+    </form>${comoSolicitante && yo.puede_cerrar ? '<div class="pq-acciones pq-cerrar-mia"><button type="button" class="btn btn-chico" data-finalizar>✅ Cerrar mi PQRS</button><small class="ayuda">Si ya no necesitas respuesta.</small></div>' : ''}`;
     const form = zona.querySelector('form'), txt = form.querySelector('textarea'), selArea = form.querySelector('[name=area]'), chkSalud = form.querySelector('[name=salud]');
     const msg = (t, tipo = '') => { const el = form.querySelector('[data-msg-int]'); el.className = 'pq-msg ' + tipo; el.textContent = t; };
     txt.value = borr.texto;
@@ -676,13 +674,16 @@ function cargarImagenes(raiz) {
   }
 }
 
+// Quien la presentó (y no la atiende como personal) la cierra con sus palabras: «Cerrar mi PQRS» (Fabio, 4-nov-2026). Su botón va debajo de
+// la caja para escribir, no en la cabecera: en el celular la cabecera más alta tapaba el último mensaje (y no contaba como leído)
+const esSolicitanteDelCaso = (d) => !!d.yo?.solicitante && !d.yo?.personal;
 function cabChat(d) {
   const activas = d.areas.filter((a) => a.activa);
   return `<div class="pq-caso-cab"><span class="pq-tipo">${esc(TIPOS[d.tipo] || d.tipo)}</span>${chipEstado(d.estado)}${d.sensible ? '<span class="pq-badge info">🔒 Información de salud</span>' : ''}${d.revisar ? '<span class="pq-badge suave">Revisar clasificación</span>' : ''}</div>
     <h2 class="pq-asunto" data-asunto>${esc(d.asunto)}</h2>
     <div class="pq-areas">${activas.length ? activas.map(chipArea).join('') : '<span class="pq-badge suave">Pendiente de clasificación</span>'}</div>
     ${d.estado !== 'cerrada' && d.pendientes?.length && d.pendientes.length < activas.length ? `<small class="ayuda">Falta responder: <b>${esc(lista(d.pendientes))}</b></small>` : ''}
-    ${d.yo?.puede_cerrar && d.estado !== 'cerrada' ? '<div class="pq-acciones"><button type="button" class="btn btn-chico btn-primario" data-finalizar>✅ Finalizar PQRS</button></div>' : ''}`;
+    ${d.yo?.puede_cerrar && d.estado !== 'cerrada' && !esSolicitanteDelCaso(d) ? '<div class="pq-acciones"><button type="button" class="btn btn-chico btn-primario" data-finalizar>✅ Finalizar PQRS</button></div>' : ''}`;
 }
 
 const adjuntosHTML = (as) => (as?.length ? `<div class="pq-adjs">${as.map((a) => a.imagen
@@ -860,6 +861,9 @@ async function accionGestion(b, d, recargar, conMotivo) {
   }
   if (b.hasAttribute('data-confirmar')) return conMotivo('Confirmar clasificación', '<p>Quita la marca «Revisar clasificación». Las áreas siguen como están.</p>', 'Nota (opcional)',
     (nota) => rpc('pqrs_confirmar_clasificacion', { p_id: d.id, p_nota: nota || null }), 'Clasificación confirmada');
+  if (b.hasAttribute('data-finalizar') && esSolicitanteDelCaso(d)) return conMotivo('Cerrar mi PQRS', '<p>Ciérrala si ya no necesitas una respuesta (por ejemplo, porque ya se solucionó). Las áreas encargadas reciben el aviso.</p>'
+    + '<p class="ayuda">Al cerrarla ya no se pueden enviar mensajes. La conversación sigue disponible en «Mis PQRS».</p>',
+    '¿Por qué la cierras? (obligatorio)', (motivo) => rpc('pqrs_cerrar', { p_id: d.id, p_motivo: motivo }), 'Cerraste tu PQRS');
   if (b.hasAttribute('data-cerrar') || b.hasAttribute('data-finalizar')) return conMotivo('Finalizar PQRS', (d.pendientes.length ? `<p class="pq-reservado">Aún falta responder: <b>${esc(lista(d.pendientes))}</b>. Finalizar no marca sus respuestas; queda como constancia.</p>` : '<p>Todas las áreas respondieron.</p>')
     + '<p class="ayuda">Al finalizar ya no se pueden enviar mensajes. La conversación y los adjuntos siguen disponibles para quienes participan.</p>',
     'Conclusión: solución y acuerdos (obligatoria)', (motivo) => rpc('pqrs_cerrar', { p_id: d.id, p_motivo: motivo }), 'PQRS finalizada');
