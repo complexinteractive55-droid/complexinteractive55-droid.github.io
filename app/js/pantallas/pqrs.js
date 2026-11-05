@@ -404,8 +404,9 @@ export async function detalle(m, p) {
   if (!st.pendientes.size) for (const x of leer(clavePend(d.id)) || []) st.pendientes.set(x.solicitud, x);
   const yo = d.yo, personal = yo.personal, abierto = d.estado !== 'cerrada';
   const misAreas = d.areas.filter((a) => a.activa && yo.areas.includes(a.id));
-  // Gerencia escribe en cualquier caso en nombre de Gerencia (aunque no esté asignada); su mensaje no cambia el estado de las áreas
-  const enNombre = yo.gerencia && yo.area_gerencia && !misAreas.some((a) => a.id === yo.area_gerencia) ? [...misAreas, { id: yo.area_gerencia, nombre: 'Gerencia' }] : misAreas;
+  // Gerencia escribe en cualquier caso en nombre de Gerencia (aunque no esté asignada); su mensaje no cambia el estado de las áreas.
+  // El administrador también: responde al solicitante en nombre de Gerencia (Fabio, 4-nov-2026: «el Gerente (administración)»)
+  const enNombre = (yo.gerencia || yo.admin) && yo.area_gerencia && !misAreas.some((a) => a.id === yo.area_gerencia) ? [...misAreas, { id: yo.area_gerencia, nombre: 'Gerencia' }] : misAreas;
   const puedeEscribir = abierto && (enNombre.length || yo.admin || yo.puede_aportar);
   st.borrador ||= { modo: personal ? '' : 'aporte', area: enNombre[0]?.id || '', texto: '', salud: null, solicitud: nuevoId() };
   const borr = st.borrador;
@@ -536,7 +537,7 @@ export async function detalle(m, p) {
       </fieldset>
       ${enNombre.length > 1 || (enNombre.length && yo.admin) ? `<label>En nombre de<select name="area">${enNombre.map((a) => `<option value="${esc(a.id)}" ${borr.area === a.id ? 'selected' : ''}>${esc(a.nombre)}</option>`).join('')}${yo.admin ? `<option value="" ${borr.area === '' ? 'selected' : ''}>Administración general (solo comentario)</option>` : ''}</select></label>`
         : enNombre.length ? `<p class="ayuda">Escribes en nombre de <b>${esc(enNombre[0].nombre)}</b>.</p>` : '<p class="ayuda">Comentas como Administración general.</p>'}
-      ${yo.gerencia && borr.area === yo.area_gerencia ? '<p class="ayuda" data-ayuda-gerencia>Como Gerencia tu mensaje es opcional: no cambia el estado de las áreas ni es requisito para finalizar.</p>' : ''}
+      ${(yo.gerencia || yo.admin) && borr.area === yo.area_gerencia ? '<p class="ayuda" data-ayuda-gerencia>Como Gerencia tu mensaje es opcional: no cambia el estado de las áreas ni es requisito para finalizar.</p>' : ''}
       ${yo.salud && d.sensible ? '<label class="check"><input type="checkbox" name="salud"> Contiene información de salud (solo la verán Enfermería del caso y quienes tienen el permiso)</label>' : ''}
       <div class="pq-aviso-modo" data-aviso-modo id="ayuda-modo"></div>`}
       <div data-adjuntos></div>
