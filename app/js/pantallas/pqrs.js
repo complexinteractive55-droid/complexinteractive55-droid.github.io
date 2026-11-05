@@ -547,7 +547,7 @@ export async function detalle(m, p) {
       </div>
       <div class="pq-msg" data-msg-int role="status" aria-live="polite"></div>
       <small class="ayuda" data-conexion aria-live="polite"></small>
-    </form>`;
+    </form>${comoSolicitante && yo.puede_cerrar ? '<div class="pq-acciones pq-cerrar-mia"><button type="button" class="btn btn-chico" data-finalizar>✅ Cerrar mi PQRS</button><small class="ayuda">Si ya no necesitas respuesta.</small></div>' : ''}`;
     const form = zona.querySelector('form'), txt = form.querySelector('textarea'), selArea = form.querySelector('[name=area]'), chkSalud = form.querySelector('[name=salud]');
     const msg = (t, tipo = '') => { const el = form.querySelector('[data-msg-int]'); el.className = 'pq-msg ' + tipo; el.textContent = t; };
     txt.value = borr.texto;
@@ -674,13 +674,16 @@ function cargarImagenes(raiz) {
   }
 }
 
+// Quien la presentó (y no la atiende como personal) la cierra con sus palabras: «Cerrar mi PQRS» (Fabio, 4-nov-2026). Su botón va debajo de
+// la caja para escribir, no en la cabecera: en el celular la cabecera más alta tapaba el último mensaje (y no contaba como leído)
+const esSolicitanteDelCaso = (d) => !!d.yo?.solicitante && !d.yo?.personal;
 function cabChat(d) {
   const activas = d.areas.filter((a) => a.activa);
   return `<div class="pq-caso-cab"><span class="pq-tipo">${esc(TIPOS[d.tipo] || d.tipo)}</span>${chipEstado(d.estado)}${d.sensible ? '<span class="pq-badge info">🔒 Información de salud</span>' : ''}${d.revisar ? '<span class="pq-badge suave">Revisar clasificación</span>' : ''}</div>
     <h2 class="pq-asunto" data-asunto>${esc(d.asunto)}</h2>
     <div class="pq-areas">${activas.length ? activas.map(chipArea).join('') : '<span class="pq-badge suave">Pendiente de clasificación</span>'}</div>
     ${d.estado !== 'cerrada' && d.pendientes?.length && d.pendientes.length < activas.length ? `<small class="ayuda">Falta responder: <b>${esc(lista(d.pendientes))}</b></small>` : ''}
-    ${d.yo?.puede_cerrar && d.estado !== 'cerrada' ? '<div class="pq-acciones"><button type="button" class="btn btn-chico btn-primario" data-finalizar>✅ Finalizar PQRS</button></div>' : ''}`;
+    ${d.yo?.puede_cerrar && d.estado !== 'cerrada' && !esSolicitanteDelCaso(d) ? '<div class="pq-acciones"><button type="button" class="btn btn-chico btn-primario" data-finalizar>✅ Finalizar PQRS</button></div>' : ''}`;
 }
 
 const adjuntosHTML = (as) => (as?.length ? `<div class="pq-adjs">${as.map((a) => a.imagen
@@ -858,6 +861,9 @@ async function accionGestion(b, d, recargar, conMotivo) {
   }
   if (b.hasAttribute('data-confirmar')) return conMotivo('Confirmar clasificación', '<p>Quita la marca «Revisar clasificación». Las áreas siguen como están.</p>', 'Nota (opcional)',
     (nota) => rpc('pqrs_confirmar_clasificacion', { p_id: d.id, p_nota: nota || null }), 'Clasificación confirmada');
+  if (b.hasAttribute('data-finalizar') && esSolicitanteDelCaso(d)) return conMotivo('Cerrar mi PQRS', '<p>Ciérrala si ya no necesitas una respuesta (por ejemplo, porque ya se solucionó). Las áreas encargadas reciben el aviso.</p>'
+    + '<p class="ayuda">Al cerrarla ya no se pueden enviar mensajes. La conversación sigue disponible en «Mis PQRS».</p>',
+    '¿Por qué la cierras? (obligatorio)', (motivo) => rpc('pqrs_cerrar', { p_id: d.id, p_motivo: motivo }), 'Cerraste tu PQRS');
   if (b.hasAttribute('data-cerrar') || b.hasAttribute('data-finalizar')) return conMotivo('Finalizar PQRS', (d.pendientes.length ? `<p class="pq-reservado">Aún falta responder: <b>${esc(lista(d.pendientes))}</b>. Finalizar no marca sus respuestas; queda como constancia.</p>` : '<p>Todas las áreas respondieron.</p>')
     + '<p class="ayuda">Al finalizar ya no se pueden enviar mensajes. La conversación y los adjuntos siguen disponibles para quienes participan.</p>',
     'Conclusión: solución y acuerdos (obligatoria)', (motivo) => rpc('pqrs_cerrar', { p_id: d.id, p_motivo: motivo }), 'PQRS finalizada');

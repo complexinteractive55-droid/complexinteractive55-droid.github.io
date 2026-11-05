@@ -424,7 +424,7 @@ export function crearPqrsDemo({ tabla, usuario, guardar, copia, ahora, err, arch
           id: e.id, tipo: e.tipo, actor: e.actor_nombre, area: nombreAreaDe(e.area_id), creado_en: e.creado_en,
           detalle: acc.personal ? e.detalle : (({ motivo, razon, sin_responsables, salud, ...r }) => r)(e.detalle) })),
         yo: { solicitante: acc.solicitante, admin: acc.admin, gerencia: acc.gerencia, area_gerencia: acc.gerencia || acc.admin ? areaGerencia(p.colegio_id)?.id ?? null : null, personal: acc.personal, salud: acc.salud, areas: acc.areas, puede_aportar: acc.solicitante && !p.cerrado_en,
-          puede_cerrar: (acc.admin || acc.gerencia || liderDelCaso(p.id)) && !p.cerrado_en, puede_reabrir: acc.admin && !!p.cerrado_en, puede_asignar: acc.admin && !p.cerrado_en, puede_resumen: acc.personal && acc.salud && p.sensible && !p.cerrado_en },
+          puede_cerrar: (acc.admin || acc.gerencia || acc.solicitante || liderDelCaso(p.id)) && !p.cerrado_en, puede_reabrir: acc.admin && !!p.cerrado_en, puede_asignar: acc.admin && !p.cerrado_en, puede_resumen: acc.personal && acc.salud && p.sensible && !p.cerrado_en },
       });
     },
     pqrs_responder(a) { return intervenir(a, 'respuesta'); },
@@ -586,7 +586,8 @@ export function crearPqrsDemo({ tabla, usuario, guardar, copia, ahora, err, arch
     },
     pqrs_cerrar(a) {
       const p = tomar(a.p_id);
-      if (!(esAdmin(p.colegio_id) || esGerencia(p.colegio_id) || liderDelCaso(p.id))) fallo('Solo el administrador general, Gerencia o el líder de un área del caso finalizan la PQRS.');
+      // quien la presentó también la cierra (4-nov-2026), como la base
+      if (!(esAdmin(p.colegio_id) || esGerencia(p.colegio_id) || liderDelCaso(p.id) || p.solicitante_id === yo())) fallo('Solo quien la presentó, el administrador general, Gerencia o el líder de un área del caso finalizan la PQRS.');
       if (p.cerrado_en) return { estado: 'cerrada', igual: true };
       const mot = String(a.p_motivo ?? '').trim();
       if (mot.length < 3) fallo('Escribe la constancia del cierre.');
