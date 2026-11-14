@@ -1,11 +1,11 @@
 // Service worker de Complex_: guarda la app para abrirla rápido y sin internet.
 // Los datos (Supabase) siempre van a la red.
-const VERSION = 'complexapp-20261105084159';
+const VERSION = 'complexapp-20261114133913';
 // Solo se borran las versiones viejas de ESTA app: en fabiandres55.github.io viven también Relax y Complex_ (app2),
 // y la caché del navegador es una sola por dominio (antes se borraba todo lo que no fuera esta versión).
 const PREFIJO = VERSION.replace(/[^-]+$/, '');
 const ARCHIVOS = [
-  './', './index.html', './estilos.css', './estilos-rea.css', './manifest.webmanifest', './img/icono.svg', './img/simbolo.svg', './img/logo-complex.svg',
+  './', './index.html', './estilos.css', './estilos-rea.css', './manifest.webmanifest', './img/icono.svg', './img/simbolo.svg', './img/logo-complex.svg', './img/logo-complex-oscuro.svg',
   './vendor/supabase-2.117.3.js', './js/app.js', './js/config.js', './js/db.js', './js/demo-semilla.js', './js/ui.js', './js/iconos.js', './js/estado.js', './js/calculos.js',
   './js/pantallas/comun.js', './js/pantallas/admin.js', './js/pantallas/profesor.js', './js/pantallas/planilla.js', './js/pantallas/boletin_docente.js', './js/pantallas/notas_util.js', './js/pantallas/destinos.js', './js/pantallas/seguimientos.js', './js/pantallas/docencia.js', './js/pantallas/familia_perfil.js', './js/pantallas/familia.js', './js/pantallas/circulares.js', './js/pantallas/circular_institucional.js', './js/circular_contenido.js', './js/firma_circular.js', './js/agenda_hoy.js', './js/pantallas/agenda_docente.js', './js/pantallas/album.js', './js/pantallas/salas.js', './js/salas_demo.js', './js/pantallas/espacios.js', './js/espacios_reglas.js', './js/pantallas/pqrs.js', './js/pqrs_reglas.js', './js/pqrs_demo.js', './js/pqrs_archivos.js', './js/pqrs_firma.js', './js/calendario_importar.js', './js/calendario_demo.js', './js/circulares_demo.js', './js/pantallas/planeaciones.js', './js/pantallas/mensajeria.js', './js/pantallas/aula.js', './js/pantallas/calendario.js', './js/pantallas/tesoreria.js', './js/pantallas/comunidad.js', './js/pantallas/procesos.js', './js/pantallas/tablero.js', './js/pantallas/certificados.js', './js/pantallas/usuarios.js', './js/pantallas/horario.js', './js/pantallas/reportes.js', './js/pantallas/examenes.js', './js/pantallas/ayuda.js', './js/pantallas/carnet.js',
   './js/pantallas/enfermeria.js', './js/pantallas/compromisos.js', './js/pantallas/casos.js', './js/pantallas/plantillas.js', './js/pantallas/docente.js',
@@ -28,8 +28,8 @@ self.addEventListener('push', (e) => {
   let d = {};
   try { d = e.data ? e.data.json() : {}; } catch {}
   const ruta = typeof d.ruta === 'string' && /^#\/[a-z0-9/?=&_-]+$/.test(d.ruta) ? d.ruta : '#/inicio';
-  e.waitUntil(self.registration.showNotification(String(d.titulo || 'Novedad en Complex_').slice(0, 80), {
-    body: 'Abre Complex_ para verla.', tag: String(d.etiqueta || 'complex').slice(0, 64), data: { ruta }, icon: './img/icono.svg', badge: './img/simbolo.svg',
+  e.waitUntil(self.registration.showNotification(String(d.titulo || 'Novedad en nodo').slice(0, 80), {
+    body: 'Abre nodo para verla.', tag: String(d.etiqueta || 'complex').slice(0, 64), data: { ruta }, icon: './img/icono.svg', badge: './img/simbolo.svg',
   }));
 });
 self.addEventListener('notificationclick', (e) => {

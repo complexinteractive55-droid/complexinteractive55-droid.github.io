@@ -20,7 +20,7 @@ export function mostrarCredenciales(resultados) {
           <b>${esc(`${r.nombres || ''} ${r.apellidos || ''}`.trim())}</b><small>${ROL[r.rol] || ''} · ${esc(E.colegio.nombre)}</small>
           <div>Usuario: <code>${esc(usuarioVisible(r.usuario))}</code></div>
           <div>Contraseña: ${r.clave ? `<code>${esc(r.clave)}</code>` : '<i>ya tenía cuenta (usa su contraseña)</i>'}</div>
-          <small>Entra en la app Complex_ → "Correo o número de documento".</small>
+          <small>Entra en la app nodo → "Correo o número de documento".</small>
         </div>`).join('')}</div>
       ${mal.length ? `<h3 class="sub">Con error</h3><div class="lista">${mal.map((r) => `<div class="fila"><span class="crece"><b>${esc(`${r.nombres || ''} ${r.apellidos || ''}`)}</b><small class="alerta">${esc(r.error)}</small></span></div>`).join('')}</div>` : ''}`,
     botones: [{ texto: 'Cerrar' }, { texto: '🖨 Imprimir credenciales', antes: () => { document.body.classList.add('imprimiendo-ventana'); window.print(); document.body.classList.remove('imprimiendo-ventana'); return false; } }],
@@ -39,7 +39,7 @@ export async function agregarPersona(rolInicial, alListo) {
       { name: 'documento', label: 'Número de documento' },
       { name: 'correo', label: 'Correo (opcional)', tipo: 'email' },
       { name: 'telefono', label: 'Celular (opcional)' },
-    ]) + `<p class="ayuda">Se crea su usuario: entrará con su <b>número de documento</b> (o su correo, si lo pones) y una contraseña que verás al terminar. Si ya tiene cuenta en Complex_ con ese correo, solo se agrega al colegio.</p>`,
+    ]) + `<p class="ayuda">Se crea su usuario: entrará con su <b>número de documento</b> (o su correo, si lo pones) y una contraseña que verás al terminar. Si ya tiene cuenta en nodo con ese correo, solo se agrega al colegio.</p>`,
     botones: [{ texto: 'Cancelar' }, { texto: 'Crear usuario', antes: async (c) => {
       const d = leerForm(c);
       if (!d.nombres) throw new Error('Escribe los nombres.');

@@ -603,7 +603,7 @@ export async function editor(m, p) {
     if (sinSeries) {
       // Sin series: el colegio sin área y con «número al guardar» recibe la serie provisional PROV- (como hasta hoy); un área, no
       $c('[data-consec-ayuda]').innerHTML = !disponibles.area_id && disponibles.asignar_numero === 'guardar'
-        ? `El colegio aún no tiene series de consecutivos: al guardar por primera vez, Complex le da un número provisional (PROV-…). Para emitir, Administración debe crear y validar la serie${yo.admin ? ` en <a href="${AJUSTES}">Ajustes</a>` : ''}.`
+        ? `El colegio aún no tiene series de consecutivos: al guardar por primera vez, nodo le da un número provisional (PROV-…). Para emitir, Administración debe crear y validar la serie${yo.admin ? ` en <a href="${AJUSTES}">Ajustes</a>` : ''}.`
         : `Esta área no tiene series de consecutivos.${ajustesLink}`;
     } else if (conSelector) {
       const sx = disponibles.series.find((y) => y.id === sel.value);
@@ -623,8 +623,8 @@ export async function editor(m, p) {
         ? `Próximo previsto: ${prevista.siguiente || '(la serie se agotó: crea una nueva)'}. Es una vista previa, NO queda reservado: ${prevista.asignar_numero === 'emitir' ? 'el número definitivo se asigna al emitir' : 'se asigna al guardar por primera vez'}; si otra persona guarda antes, toma el siguiente.${prevista.provisional ? ' Serie provisional: para emitir hay que validarla.' : ''}`
         : `«${prevista.area.nombre}» no tiene serie de consecutivos: el borrador se guarda sin número y no se podrá emitir hasta configurarla y validarla (Numeración por área).`;
     } else $c('[data-consec-ayuda]').textContent = (srv.consecutivo
-      ? 'Lo asignó Complex al guardar por primera vez. No cambia al editar, previsualizar ni descargar.'
-      : 'Complex lo asigna al guardar por primera vez. Abrir el formulario o previsualizar no gasta números.')
+      ? 'Lo asignó nodo al guardar por primera vez. No cambia al editar, previsualizar ni descargar.'
+      : 'nodo lo asigna al guardar por primera vez. Abrir el formulario o previsualizar no gasta números.')
       + (provisional ? ' Numeración provisional: la convención oficial está pendiente.' : '');
     // La lista numerada que sigue a un párrafo con sangría continúa la cuenta (1, 2, 3, párrafo, 4), como en el PDF
     const ini = numeracion(x.contenido.bloques);

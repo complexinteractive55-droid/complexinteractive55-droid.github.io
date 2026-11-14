@@ -1,6 +1,6 @@
 {
-  "name": "Complex_ — Gestión escolar",
-  "short_name": "Complex_",
+  "name": "nodo — Gestión escolar",
+  "short_name": "nodo",
   "description": "Notas, asistencia, observador y circulares de tu colegio.",
   "lang": "es-CO",
   "start_url": "./index.html#/inicio",

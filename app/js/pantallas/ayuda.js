@@ -42,9 +42,9 @@ export async function ayuda(m) {
         <summary><h2>${esc(t)}</h2></summary>
         <ol>${pasos.map((x) => `<li>${esc(x)}</li>`).join('')}</ol>
       </details>`).join('')}
-    <section class="tarjeta"><h2>Instalar Complex_ en el celular</h2><ol>
-      <li><b>Android:</b> abre Complex_ en Chrome → menú ⋮ → "Instalar app" (o "Agregar a la pantalla principal").</li>
-      <li><b>iPhone:</b> abre Complex_ en Safari → botón Compartir → "Agregar a inicio".</li>
+    <section class="tarjeta"><h2>Instalar nodo en el celular</h2><ol>
+      <li><b>Android:</b> abre nodo en Chrome → menú ⋮ → "Instalar app" (o "Agregar a la pantalla principal").</li>
+      <li><b>iPhone:</b> abre nodo en Safari → botón Compartir → "Agregar a inicio".</li>
     </ol></section>
     <p class="nota-pie">Entras con tu correo o con tu número de documento. Si olvidaste la contraseña, pídele al colegio que la restablezca o usa "Olvidé mi contraseña".</p>`;
 }

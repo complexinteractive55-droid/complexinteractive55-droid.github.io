@@ -128,7 +128,7 @@ export async function solicitud(m, p = {}) {
         <small class="esp-err" id="err-requiere" data-err="requiere"></small>
         <div data-recursos-caja hidden>
           <label>Recursos requeridos (obligatorio si respondiste «Sí»)<textarea name="recursos" rows="3" maxlength="${MAX_TEXTO}" placeholder="Ej.: 25 tabletas, 1 videobeam, 2 extensiones eléctricas" aria-describedby="err-recursos ayuda-recursos"></textarea></label>
-          <small class="ayuda" id="ayuda-recursos">Escribe cada recurso y cuántos. Pedirlos no garantiza que estén disponibles ni que se entreguen: Complex aún no tiene un proceso que los confirme, así que Administración te dirá si los hay.</small>
+          <small class="ayuda" id="ayuda-recursos">Escribe cada recurso y cuántos. Pedirlos no garantiza que estén disponibles ni que se entreguen: nodo aún no tiene un proceso que los confirme, así que Administración te dirá si los hay.</small>
           <small class="esp-err" id="err-recursos" data-err="recursos"></small>
         </div>
       </section>

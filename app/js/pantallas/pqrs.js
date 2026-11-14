@@ -174,7 +174,7 @@ function formulario(c, yo) {
   c.innerHTML = `
     <form class="form" data-form novalidate autocomplete="off">
       <section class="tarjeta">
-        <p class="ayuda">Cuéntanos qué necesitas. <b>No tienes que saber qué área lo atiende</b>: Complex dirige tu PQRS a las áreas encargadas
+        <p class="ayuda">Cuéntanos qué necesitas. <b>No tienes que saber qué área lo atiende</b>: nodo dirige tu PQRS a las áreas encargadas
           y en «Mis PQRS» verás su estado y las respuestas.</p>
         <fieldset class="pq-tipos" data-campo="tipo" aria-describedby="err-tipo">
           <legend>Tipo de solicitud (obligatorio)</legend>

@@ -428,7 +428,7 @@ async function editarEvento(b, ev, dia) {
 function exportarICS(items) {
   const f = (iso, todo) => { const d = new Date(iso); return todo ? clave(d).replace(/-/g, '') : d.toISOString().replace(/[-:]/g, '').replace(/\.\d+/, ''); };
   const limpiar = (s) => String(s || '').replace(/[\\,;]/g, (c) => '\\' + c).replace(/\n/g, '\\n');
-  const lineas = ['BEGIN:VCALENDAR', 'VERSION:2.0', 'PRODID:-//Complex_//Calendario//ES', `X-WR-CALNAME:${limpiar(E.colegio.nombre)}`];
+  const lineas = ['BEGIN:VCALENDAR', 'VERSION:2.0', 'PRODID:-//nodo//Calendario//ES', `X-WR-CALNAME:${limpiar(E.colegio.nombre)}`];
   for (const x of items) {
     lineas.push('BEGIN:VEVENT', `UID:${x.dato.id}@complex`, `DTSTAMP:${f(new Date().toISOString())}`,
       x.todo ? `DTSTART;VALUE=DATE:${f(x.cuando, true)}` : `DTSTART:${f(x.cuando)}`,

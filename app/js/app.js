@@ -100,10 +100,10 @@ const MIN_FUERA = 5; // minutos en segundo plano tras los que se vuelve a pedir 
 const claveBloqueo = () => 'bloqueo_' + E.sesion?.user?.id;
 const instalada = () => matchMedia('(display-mode: standalone)').matches || navigator.standalone === true;
 window.addEventListener('beforeinstallprompt', (e) => { e.preventDefault(); instalador = e; });
-window.addEventListener('appinstalled', () => { instalador = null; document.querySelectorAll('[data-instalar]').forEach((b) => b.remove()); aviso('Complex_ quedó instalada en tu equipo.'); });
-const botonInstalar = (clase = 'btn btn-ancho') => (instalada() ? '' : `<button class="${clase}" data-instalar>📲 Instalar Complex_</button>`);
+window.addEventListener('appinstalled', () => { instalador = null; document.querySelectorAll('[data-instalar]').forEach((b) => b.remove()); aviso('nodo quedó instalado en tu equipo.'); });
+const botonInstalar = (clase = 'btn btn-ancho') => (instalada() ? '' : `<button class="${clase}" data-instalar>📲 Instalar nodo</button>`);
 export async function instalarApp() {
-  if (instalada()) return aviso('Ya estás usando Complex_ instalada.');
+  if (instalada()) return aviso('Ya estás usando nodo instalado.');
   if (instalador) {
     instalador.prompt();
     const r = await instalador.userChoice.catch(() => null);
@@ -112,11 +112,11 @@ export async function instalarApp() {
   }
   const ios = /iphone|ipad|ipod/i.test(navigator.userAgent) || (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1);
   await ventana({
-    titulo: 'Instalar Complex_',
-    html: `<p>Complex_ se instala como una app, sin descargar archivos:</p>
+    titulo: 'Instalar nodo',
+    html: `<p>nodo se instala como una app, sin descargar archivos:</p>
       <ol class="pasos-instalar">${ios
-        ? '<li>Abre Complex_ en <b>Safari</b>.</li><li>Toca el botón <b>Compartir</b> (cuadro con flecha).</li><li>Elige <b>"Agregar a inicio"</b> y luego <b>Agregar</b>.</li>'
-        : '<li>Abre Complex_ en <b>Chrome</b>.</li><li>Toca el menú <b>⋮</b> (arriba a la derecha).</li><li>Elige <b>"Instalar app"</b> o <b>"Agregar a la pantalla principal"</b> y confirma.</li><li>En el computador también sirve: el ícono de instalar aparece en la barra de dirección.</li>'}</ol>
+        ? '<li>Abre nodo en <b>Safari</b>.</li><li>Toca el botón <b>Compartir</b> (cuadro con flecha).</li><li>Elige <b>"Agregar a inicio"</b> y luego <b>Agregar</b>.</li>'
+        : '<li>Abre nodo en <b>Chrome</b>.</li><li>Toca el menú <b>⋮</b> (arriba a la derecha).</li><li>Elige <b>"Instalar app"</b> o <b>"Agregar a la pantalla principal"</b> y confirma.</li><li>En el computador también sirve: el ícono de instalar aparece en la barra de dirección.</li>'}</ol>
       <p class="ayuda">Queda con su ícono en la pantalla de inicio y abre a pantalla completa, como Relax.</p>`,
     botones: [{ texto: 'Entendido', valor: true }],
   });
@@ -561,7 +561,7 @@ function pantallaEntrar(modo = 'entrar') {
   app.innerHTML = `
     <div class="entrada">
       <div class="entrada-caja">
-        <div class="marca"><img class="logo-grande" src="img/logo-complex.svg" alt="Complex_"><p>Tu colegio, en un solo lugar.</p></div>
+        <div class="marca"><img class="logo-grande" src="img/logo-complex.svg" alt="nodo"><p>Tu colegio, en un solo lugar.</p></div>
         <form id="f-entrar" class="form" novalidate>
           ${registro ? `
             <label>Nombres<input name="nombres" autocomplete="given-name" required></label>
@@ -642,7 +642,7 @@ function pantallaBloqueo() {
   app.innerHTML = `
     <div class="entrada">
       <div class="entrada-caja">
-        <div class="marca"><img class="logo-grande" src="img/logo-complex.svg" alt="Complex_"><p>🔒 Complex_ está bloqueada</p></div>
+        <div class="marca"><img class="logo-grande" src="img/logo-complex.svg" alt="nodo"><p>🔒 nodo está bloqueado</p></div>
         <button class="btn btn-primario btn-ancho" id="btn-desbloquear">👆 Desbloquear con huella</button>
         <p class="error" id="err-bloqueo" role="alert"></p>
         <div class="entrada-pie"><button class="btn-link" id="btn-otra-cuenta">Entrar con contraseña u otra cuenta</button></div>
@@ -682,7 +682,7 @@ async function ofrecerHuella() {
   pref(clave, 1);
   const si = await ventana({
     titulo: 'Entrar con tu huella',
-    html: '<p>¿Quieres que Complex_ te pida la huella cada vez que la abras en este dispositivo, en vez de la contraseña?</p><p class="ayuda">Tu huella no sale del celular: Complex_ solo guarda una llave de acceso. Puedes quitarla cuando quieras en "Más".</p>',
+    html: '<p>¿Quieres que nodo te pida la huella cada vez que lo abras en este dispositivo, en vez de la contraseña?</p><p class="ayuda">Tu huella no sale del celular: nodo solo guarda una llave de acceso. Puedes quitarla cuando quieras en "Más".</p>',
     botones: [{ texto: 'Ahora no' }, { texto: '👆 Activar', valor: true }],
   });
   if (si) await activarHuella();
@@ -692,7 +692,7 @@ async function activarHuella() {
   try { await E.db.auth.registrarHuella(); }
   catch (e) { if (!/ya tiene tu huella registrada/.test(e.message)) { aviso(e.message, 'error'); return false; } }
   pref(claveBloqueo(), true);
-  aviso('Listo: Complex_ te pedirá la huella cada vez que la abras en este dispositivo');
+  aviso('Listo: nodo te pedirá la huella cada vez que lo abras en este dispositivo');
   return true;
 }
 
@@ -717,7 +717,7 @@ async function entrarDemo() {
   const grupos = ['admin', 'director_seccion', 'profesor', 'enfermeria', 'acudiente', 'estudiante'].map((r) => [r, usuarios.filter((u) => u.roles[0] === r)]).filter(([, l]) => l.length);
   const id = await ventana({
     titulo: 'Modo demo: ¿quién eres?',
-    html: `<p class="ayuda">Es un colegio inventado para probar Complex_. Lo que cambies se guarda solo en este equipo.</p>
+    html: `<p class="ayuda">Es un colegio inventado para probar nodo. Lo que cambies se guarda solo en este equipo.</p>
       ${grupos.map(([r, l]) => `<h3 class="sub">${ROL[r]}</h3><div class="lista">${l.map((u) => `
         <button class="fila fila-boton" data-id="${u.id}"><span class="avatar">${esc(iniciales(u))}</span><span><b>${esc(nombre(u))}</b>${u.roles.length > 1 ? `<small>${u.roles.map((x) => ROL[x]).join(' · ')}</small>` : ''}</span></button>`).join('')}</div>`).join('')}
       <button class="btn-link" id="btn-reiniciar-demo">Reiniciar los datos del demo</button>`,
@@ -741,7 +741,7 @@ async function pantallaColegios() {
   app.innerHTML = `
     <div class="entrada">
       <div class="entrada-caja ancha">
-        <div class="marca"><img class="logo logo-img logo-complex" src="img/simbolo.svg" alt="Complex_"><h1>Hola, ${esc(E.yo.nombres || E.sesion.user.email)}</h1></div>
+        <div class="marca"><img class="logo logo-img logo-complex" src="img/simbolo.svg" alt="nodo"><h1>Hola, ${esc(E.yo.nombres || E.sesion.user.email)}</h1></div>
         ${E.colegios.length ? `<p class="ayuda">Elige el colegio:</p><div class="lista">${E.colegios.map((c) => `
           <button class="fila fila-boton" data-id="${c.id}">${c.logo_ruta ? logoHTML('logo-mini', c) : '<span class="avatar">🏫</span>'}<span><b>${esc(c.nombre)}</b><small>${esc([...new Set(E.membresias.filter((m) => m.colegio_id === c.id).map((m) => ROL[m.rol]))].join(' · '))}</small></span></button>`).join('')}</div>`
         : `<div class="aviso-caja"><p><b>Todavía no perteneces a ningún colegio.</b></p><p>Si eres profesor, acudiente o estudiante, pídele al colegio que te agregue con tu correo <b>${esc(E.sesion.user.email || '')}</b>.</p><p>Si administras un colegio, créalo aquí:</p></div>`}
@@ -792,9 +792,9 @@ async function perfil(m = main()) {
     <section class="tarjeta" id="sec-firma" hidden></section>
     <section class="tarjeta" id="sec-huella" hidden>
       <h2>Entrar con huella</h2>
-      <p class="ayuda">Entra a Complex_ con la huella o el rostro de tu celular, sin escribir la contraseña. Tu huella no sale del celular: Complex_ solo guarda una llave de acceso.</p>
+      <p class="ayuda">Entra a nodo con la huella o el rostro de tu celular, sin escribir la contraseña. Tu huella no sale del celular: nodo solo guarda una llave de acceso.</p>
       <div class="lista" data-huellas></div>
-      <label class="fila" data-bloqueo-fila hidden><input type="checkbox" data-bloqueo><span><b>Pedir la huella al abrir Complex_</b><small>Solo en este dispositivo: cada vez que abras la app, o vuelvas después de ${MIN_FUERA} minutos.</small></span></label>
+      <label class="fila" data-bloqueo-fila hidden><input type="checkbox" data-bloqueo><span><b>Pedir la huella al abrir nodo</b><small>Solo en este dispositivo: cada vez que abras la app, o vuelvas después de ${MIN_FUERA} minutos.</small></span></label>
       <button class="btn" data-activar-huella>👆 Activar en este dispositivo</button>
     </section>
     ${E.rol === 'admin' ? `<section class="tarjeta"><h2>Colegio</h2><a class="fila fila-boton" href="#/ajustes-colegio"><span>⚙️</span><span><b>Ajustes del colegio</b><small>Nombre, escala de notas</small></span></a></section>` : ''}
@@ -821,7 +821,7 @@ async function perfil(m = main()) {
       ${instalada() ? '' : '<button class="fila fila-boton" data-instalar><span>📲</span><span><b>Instalar la app</b><small>Android, iPhone y computador</small></span></button>'}
       <button class="fila fila-boton peligro" id="btn-salir"><span>🚪</span><span><b>Cerrar sesión</b></span></button>
     </section>
-    <p class="nota-pie">Complex_ v${esc(APP_VERSION)}${E.db.modo === 'demo' ? ' · modo demo' : ''}</p>`;
+    <p class="nota-pie">nodo v${esc(APP_VERSION)}${E.db.modo === 'demo' ? ' · modo demo' : ''}</p>`;
   m.querySelectorAll('[data-tema]').forEach((b) => (b.onclick = () => { pref('tema', b.dataset.tema); aplicarTema(); perfil(); }));
   m.querySelectorAll('[data-idioma]').forEach((b) => (b.onclick = () => { if (b.dataset.idioma !== preferenciaIdioma && !elegirIdioma(b.dataset.idioma)) perfil(); }));
   $('#btn-cambiar-clave')?.addEventListener('click', () => cambiarClave(false));
@@ -876,7 +876,7 @@ async function pintarHuellas(m) {
   chk.onchange = async () => {
     if (chk.checked) { chk.checked = await activarHuella(); return pintarHuellas(m); } // comprueba que este dispositivo pueda usar la llave
     pref(claveBloqueo(), false);
-    aviso('Complex_ ya no te pedirá la huella al abrir en este dispositivo');
+    aviso('nodo ya no te pedirá la huella al abrir en este dispositivo');
   };
   s.querySelector('[data-activar-huella]').onclick = async () => { if (await activarHuella()) pintarHuellas(m); };
   s.querySelectorAll('[data-quitar-huella]').forEach((b) => (b.onclick = async () => {
@@ -1043,7 +1043,7 @@ async function arrancar() {
     setTimeout(() => {
       const b = document.createElement('button');
       b.className = 'aviso ver aviso-version';
-      b.textContent = '📲 Toca aquí para instalar Complex_';
+      b.textContent = '📲 Toca aquí para instalar nodo';
       b.onclick = () => { b.remove(); instalarApp(); };
       document.body.appendChild(b);
     }, 800);
@@ -1109,7 +1109,7 @@ function avisoVersion() {
   if (document.querySelector('.aviso-version')) return;
   const b = document.createElement('button');
   b.className = 'aviso ver aviso-version';
-  b.textContent = '🔄 Hay una versión nueva de Complex_. Toca para actualizar.';
+  b.textContent = '🔄 Hay una versión nueva de nodo. Toca para actualizar.';
   b.onclick = () => location.reload();
   document.body.appendChild(b);
 }
