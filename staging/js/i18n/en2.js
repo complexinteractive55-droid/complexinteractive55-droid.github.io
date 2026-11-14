@@ -20,7 +20,7 @@ export default {
   'Material de la clase': 'Class materials', 'Poner en marcha el colegio': 'Getting the school started', 'Comunicarse con las familias': 'Talking with families', 'Notas y periodos': 'Grades and terms',
   'Revisar lo que llega': 'Reviewing what comes in', 'Aula virtual': 'Virtual classroom', 'Observador / seguimientos': 'Student record / follow-ups', 'Ver a tus hijos': 'Seeing your children',
   'Notas y boletines': 'Grades and report cards', 'Reportar una ausencia': 'Reporting an absence', 'Procesos y mensajes': 'Processes and messages', 'Tu Aula': 'Your classroom',
-  'Exámenes en línea': 'Online exams', 'Horario y calendario': 'Schedule and calendar', 'Guía rápida para': 'Quick guide for', 'Instalar Complex_ en el celular': 'Install Complex_ on your phone',
+  'Exámenes en línea': 'Online exams', 'Horario y calendario': 'Schedule and calendar', 'Guía rápida para': 'Quick guide for', 'Instalar nodo en el celular': 'Install nodo on your phone',
   'El periodo está cerrado.': 'The term is closed.', 'Solo el profesor de la materia puede escribir observaciones.': 'Only the subject teacher can write comments.',
   'Primero escribe la observación que quieres copiar.': 'First write the comment you want to copy.', '¿Copiar hacia abajo?': 'Copy down?', 'el colegio aún no ha definido las fechas': 'the school has not set the dates yet',
   'Solo el profesor de la materia registra remediales.': 'Only the subject teacher records remedials.', 'Nadie ha perdido la materia en el año. 🎉': 'Nobody failed the subject this year. 🎉',

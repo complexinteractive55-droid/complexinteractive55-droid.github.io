@@ -195,7 +195,7 @@ const escA = (s) => String(s ?? '').replace(/[&<>"']/g, (c) => ({ '&': '&amp;', 
 // Si el logo guardado no carga, app.js pone las iniciales del colegio (nunca el símbolo de Complex_ en su lugar).
 export function logoHTML(clase = 'logo-mini', colegio = E.colegio) {
   const u = logoUrl(colegio);
-  return u ? `<img class="${clase} logo-img logo-colegio" src="${escA(u)}" alt="${escA(colegio?.nombre || '')}" data-nombre="${escA(colegio?.nombre || '')}">` : `<img class="${clase} logo-img logo-complex" src="img/simbolo.svg" alt="Complex_">`;
+  return u ? `<img class="${clase} logo-img logo-colegio" src="${escA(u)}" alt="${escA(colegio?.nombre || '')}" data-nombre="${escA(colegio?.nombre || '')}">` : `<img class="${clase} logo-img logo-complex" src="img/simbolo.svg" alt="nodo">`;
 }
 // Aplica el color institucional a toda la app (claro y oscuro)
 export function aplicarMarca() {

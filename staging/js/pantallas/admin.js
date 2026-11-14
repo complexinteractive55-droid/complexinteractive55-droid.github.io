@@ -295,7 +295,7 @@ export async function personas(m, p) {
         { name: 'rol', label: 'Rol', tipo: 'select', opciones: Object.entries(ROL), def: tab !== 'todos' ? tab : 'acudiente' },
         { name: 'correo', label: 'Correo con el que se registró', tipo: 'email' },
         ...(demo ? [{ name: 'nombres', label: 'Nombres' }, { name: 'apellidos', label: 'Apellidos' }] : []),
-      ]) + '<p class="ayuda">Para personas que crearon su propia cuenta en Complex_ ("Crear cuenta" al entrar).</p>',
+      ]) + '<p class="ayuda">Para personas que crearon su propia cuenta en nodo ("Crear cuenta" al entrar).</p>',
       botones: [{ texto: 'Cancelar' }, { texto: 'Agregar', antes: async (c) => {
         const d = leerForm(c);
         if (!/^\S+@\S+\.\S+$/.test(d.correo)) throw new Error('Escribe un correo válido.');
@@ -487,7 +487,7 @@ export async function ajustesColegio(m) {
       <div class="form">
         <label>Logo (PNG, JPG o SVG, máximo 1 MB)<input type="file" name="logo" accept="image/png,image/jpeg,image/webp,image/svg+xml"></label>
         <label class="en-linea">Color institucional <input type="color" name="color" value="${esc(c.color || '#1f4fd1')}"></label>
-        <div class="acciones"><button class="btn btn-primario" data-guardar-marca>Guardar marca</button>${c.logo_ruta || c.color ? '<button class="btn" data-quitar-marca>Volver a la marca de Complex_</button>' : ''}</div>
+        <div class="acciones"><button class="btn btn-primario" data-guardar-marca>Guardar marca</button>${c.logo_ruta || c.color ? '<button class="btn" data-quitar-marca>Volver a la marca de nodo</button>' : ''}</div>
       </div>
     </section>
     <section class="tarjeta" id="tipos-asistencia">

@@ -12,7 +12,7 @@ const nombreSeguro = (s) => s.normalize('NFD').replace(/[̀-ͯ]/g, '').replace(/
 const tiposMensaje = () => E.db.select('tipos_mensaje', { eq: { colegio_id: E.colegio.id }, order: 'orden' }).catch(() => []);
 const chipTipo = (tipos, x) => { const tm = x.tipo_id && tipos.find((t) => t.id === x.tipo_id); return tm ? `<span class="chip chip-tipo" style="--c:${esc(tm.color)}">${esc(tm.nombre)}${x.numero ? ' No. ' + x.numero : ''}</span> ` : ''; };
 // Avisos automáticos de PQRS (28-oct, con el OK de Fabio): llegan sin autor y su enlace al caso se puede tocar
-const remitente = (x) => (x.autor_id ? nombre(E.perfiles.get(x.autor_id)) : 'Complex · aviso automático');
+const remitente = (x) => (x.autor_id ? nombre(E.perfiles.get(x.autor_id)) : 'nodo · aviso automático');
 const cuerpoHTML = (t) => esc(t).replace(/\n/g, '<br>')
   .replace(/Abrir la PQRS: #\/pqrs\/([0-9a-f-]{36})/g, '<a class="btn btn-chico btn-primario" href="#/pqrs/$1">Abrir la PQRS</a>')
   .replace(/(^|[\s>])#\/pqrs\/([0-9a-f-]{36})/g, '$1<a href="#/pqrs/$2">Abrir la PQRS</a>');

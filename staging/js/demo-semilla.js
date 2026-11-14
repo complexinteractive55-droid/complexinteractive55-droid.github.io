@@ -134,7 +134,7 @@ export function crearSemillaDemo() {
   // Circulares
   const circ = (titulo, cuerpo, extra = {}, d = -2) =>
     t.circulares.push({ id: id('cir'), colegio_id: c, autor_id: rectora.id, titulo, cuerpo, sede_id: null, grado_id: null, curso_id: null, roles: null, publicada_en: new Date(Date.now() + d * 864e5).toISOString(), creado_en: ahora.toISOString(), ...extra });
-  circ('Bienvenidos a Complex_', 'Queridas familias: desde hoy pueden consultar notas, asistencia y circulares desde Complex_. Cualquier duda, escríbannos a secretaría.', {}, -15);
+  circ('Bienvenidos a nodo', 'Queridas familias: desde hoy pueden consultar notas, asistencia y circulares desde nodo. Cualquier duda, escríbannos a secretaría.', {}, -15);
   circ('Entrega de boletines del Periodo 1', 'La entrega de boletines será el viernes a las 7:00 a. m. en el salón de cada curso. Es obligatoria la asistencia del acudiente.', { roles: ['acudiente', 'estudiante'] }, -6);
   circ('Salida pedagógica 7A', 'El curso 7A visitará el Jardín Botánico. Deben traer la autorización firmada y refrigerio.', { curso_id: cursos[1].id }, -1);
   circ('Reunión de profesores', 'Reunión general el miércoles a las 2:00 p. m. en la sala de profesores.', { roles: ['profesor'] }, -1);

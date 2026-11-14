@@ -1,6 +1,6 @@
 // Diccionario es → en (parte 4: ayudas largas, ajustes y días)
 export default {
-  'Entra a Complex_ con la huella o el rostro de tu celular, sin escribir la contraseña. Tu huella no sale del celular: Complex_ solo guarda una llave de acceso.': 'Sign in to Complex_ with your phone fingerprint or face, without typing your password. Your fingerprint never leaves your phone: Complex_ only stores a passkey.',
+  'Entra a nodo con la huella o el rostro de tu celular, sin escribir la contraseña. Tu huella no sale del celular: nodo solo guarda una llave de acceso.': 'Sign in to nodo with your phone fingerprint or face, without typing your password. Your fingerprint never leaves your phone: nodo only stores a passkey.',
   'Solo en este dispositivo: cada vez que abras la app, o vuelvas después de 5 minutos.': 'On this device only: every time you open the app, or come back after 5 minutes.',
   'Desempeños según el Decreto 1290: Bajo (por debajo de la nota para aprobar), Básico, Alto y Superior.': 'Performance levels per Decree 1290: Low (below the passing grade), Basic, High and Superior.',
   'Como en Phidias: el profesor elige la sigla de una lista (ej. S, A, BS, BJ).': 'Teachers pick the code from a list (e.g. S, A, BS, BJ).',
@@ -21,8 +21,8 @@ export default {
   'Tablero: planeaciones por revisar, ausencias reportadas por las familias y procesos abiertos.': 'Dashboard: lesson plans to review, absences reported by families and open processes.',
   'Planeaciones: apruébalas o devuélvelas con un comentario.': 'Lesson plans: approve them or return them with a comment.',
   'Ausencias reportadas: acepta (la falla queda justificada) o no aceptes.': 'Reported absences: accept (the absence becomes excused) or decline.',
-  'abre Complex_ en Chrome → menú ⋮ → "Instalar app" (o "Agregar a la pantalla principal").': 'open Complex_ in Chrome → menu ⋮ → "Install app" (or "Add to Home screen").',
-  'abre Complex_ en Safari → botón Compartir → "Agregar a inicio".': 'open Complex_ in Safari → Share button → "Add to Home Screen".',
+  'abre nodo en Chrome → menú ⋮ → "Instalar app" (o "Agregar a la pantalla principal").': 'open nodo in Chrome → menu ⋮ → "Install app" (or "Add to Home screen").',
+  'abre nodo en Safari → botón Compartir → "Agregar a inicio".': 'open nodo in Safari → Share button → "Add to Home Screen".',
   'Entras con tu correo o con tu número de documento. Si olvidaste la contraseña, pídele al colegio que la restablezca o usa "Olvidé mi contraseña".': 'You sign in with your email or your ID number. If you forgot your password, ask the school to reset it or use "I forgot my password".',
   'Respuestas a todos: permite responder al remitente y a todos los destinatarios': 'Reply all: allow replying to the sender and all recipients',
   'Compromisos de los estudiantes del colegio, con fecha límite y firma de la familia.': "Commitments of the school's students, with due date and family signature.",

@@ -114,7 +114,7 @@ export async function pintarMiFirma(sec) {
       <label class="btn">✍️ ${p.firma ? 'Cambiar mi firma' : 'Cargar mi firma'}<input type="file" accept="image/*" data-firma-archivo hidden></label>
       ${p.firma ? '<button type="button" class="btn btn-peligro" data-firma-quitar>Quitar mi firma</button>' : ''}
     </div>
-    <p class="ayuda">Firma con tinta oscura sobre una hoja blanca, toma la foto de cerca y con buena luz. Complex quita el fondo y la recorta.</p>`;
+    <p class="ayuda">Firma con tinta oscura sobre una hoja blanca, toma la foto de cerca y con buena luz. nodo quita el fondo y la recorta.</p>`;
   sec.querySelector('[data-firma-archivo]').addEventListener('change', async (e) => {
     const archivo = e.target.files?.[0];
     e.target.value = '';

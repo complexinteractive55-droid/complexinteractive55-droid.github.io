@@ -48,7 +48,7 @@ export async function crearDbSupabase() {
   const fallaHuella = (error) => {
     if (!error) return;
     const t = [error.code, error.error_code, error.name, error.message].filter(Boolean).join(' ');
-    if (/passkey_disabled/i.test(t)) throw new Error('La entrada con huella aún no está activada en Complex_.');
+    if (/passkey_disabled/i.test(t)) throw new Error('La entrada con huella aún no está activada en nodo.');
     if (/NotAllowed|CEREMONY_ABORTED|AbortError|cancel/i.test(t)) throw new Error('Se canceló la huella.');
     if (/webauthn_credential_exists|InvalidState/i.test(t)) throw new Error('Este dispositivo ya tiene tu huella registrada.');
     if (/webauthn_credential_not_found/i.test(t)) throw new Error('Esa llave ya no está registrada. Entra con tu contraseña y activa la huella de nuevo.');

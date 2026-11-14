@@ -287,6 +287,9 @@ input[type=color] { width: 56px !important; min-height: 40px !important; padding
 
 /* Logo de Complex_ */
 .logo-grande { width: 170px; height: auto; display: block; margin: 0 auto 4px; }
+/* Logo sin fondo: en modo oscuro la palabra «nodo» va en blanco (misma regla de tema que estilos.css) */
+@media (prefers-color-scheme: dark) { :root:not([data-theme="light"]) .logo-grande { content: url(img/logo-complex-oscuro.svg); } }
+:root[data-theme="dark"] .logo-grande { content: url(img/logo-complex-oscuro.svg); }
 .logo-img.logo-complex { padding: 1px; }
 
 /* Planilla: criterios → experiencias → actividades */
