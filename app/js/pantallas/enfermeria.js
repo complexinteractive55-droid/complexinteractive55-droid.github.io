@@ -7,6 +7,8 @@
 import { E, base, perfiles, fotos, misEstudiantes, personaActiva } from '../estado.js';
 import { esc, aviso, ventana, leerForm, confirmar, nombre, nombreLista, vacio, fecha, fechaHora, hoy, avatarHTML } from '../ui.js';
 import { cabecera, buscar, conectarBuscador } from './comun.js';
+import { columnaCaja } from '../dia_columna.js';
+import { montarColumnaDia } from './tablero.js';
 
 const ESTADO_SALIDA = { autorizado: ['🟡 Autorizada', 'alerta'], salio: ['✅ Salió', 'ok'], anulado: ['✖ Anulada', 'tachado'] };
 const MOTIVOS = ['Cita médica', 'Enfermedad o malestar', 'Calamidad familiar', 'Actividad deportiva o cultural', 'Trámite personal', 'Otro'];
@@ -33,24 +35,29 @@ const listaEstudiantes = (ests, fot) => `${buscar('Buscar estudiante por nombre 
 
 // ---------------------------------------------------------------- Tableros
 export async function inicioEnfermeria(m) {
-  const [ests, hoyS] = await Promise.all([estudiantesVisibles(), E.db.select('permisos_salida', { eq: { colegio_id: E.colegio.id, fecha: hoy() } })]);
+  const [b, ests, hoyS] = await Promise.all([base(), estudiantesVisibles(), E.db.select('permisos_salida', { eq: { colegio_id: E.colegio.id, fecha: hoy() } })]);
   const fot = await fotos(ests.map((x) => x.id));
   m.innerHTML = cabecera('Enfermería', { acciones: '<a class="btn btn-primario" href="#/salidas">🚪 Permisos de salida</a>' }) + `
-    <div class="cifras">
+    <div class="tablero-con-dia"><div class="cifras">
       <a class="cifra" href="#/salidas"><b>${hoyS.filter((x) => x.estado === 'autorizado').length}</b><span>Salidas por confirmar hoy</span></a>
       <a class="cifra" href="#/salidas"><b>${hoyS.filter((x) => x.estado === 'salio').length}</b><span>Salieron hoy</span></a>
       <a class="cifra" href="#/seguimientos"><b>📋</b><span>Prerreportes</span></a>
-    </div>
+    </div>${columnaCaja()}</div>
     <section class="tarjeta"><h2>Estudiantes</h2><p class="ayuda">Toca un estudiante para ver su ficha médica y los contactos de su familia.</p>
       ${ests.length ? listaEstudiantes(ests, fot) : vacio('Aún no hay estudiantes matriculados.')}</section>`;
   conectarBuscador(m);
+  montarColumnaDia(m.querySelector('[data-dia-col]'), b);
 }
 
 export async function inicioSeccion(m) {
   const b = await base();
   const grados = gradosSeccion();
   const cursos = cursosSeccion(b);
-  if (!grados.length) { m.innerHTML = cabecera('Mi sección') + vacio('El administrador aún no te ha asignado los grados de tu sección (Personas → tu nombre → Sección).'); return; }
+  if (!grados.length) {
+    m.innerHTML = cabecera('Mi sección') + vacio('El administrador aún no te ha asignado los grados de tu sección (Personas → tu nombre → Sección).') + columnaCaja({ sola: true });
+    montarColumnaDia(m.querySelector('[data-dia-col]'), b);
+    return;
+  }
   const [ests, hoyS, plans] = await Promise.all([
     estudiantesVisibles(),
     E.db.select('permisos_salida', { eq: { colegio_id: E.colegio.id, fecha: hoy() } }),
@@ -61,13 +68,14 @@ export async function inicioSeccion(m) {
   const plansSec = plans.filter((x) => asigsSec.has(x.asignacion_id));
   m.innerHTML = cabecera('Mi sección') + `
     <p class="ayuda">Grados: <b>${esc(b.grados.filter((g) => grados.includes(g.id)).map((g) => g.nombre).join(', '))}</b> · ${cursos.length} curso(s) · ${ests.length} estudiante(s)</p>
-    <div class="cifras">
+    <div class="tablero-con-dia"><div class="cifras">
       <a class="cifra" href="#/planeaciones"><b>${plansSec.filter((x) => x.estado === 'enviada').length}</b><span>Planeaciones por revisar</span></a>
       <a class="cifra" href="#/salidas"><b>${hoyS.length}</b><span>Permisos de salida hoy</span></a>
       <a class="cifra" href="#/seguimientos"><b>📋</b><span>Seguimientos</span></a>
-    </div>
+    </div>${columnaCaja()}</div>
     <section class="tarjeta"><h2>Estudiantes de la sección</h2>${ests.length ? listaEstudiantes(ests, fot) : vacio('Aún no hay estudiantes en estos grados.')}</section>`;
   conectarBuscador(m);
+  montarColumnaDia(m.querySelector('[data-dia-col]'), b);
 }
 
 // ---------------------------------------------------------------- Permisos de salida

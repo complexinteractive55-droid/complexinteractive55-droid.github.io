@@ -424,7 +424,36 @@ export function crearDbDemo() {
   const cargar = () => {
     try { t = JSON.parse(localStorage.getItem(CLAVE_DEMO)); } catch { t = null; }
     if (!t || !t.colegios) { t = crearSemillaDemo(); guardar(); }
+    if (hoyDemo()) guardar();
   };
+  // «Hoy» del demo (Fabio, 15-nov-2026): para que la columna del día del Tablero se vea con algo cualquier día que se abra el demo,
+  // cada día (fecha de Colombia) se pone un día FICTICIO del calendario institucional con ciclo y día de ciclo (hoy 15-nov-2026 =
+  // Ciclo 8 · Día 3, y de ahí en ciclos de 6 días) y cuatro reuniones «(DEMO)» en la agenda de cada docente. Lo del día anterior
+  // se quita. Solo en el demo (datos de este navegador): la app real solo muestra lo que imprime el calendario del colegio.
+  function hoyDemo() {
+    const p = Object.fromEntries(new Intl.DateTimeFormat('en-CA', { timeZone: 'America/Bogota', year: 'numeric', month: '2-digit', day: '2-digit' }).formatToParts(new Date()).map((x) => [x.type, x.value]));
+    const fecha = `${p.year}-${p.month}-${p.day}`;
+    if (t.demo_hoy === fecha) return false;
+    for (const n of ['calendario_dias', 'calendario_fuentes', 'eventos_personales']) t[n] = (t[n] || []).filter((x) => !x.demo_hoy);
+    const dias = Math.round((Date.UTC(+p.year, +p.month - 1, +p.day) - Date.UTC(2026, 10, 15)) / 864e5);
+    const n = (((dias + 7 * 6 + 2) % 594) + 594) % 594; // 15-nov-2026 → ciclo 8, día 3
+    const hora = (hh) => new Date(`${fecha}T${hh}:00-05:00`).toISOString();
+    for (const c of t.colegios || []) {
+      if ((t.calendario_dias || []).some((x) => x.colegio_id === c.id && x.fecha === fecha && x.vigente)) continue; // ya hay uno importado
+      const fuente = { id: crypto.randomUUID(), colegio_id: c.id, sha256: '0'.repeat(64), nombre_archivo: 'DEMO_calendario_ficticio.xlsx', documento: 'Calendario FICTICIO del demo', institucion: 'DEMO',
+        notas: {}, cobertura_desde: fecha, cobertura_hasta: fecha, fechas: 1, importado_por: null, importado_en: new Date().toISOString(), demo_hoy: true };
+      (t.calendario_fuentes ||= []).push(fuente);
+      (t.calendario_dias ||= []).push({ id: crypto.randomUUID(), colegio_id: c.id, fuente_id: fuente.id, fecha, dia_ciclo: (n % 6) + 1, ciclo: Math.floor(n / 6) + 1,
+        tipo: 'Etiqueta de día sin evento', descripcion: 'DEMO (día ficticio)', horario_texto: '', pagina: null, estado_fuente: '', dudas: '', huella: '0'.repeat(64), vigente: true, demo_hoy: true });
+      for (const m of (t.miembros || []).filter((x) => x.colegio_id === c.id && x.rol === 'profesor' && x.activo !== false)) {
+        for (const [titulo, ini, fin] of [['Planeación de la semana (DEMO)', '08:00', '10:00'], ['Revisión de cuadernos (DEMO)', '09:30', '10:30'], ['Llamada con acudientes (DEMO)', '11:00', '11:45'], ['Preparar evaluación (DEMO)', '15:00', '16:30']]) {
+          (t.eventos_personales ||= []).push({ id: crypto.randomUUID(), colegio_id: c.id, perfil_id: m.perfil_id, titulo, descripcion: 'Evento ficticio del demo', inicio: hora(ini), fin: hora(fin), todo_el_dia: false, creado_en: new Date().toISOString(), demo_hoy: true });
+        }
+      }
+    }
+    t.demo_hoy = fecha;
+    return true;
+  }
   const guardar = () => { try { localStorage.setItem(CLAVE_DEMO, JSON.stringify(t)); } catch {} };
   cargar();
 

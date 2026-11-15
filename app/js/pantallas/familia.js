@@ -7,7 +7,8 @@ import { valorTexto } from './seguimientos.js';
 import { visiblesParaMi } from './circulares.js';
 import { contarNoLeidos } from './mensajeria.js';
 import { htmlCompromisos, conectarCompromisos } from './compromisos.js';
-import { novedadesFamilia, obligacionesFamilia } from './tablero.js';
+import { novedadesFamilia, obligacionesFamilia, montarColumnaDia } from './tablero.js';
+import { columnaCaja } from '../dia_columna.js';
 import { htmlFicha, conectarFicha, htmlAusencias, conectarAusencias } from './comunidad.js';
 import { notaPeriodo, notaConIndicadores, notaIndicador, definitiva, notaFinal, mostrarNota, desempeno, resumenAsistencia, verNotaEscala } from '../calculos.js';
 
@@ -81,6 +82,7 @@ export async function inicio(m) {
   const obligaciones = await obligacionesFamilia(ids);
   m.innerHTML = `
     <h1 class="titulo">Hola, ${esc(E.yo.nombres || '')}</h1>
+    <div class="tablero-con-dia dia-ancho"><div class="tablero-izq">
     ${noLeidos ? `<a class="aviso-caja enlace" href="#/bandeja">✉️ Tienes <b>${noLeidos}</b> mensaje(s) sin leer</a>` : ''}
     ${sinLeer.length ? `<a class="aviso-caja enlace" href="#/circulares">📣 Tienes <b>${sinLeer.length}</b> circular(es) sin leer</a>` : ''}
     ${obligaciones}
@@ -99,7 +101,9 @@ export async function inicio(m) {
           </div>
         </a>`;
     }).join('') : vacio('Aún no estás vinculado a ningún estudiante. Pídele al colegio que te vincule como acudiente.')}
+    </div>${columnaCaja({ sola: true })}</div>
     ${novedades}`;
+  montarColumnaDia(m.querySelector('[data-dia-col]'), b, { estudiantes: ids }); // Fabio, 15-nov-2026: «todos deben tener este sistema»
 }
 
 // ---------------------------------------------------------------- Ficha del estudiante
@@ -158,7 +162,9 @@ export async function estudiante(m, p) {
   const base = p.inicio ? '#/estudiante/' + d.est.id + '?inicio=1&tab=' : '#/estudiante/' + d.est.id + '?tab=';
   m.innerHTML = cabecera(titulo, { volver, acciones: (E.rol !== 'profesor' ? `<a class="btn" href="#/carnet/${d.est.id}">🪪 Carnet</a>` : '') + (E.rol === 'admin' ? `<button class="btn" data-certificados>📜 Certificados</button><a class="btn" href="#/estado-cuenta/${d.est.id}">💰 Estado de cuenta</a>` : '') }) +
     `<p class="sub-titulo">${d.curso ? `Curso ${esc(d.curso.nombre)} · ${esc(b.gradoPorId.get(d.curso.grado_id)?.nombre || '')}` : ''}${b.anio ? ' · ' + b.anio.anio : ''}</p>` +
+    (p.inicio && tab === 'notas' ? columnaCaja({ sola: true }) : '') +
     pestanas(TABS, tab, base) + `<div class="contenido">${html}</div>`;
+  if (p.inicio && tab === 'notas') montarColumnaDia(m.querySelector('[data-dia-col]'), b, { estudiantes: [d.est.id] }); // Fabio, 15-nov-2026
 
   m.querySelectorAll('[data-materia]').forEach((bt) => (bt.onclick = () => detalleMateria(d, bt.dataset.materia)));
   m.querySelector('[data-certificados]')?.addEventListener('click', async () => {
