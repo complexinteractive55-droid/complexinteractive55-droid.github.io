@@ -2,7 +2,7 @@
 // aunque no tenga correo — entra con su número de documento), importación desde
 // Excel/CSV y restablecimiento de contraseñas. Usa la Edge Function "admin-usuarios".
 import { E, base, recargarBase } from '../estado.js';
-import { esc, aviso, ventana, leerForm, confirmar, nombre, ROL } from '../ui.js';
+import { esc, aviso, ventana, leerForm, confirmar, nombre, nombreRol, ROL_CREAR } from '../ui.js';
 import { camposHTML } from './comun.js';
 
 const TIPOS_DOC = [['TI', 'Tarjeta de identidad'], ['CC', 'Cédula de ciudadanía'], ['RC', 'Registro civil'], ['CE', 'Cédula de extranjería'], ['PA', 'Pasaporte'], ['NUIP', 'NUIP']];
@@ -17,7 +17,7 @@ export function mostrarCredenciales(resultados) {
       <p class="ayuda">${ok.length} listo(s)${mal.length ? ` · <span class="alerta">${mal.length} con error</span>` : ''}. Entrega a cada persona su usuario y contraseña. <b>Las contraseñas solo se muestran ahora.</b></p>
       <div class="credenciales">${ok.map((r) => `
         <div class="credencial">
-          <b>${esc(`${r.nombres || ''} ${r.apellidos || ''}`.trim())}</b><small>${ROL[r.rol] || ''} · ${esc(E.colegio.nombre)}</small>
+          <b>${esc(`${r.nombres || ''} ${r.apellidos || ''}`.trim())}</b><small>${esc(nombreRol(r.rol))} · ${esc(E.colegio.nombre)}</small>
           <div>Usuario: <code>${esc(usuarioVisible(r.usuario))}</code></div>
           <div>Contraseña: ${r.clave ? `<code>${esc(r.clave)}</code>` : '<i>ya tenía cuenta (usa su contraseña)</i>'}</div>
           <small>Entra en la app nodo → "Correo o número de documento".</small>
@@ -32,7 +32,7 @@ export async function agregarPersona(rolInicial, alListo) {
   const r = await ventana({
     titulo: 'Agregar persona',
     html: camposHTML([
-      { name: 'rol', label: 'Rol', tipo: 'select', opciones: Object.entries(ROL), def: rolInicial || 'estudiante' },
+      { name: 'rol', label: 'Rol', tipo: 'select', opciones: Object.entries(ROL_CREAR), def: rolInicial || 'estudiante' },
       { name: 'nombres', label: 'Nombres' },
       { name: 'apellidos', label: 'Apellidos' },
       { name: 'tipo_documento', label: 'Tipo de documento', tipo: 'select', opciones: TIPOS_DOC, def: rolInicial === 'estudiante' || !rolInicial ? 'TI' : 'CC' },
@@ -55,7 +55,7 @@ export async function agregarPersona(rolInicial, alListo) {
 
 // ---------------------------------------------------------------- Importar desde Excel (CSV)
 const COLUMNAS = ['rol', 'nombres', 'apellidos', 'tipo_documento', 'documento', 'correo', 'telefono', 'curso', 'acudiente_de'];
-const ROL_DE = { estudiante: 'estudiante', alumno: 'estudiante', alumna: 'estudiante', profesor: 'profesor', docente: 'profesor', profesora: 'profesor', acudiente: 'acudiente', padre: 'acudiente', madre: 'acudiente', familiar: 'acudiente', admin: 'admin', administrador: 'admin' };
+const ROL_DE = { estudiante: 'estudiante', alumno: 'estudiante', alumna: 'estudiante', profesor: 'profesor', docente: 'profesor', profesora: 'profesor', acudiente: 'acudiente', padre: 'acudiente', madre: 'acudiente', familiar: 'acudiente', admin: 'admin', administrador: 'admin', rector: 'rectoria', rectora: 'rectoria', rectoria: 'rectoria', gerente: 'gerencia', gerencia: 'gerencia' };
 const norm = (s) => String(s || '').trim().toLowerCase().normalize('NFD').replace(/[̀-ͯ]/g, '');
 
 function leerCSV(texto) {

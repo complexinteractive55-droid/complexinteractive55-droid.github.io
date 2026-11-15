@@ -7,8 +7,8 @@
 // finalizar; cada área tiene un líder principal y, guardados en el área, el cargo y el correo que publica el colegio.
 // La base decide qué ve cada quien (lo de salud llega oculto a quien no tiene permiso): esta pantalla solo lo muestra.
 // Lo escrito se guarda en el equipo hasta que el servidor confirma, con el mismo identificador de envío (reintentar no duplica).
-import { E, viendoHijo } from '../estado.js';
-import { esc, aviso, ventana, vacio, fechaHora, fecha, ROL, confirmar } from '../ui.js';
+import { E, viendoHijo, miTitulo } from '../estado.js';
+import { esc, aviso, ventana, vacio, fechaHora, fecha, ROL, nombreRol, confirmar } from '../ui.js';
 import { cabecera, pestanas } from './comun.js';
 import { TIPOS, ESTADO_AREA, ESTADO_GENERAL, AYUDA_ESTADO, MAX_ASUNTO, MAX_DESCRIPCION, MAX_TEXTO, AREAS, SECCIONES, validar, esSinRed } from '../pqrs_reglas.js';
 import { LIMITES, IMAGENES, revisarArchivo, prepararFoto, tamanoTexto } from '../pqrs_archivos.js';
@@ -188,7 +188,7 @@ function formulario(c, yo) {
         <small class="pq-err" id="err-descripcion" data-err="descripcion"></small>
         ${yo.hijos.length > 1 ? `<label>¿Sobre cuál de tus hijos? (opcional)<select name="estudiante"><option value="">No es sobre un estudiante en particular</option>${yo.hijos.map((h) => `<option value="${esc(h.id)}" ${st.estudiante === h.id ? 'selected' : ''}>${esc(h.nombre)}</option>`).join('')}</select></label>` : ''}
         <div class="pq-form-adjuntos"><b>Fotos o documentos (opcional)</b><div data-adjuntos></div></div>
-        <p class="ayuda">Se registran automáticamente tu nombre, tu perfil (${esc(ROL[E.rol] || E.rol)}), el colegio, la fecha y la hora.</p>
+        <p class="ayuda">Se registran automáticamente tu nombre, tu perfil (${esc(nombreRol(E.rol, miTitulo()))}), el colegio, la fecha y la hora.</p>
         <button type="submit" class="btn btn-primario btn-ancho" data-enviar>Enviar PQRS</button>
         <div class="pq-msg" data-mensaje role="status" aria-live="polite"></div>
       </section>

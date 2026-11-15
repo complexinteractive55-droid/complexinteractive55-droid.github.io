@@ -68,7 +68,7 @@ export async function elegirColegio(id) {
 export async function refrescarMembresias() {
   if (!E.yo || !E.db?.fresco) return null;
   const activos = (await E.db.fresco('miembros', { eq: { perfil_id: E.yo.id } })).filter((m) => m.activo);
-  const clave = (l) => l.map((m) => m.colegio_id + ':' + m.rol).sort().join(',');
+  const clave = (l) => l.map((m) => m.colegio_id + ':' + m.rol + ':' + (m.titulo || '')).sort().join(',');
   if (clave(activos) === clave(E.membresias || [])) return null;
   E.membresias = activos;
   E.colegios = (E.colegios || []).filter((c) => activos.some((m) => m.colegio_id === c.id));
@@ -79,6 +79,9 @@ export async function refrescarMembresias() {
   if (!E.roles.includes(E.rol)) E.rol = E.roles[0];
   return { cambio: true, rolCambio: antes !== E.rol };
 }
+
+// Mi título en el colegio activo («rectoria» o «gerencia» si soy administrador con ese nombre)
+export const miTitulo = () => (E.membresias || []).find((m) => m.colegio_id === E.colegio?.id && m.rol === 'admin')?.titulo || null;
 
 export function cambiarRol(r) {
   if (!E.roles.includes(r)) return;

@@ -164,6 +164,8 @@ export default {
   'No se pudo traer el documento: usa «Abrir el PDF» o «Descargar».': 'The document could not be loaded: use “Open the PDF” or “Download”.',
   'No se pudo mostrar aquí: usa «Abrir el PDF» o «Descargar».': 'It could not be shown here: use “Open the PDF” or “Download”.',
   // Eliminar / restaurar usuarios (14-nov-2026)
+  'Rectoría': 'Principal', 'Gerencia': 'Management', 'Se muestra como': 'Shown as', 'No hay usuarios eliminados.': 'There are no deleted users.',
+  'Rectoría y Gerencia tienen los mismos permisos que el Administrador; solo cambia el nombre.': 'Principal and Management have the same permissions as the Administrator; only the name changes.',
   'Eliminar usuario': 'Delete user', '🗑 Eliminar usuario': '🗑 Delete user', '↩ Restaurar usuario': '↩ Restore user', '🚫 Eliminado': '🚫 Deleted',
   '🚫 Usuario eliminado': '🚫 User deleted', '🚫 Cuenta eliminada por el colegio': '🚫 Account deleted by the school', 'Restaurar': 'Restore',
   'Sale del colegio y su cuenta queda bloqueada: ya no podrá entrar a nodo. Su historial se conserva y lo puedes restaurar después.': 'They leave the school and their account is blocked: they will no longer be able to sign in to nodo. Their history is kept and you can restore them later.',

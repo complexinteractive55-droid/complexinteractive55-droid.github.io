@@ -105,6 +105,15 @@ export const avatarHTML = (p, url, clase = '') => `<span class="avatar ${clase}"
 export const iniciales = (p) => (nombre(p).split(/\s+/).slice(0, 2).map((x) => x[0]).join('') || '?').toUpperCase();
 
 export const ROL = { admin: 'Administrador', director_seccion: 'Director(a) de sección', profesor: 'Profesor', enfermeria: 'Enfermería', acudiente: 'Acudiente', estudiante: 'Estudiante' };
+// Rectoría y Gerencia (Fabio, 14-nov-2026: «Igual que Administrador»): son ADMINISTRADORES con los mismos permisos; solo cambia
+// el nombre que se muestra. Se guardan como rol 'admin' + miembros.titulo (migración 20261115110000); ninguna regla de acceso cambia.
+export const TITULO = { rectoria: 'Rectoría', gerencia: 'Gerencia' };
+// Opciones de rol al crear o agregar personas: Administrador, Rectoría, Gerencia y los demás roles
+export const ROL_CREAR = { admin: ROL.admin, ...TITULO, ...Object.fromEntries(Object.entries(ROL).filter(([k]) => k !== 'admin')) };
+// Nombre visible de un rol (el título solo aplica al rol de administrador)
+export const nombreRol = (rol, titulo) => (rol === 'admin' && TITULO[titulo]) || ROL[rol] || TITULO[rol] || rol || '';
+// Opción del formulario → rol de la base + título
+export const rolYTitulo = (r) => (TITULO[r] ? { rol: 'admin', titulo: r } : { rol: r, titulo: null });
 
 export const vacio = (texto, extra = '') => `<div class="vacio"><p>${esc(texto)}</p>${extra}</div>`;
 
