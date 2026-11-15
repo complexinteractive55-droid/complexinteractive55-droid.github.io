@@ -208,8 +208,10 @@ details.indicador > .lista { padding: 0 0 8px 40px; }
 .dia-bloque { --ancho: calc((100% - (var(--n) - 1) * 3px) / var(--n)); position: absolute; top: calc(var(--i) * var(--ppm) * 1px + 1px); height: calc(var(--d) * var(--ppm) * 1px - 3px); min-height: 14px;
   left: calc(var(--c) * (var(--ancho) + 3px)); width: var(--ancho); box-sizing: border-box; padding: 3px 6px; border-radius: 8px; overflow: hidden;
   display: flex; flex-direction: column; color: #fff; text-decoration: none; background: var(--fondo-bloque); -webkit-user-drag: none; }
-.dia-bloque b { font-size: 14px; line-height: 1.15; overflow-wrap: break-word; hyphens: auto; }
-.dia-bloque small { font-size: 11px; color: rgba(255, 255, 255, .9); line-height: 1.2; overflow-wrap: break-word; }
+/* Las palabras pasan de renglón solo por los espacios, nunca a la mitad («cuaderno / s», Fabio 15-nov); la que no cabe sola se corta
+   con «…» (el texto completo está en el título del bloque) */
+.dia-bloque b { flex-shrink: 0; font-size: 14px; line-height: 1.15; overflow: hidden; text-overflow: ellipsis; overflow-wrap: normal; word-break: normal; hyphens: manual; }
+.dia-bloque small { flex-shrink: 0; font-size: 11px; color: rgba(255, 255, 255, .9); line-height: 1.2; overflow: hidden; text-overflow: ellipsis; overflow-wrap: normal; word-break: normal; }
 .dia-etq { font-style: normal; font-weight: 700; padding: 0 4px; border-radius: 4px; background: rgba(0, 0, 0, .28); color: #fff; }
 .dia-bloque.angosto { padding: 3px 4px; }
 .dia-bloque.angosto b { font-size: 12px; }
