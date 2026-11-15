@@ -40,7 +40,7 @@ export function construirAgenda({ ahora, bloques = [], etiquetar = (b) => ({ tit
   if (td.tipo !== 'sin_clases') {
     for (const b of bloques.filter((x) => x.dia === hoy.dia)) {
       const e = etiquetar(b);
-      items.push({ tipo: 'clase', ini: minDe(b.hora_inicio), fin: minDe(b.hora_fin), titulo: e.titulo, sub: e.sub, porConfirmar: td.tipo === 'especial' });
+      items.push({ tipo: 'clase', ini: minDe(b.hora_inicio), fin: minDe(b.hora_fin), titulo: e.titulo, sub: e.sub, porConfirmar: td.tipo === 'especial', ...(e.descanso ? { descanso: true } : {}) });
     }
   }
   const todoElDia = [];

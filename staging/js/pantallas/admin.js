@@ -2,7 +2,7 @@
 import { E, base, recargarBase, perfiles, pref, logoHTML, aplicarMarca } from '../estado.js';
 import { esc, aviso, ventana, leerForm, confirmar, ROL, ROL_CREAR, TITULO, nombreRol, rolYTitulo, nombre, nombreLista, iniciales, vacio, fecha } from '../ui.js';
 import { editar, cabecera, pestanas, buscar, conectarBuscador, camposHTML } from './comun.js';
-import { pendientesAdmin } from './tablero.js';
+import { pendientesAdmin, montarColumnaDia } from './tablero.js';
 import { agregarPersona, importar, restablecer } from './usuarios.js';
 
 const personasColegio = () => E.db.rpc('personas_colegio', { p_colegio: E.colegio.id });
@@ -50,6 +50,7 @@ export async function inicio(m) {
       <h2>Cursos ${b.anio ? b.anio.anio : ''}</h2>
       ${b.cursos.length ? `<div class="rejilla">${b.cursos.map((c) => `<a class="mini" href="#/curso/${c.id}"><b>${esc(c.nombre)}</b><small>${esc(b.gradoPorId.get(c.grado_id)?.nombre || '')}</small></a>`).join('')}</div>` : vacio('Todavía no hay cursos.')}
     </section>`;
+  montarColumnaDia(m.querySelector('[data-dia-col]'), b);
 }
 
 // ---------------------------------------------------------------- Estructura

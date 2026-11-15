@@ -179,4 +179,7 @@ export default {
   'No puedes eliminar a otro administrador: primero quítale el rol de administrador': 'You cannot delete another administrator: first remove their administrator role',
   'No puedes eliminarte a ti mismo': 'You cannot delete yourself', 'Esa persona ya estaba eliminada': 'That person was already deleted', 'Esa persona no está eliminada': 'That person is not deleted',
   'Esta persona fue eliminada del colegio: restáurala primero': 'This person was deleted from the school: restore them first',
+  // Columna del día en el Tablero (15-nov-2026)
+  'Ahora': 'Now', 'Mi día': 'My day', 'Hoy no tienes clases ni eventos.': 'You have no classes or events today.', 'Sin clases hoy.': 'No classes today.',
+  'No se pudo cargar el día.': 'The day could not be loaded.', 'Abrir el horario': 'Open the schedule', 'Alejar las horas': 'Zoom out the hours', 'Acercar las horas': 'Zoom in the hours',
 };

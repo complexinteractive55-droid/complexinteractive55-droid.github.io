@@ -1,6 +1,9 @@
 // Tablero (REA Phidias §1.3): accesos directos con lo pendiente de cada módulo.
-import { E, base, misAsignaciones, perfiles } from '../estado.js';
+import { E, base, misAsignaciones, perfiles, pref } from '../estado.js';
 import { esc, fecha, fechaHora, nombre } from '../ui.js';
+import { construirAgenda } from '../agenda_hoy.js';
+import { columnaCaja, cabeceraDiaHTML, notasHTML, lienzoHTML, rangoDia, minutosDe, conectarColumna } from '../dia_columna.js';
+import { fuenteDeHoy, alDia } from './agenda_docente.js';
 import { contarNoLeidos } from './mensajeria.js';
 import { estadoCobro, dinero } from './tesoreria.js';
 
@@ -29,13 +32,45 @@ export async function pendientesAdmin() {
   ]);
   const abiertos = procs.filter((x) => x.publicado && new Date(x.abre) <= new Date() && (!x.cierra || new Date(x.cierra) > new Date()));
   const vencido = cobros.filter((x) => !x.anulado).reduce((s, x) => { const e = estadoCobro(x, pagos, E.colegio); return s + (e.vencido ? e.saldo : 0); }, 0);
-  return `<div class="pendientes">
+  // Fabio, 15-nov-2026: a la derecha de los pendientes, la columna del día con la flecha de la hora (se monta con montarColumnaDia)
+  return `<div class="tablero-con-dia"><div class="pendientes">
     ${tarjeta('#/bandeja', '✉️', noLeidos, 'Mensajes sin leer', true)}
     ${tarjeta('#/planeaciones?tab=enviada', '📂', plan.length, 'Planeaciones por revisar', true)}
     ${tarjeta('#/ausencias', '🤒', aus.length, 'Ausencias por revisar', true)}
     ${tarjeta('#/procesos', '📋', abiertos.length, `Procesos abiertos · ${resp.filter((r) => r.terminado && abiertos.some((p) => p.id === r.proceso_id)).length} respuestas`)}
     <a class="pendiente ${vencido ? 'con-pendiente' : ''}" href="#/tesoreria?tab=cartera&vencidos=1"><span class="ic">💰</span><b>${dinero(vencido)}</b><span>Cartera vencida</span></a>
-  </div>${htmlEventos(await proximosEventos())}`;
+  </div>${columnaCaja()}</div>${htmlEventos(await proximosEventos())}`;
+}
+
+// Columna del día (dia_columna.js): carga «hoy» de la misma fuente que el recuadro «Hoy» del docente, la pinta y la mantiene al día.
+// La escala que deja cada quien (acercar / alejar) se recuerda en este equipo.
+export async function montarColumnaDia(sec, b) {
+  if (!sec) return;
+  const f = fuenteDeHoy(b);
+  const vista = sec.querySelector('[data-dia-vista]');
+  const g = conectarColumna(vista, { inicial: pref('dia_ppm'), alCambiar: (ppm) => pref('dia_ppm', ppm) });
+  sec.querySelector('[data-dia-mas]').onclick = g.acercar;
+  sec.querySelector('[data-dia-menos]').onclick = g.alejar;
+  sec.querySelector('[data-dia-ahora-btn]').onclick = () => g.irAhora(true);
+  let rango = null;
+  const pintar = () => {
+    if (!f.datos) return;
+    const a = construirAgenda({ ahora: f.ahora(), ...f.datos, etiquetar: f.etiquetar });
+    const nuevo = rangoDia(a.items, minutosDe(a.hora));
+    // Si cambia la primera hora, se corrige el desplazamiento para que no salte lo que se está viendo
+    const corrimiento = rango ? (rango.ini - nuevo.ini) * g.escala() : 0;
+    sec.querySelector('[data-dia-cab]').innerHTML = cabeceraDiaHTML(a);
+    sec.querySelector('[data-dia-notas]').innerHTML = notasHTML(a);
+    const arriba = vista.scrollTop;
+    vista.innerHTML = lienzoHTML(a, nuevo);
+    vista.scrollTop = arriba + corrimiento;
+    const primera = !rango;
+    rango = nuevo;
+    if (primera) g.irAhora();
+  };
+  try { await f.cargar(); pintar(); }
+  catch { vista.innerHTML = '<p class="ayuda">No se pudo cargar el día. <a href="#/horario">Abrir el horario</a></p>'; return; }
+  alDia(sec, f, pintar);
 }
 
 // Vista previa de los últimos 5 mensajes de la bandeja (Tablero de Phidias)
