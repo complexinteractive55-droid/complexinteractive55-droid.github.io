@@ -1,6 +1,6 @@
 // Ayuda: guías cortas por rol (como el centro de ayuda de Phidias, dentro de la app).
-import { E } from '../estado.js';
-import { esc, ROL } from '../ui.js';
+import { E, miTitulo } from '../estado.js';
+import { esc, nombreRol } from '../ui.js';
 import { cabecera } from './comun.js';
 
 const GUIAS = {
@@ -36,7 +36,7 @@ const GUIAS = {
 export async function ayuda(m) {
   const g = GUIAS[E.rol] || [];
   m.innerHTML = cabecera('Ayuda') + `
-    <p class="ayuda">Guía rápida para <b>${esc(ROL[E.rol])}</b>. ¿Algo no funciona? Escríbele a la administración del colegio desde Comunicación → Redactar.</p>
+    <p class="ayuda">Guía rápida para <b>${esc(nombreRol(E.rol, miTitulo()))}</b>. ¿Algo no funciona? Escríbele a la administración del colegio desde Comunicación → Redactar.</p>
     ${g.map(([t, pasos], i) => `
       <details class="tarjeta guia" ${i === 0 ? 'open' : ''}>
         <summary><h2>${esc(t)}</h2></summary>

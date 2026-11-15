@@ -1,7 +1,7 @@
 // Complex_ — arranque, enrutador y armazón de la app.
 import { crearDbSupabase, crearDbDemo, cargarSemillaDemo, huellaEnEsteEquipo } from './db.js';
-import { E, pref, base, cargarYo, elegirColegio, cambiarRol, refrescarMembresias, cargarPersonas, elegirPersona, personaActiva, viendoHijo, logoHTML, aplicarMarca, fotos, olvidarFoto, olvidarFotos } from './estado.js';
-import { esc, $, aviso, ventana, leerForm, confirmar, ROL, nombre, iniciales, etiquetarTablas, fecha, fechaHora, vacio } from './ui.js';
+import { E, pref, base, cargarYo, elegirColegio, cambiarRol, refrescarMembresias, cargarPersonas, elegirPersona, personaActiva, viendoHijo, logoHTML, aplicarMarca, fotos, olvidarFoto, olvidarFotos, miTitulo } from './estado.js';
+import { esc, $, aviso, ventana, leerForm, confirmar, ROL, nombreRol, nombre, iniciales, etiquetarTablas, fecha, fechaHora, vacio } from './ui.js';
 import { APP_VERSION } from './config.js';
 import { icono, iconoRuta, ICONO_GRUPO, vigilarBotones } from './iconos.js';
 import { enIngles, preferenciaIdioma, idiomaDispositivo, elegirIdioma, activarTraduccion, t } from './i18n.js';
@@ -12,7 +12,7 @@ import { enIngles, preferenciaIdioma, idiomaDispositivo, elegirIdioma, activarTr
 const ROLES_PERSONAL = ['profesor', 'director_seccion', 'enfermeria'];
 let cargo = { clave: null, texto: null };
 function etiquetaRol() {
-  return (ROLES_PERSONAL.includes(E.rol) && cargo.clave === E.colegio?.id + '|' + E.yo?.id && cargo.texto) || ROL[E.rol];
+  return (ROLES_PERSONAL.includes(E.rol) && cargo.clave === E.colegio?.id + '|' + E.yo?.id && cargo.texto) || nombreRol(E.rol, miTitulo());
 }
 async function pintarCargo() {
   const clave = E.colegio.id + '|' + E.yo.id;
@@ -521,7 +521,7 @@ async function elegirRol() {
   if (E.roles.length < 2) return;
   const r = await ventana({
     titulo: 'Ver como',
-    html: `<div class="lista">${E.roles.map((r) => `<button class="fila fila-boton" data-r="${r}"><b>${ROL[r]}</b>${r === E.rol ? '<span class="ok">✓</span>' : ''}</button>`).join('')}</div>`,
+    html: `<div class="lista">${E.roles.map((r) => `<button class="fila fila-boton" data-r="${r}"><b>${esc(nombreRol(r, miTitulo()))}</b>${r === E.rol ? '<span class="ok">✓</span>' : ''}</button>`).join('')}</div>`,
     alAbrir: (caja, cerrar) => caja.querySelectorAll('[data-r]').forEach((b) => (b.onclick = () => cerrar(b.dataset.r))),
   });
   if (r) { cambiarRol(r); E.db.olvidar?.(); ir('#/inicio'); } // otro rol: nada de lo consultado con el anterior
@@ -815,7 +815,7 @@ async function perfil(m = main()) {
       <p class="ayuda">Inglés (en prueba): menús, botones y pantallas. Los mensajes y las anotaciones quedan como los escribieron.</p>
     </section>
     <section class="tarjeta">
-      ${E.roles.length > 1 ? `<button class="fila fila-boton" id="btn-cambiar-rol"><span>🔁</span><span><b>Ver como…</b><small>Ahora: ${ROL[E.rol]}</small></span></button>` : ''}
+      ${E.roles.length > 1 ? `<button class="fila fila-boton" id="btn-cambiar-rol"><span>🔁</span><span><b>Ver como…</b><small>Ahora: ${esc(nombreRol(E.rol, miTitulo()))}</small></span></button>` : ''}
       <button class="fila fila-boton" id="btn-cambiar-clave"><span>🔑</span><span><b>Cambiar contraseña</b></span></button>
       <button class="fila fila-boton" id="btn-cambiar-colegio"><span>🏫</span><span><b>Cambiar de colegio</b></span></button>
       ${instalada() ? '' : '<button class="fila fila-boton" data-instalar><span>📲</span><span><b>Instalar la app</b><small>Android, iPhone y computador</small></span></button>'}

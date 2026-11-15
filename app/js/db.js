@@ -1198,7 +1198,9 @@ export function crearDbDemo() {
       const resultados = [];
       for (const p of a.personas || []) {
         try {
-          if (!['admin', 'profesor', 'acudiente', 'estudiante'].includes(p.rol)) err('Rol no válido');
+          // Rectoría / Gerencia = administrador con ese nombre (miembros.titulo), como la Edge Function (14-nov-2026)
+          const titulo = ['rectoria', 'gerencia'].includes(p.rol) ? p.rol : null, rolBase = titulo ? 'admin' : p.rol;
+          if (!['admin', 'profesor', 'acudiente', 'estudiante', 'enfermeria', 'director_seccion'].includes(rolBase)) err('Rol no válido');
           if (!p.nombres) err('Falta el nombre');
           const doc = String(p.documento || '').replace(/[^\dA-Za-z]/g, '');
           const correo = String(p.correo || '').trim().toLowerCase();
@@ -1206,8 +1208,8 @@ export function crearDbDemo() {
           const usuario = correo || doc.toLowerCase() + '@usuarios.complex';
           let per = tabla('perfiles').find((x) => x.correo === usuario), cl = null;
           if (!per) { cl = clave(); [per] = await db.insert('perfiles', [{ correo: usuario, nombres: p.nombres, apellidos: p.apellidos || '', numero_documento: doc || null, tipo_documento: p.tipo_documento || null, telefono: p.telefono || null }]); }
-          await db.upsert('miembros', [{ colegio_id: a.colegio_id, perfil_id: per.id, rol: p.rol, activo: true }], 'colegio_id,perfil_id,rol');
-          resultados.push({ ok: true, usuario, clave: cl, perfil_id: per.id, ya_existia: !cl, nombres: p.nombres, apellidos: p.apellidos, rol: p.rol });
+          await db.upsert('miembros', [{ colegio_id: a.colegio_id, perfil_id: per.id, rol: rolBase, activo: true, ...(titulo ? { titulo } : {}) }], 'colegio_id,perfil_id,rol');
+          resultados.push({ ok: true, usuario, clave: cl, perfil_id: per.id, ya_existia: !cl, nombres: p.nombres, apellidos: p.apellidos, rol: titulo || rolBase });
         } catch (e) { resultados.push({ ok: false, error: e.message, nombres: p.nombres, apellidos: p.apellidos }); }
       }
       return { resultados };
