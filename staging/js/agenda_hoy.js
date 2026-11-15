@@ -40,7 +40,7 @@ export function construirAgenda({ ahora, bloques = [], etiquetar = (b) => ({ tit
   if (td.tipo !== 'sin_clases') {
     for (const b of bloques.filter((x) => x.dia === hoy.dia)) {
       const e = etiquetar(b);
-      items.push({ tipo: 'clase', ini: minDe(b.hora_inicio), fin: minDe(b.hora_fin), titulo: e.titulo, sub: e.sub, porConfirmar: td.tipo === 'especial', ...(e.descanso ? { descanso: true } : {}) });
+      items.push({ tipo: 'clase', ini: minDe(b.hora_inicio), fin: minDe(b.hora_fin), titulo: e.titulo, sub: e.sub, porConfirmar: td.tipo === 'especial', ...(e.descanso ? { descanso: true } : {}), ...(e.grupo ? { grupo: e.grupo } : {}) });
     }
   }
   const todoElDia = [];
@@ -54,8 +54,10 @@ export function construirAgenda({ ahora, bloques = [], etiquetar = (b) => ({ tit
     items.push({ tipo: 'evento', ini: i.min, fin: f && f.fecha === hoy.fecha ? Math.max(f.min, i.min) : i.min + 60, titulo: ev.titulo, sub: ev.origen || '', sinFin: !ev.fin });
   }
   items.sort((a, z) => a.ini - z.ini || a.fin - z.fin);
-  // Cruces: se MUESTRAN en los dos (no se corrige nada)
+  // Cruces: se MUESTRAN en los dos (no se corrige nada). Con `grupo` (familia con varios hijos: uno por curso) solo se cruza lo del
+  // mismo grupo: la clase de un hijo a la misma hora que la de otro no es un cruce.
   for (let a = 0; a < items.length; a++) for (let z = a + 1; z < items.length; z++) {
+    if ((items[a].grupo ?? null) !== (items[z].grupo ?? null)) continue;
     if (items[a].ini < items[z].fin && items[z].ini < items[a].fin) { items[a].conflicto = true; items[z].conflicto = true; }
   }
   // Ahora y siguiente: solo en un día ordinario (en una jornada especial el horario regular está por confirmar)

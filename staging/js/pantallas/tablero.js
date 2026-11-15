@@ -43,10 +43,10 @@ export async function pendientesAdmin() {
 }
 
 // Columna del día (dia_columna.js): carga «hoy» de la misma fuente que el recuadro «Hoy» del docente, la pinta y la mantiene al día.
-// La escala que deja cada quien (acercar / alejar) se recuerda en este equipo.
-export async function montarColumnaDia(sec, b) {
+// La escala que deja cada quien (acercar / alejar) se recuerda en este equipo. opciones.estudiantes: el día de esos estudiantes (familia).
+export async function montarColumnaDia(sec, b, opciones = {}) {
   if (!sec) return;
-  const f = fuenteDeHoy(b);
+  const f = fuenteDeHoy(b, opciones);
   const vista = sec.querySelector('[data-dia-vista]');
   const g = conectarColumna(vista, { inicial: pref('dia_ppm'), alCambiar: (ppm) => pref('dia_ppm', ppm) });
   sec.querySelector('[data-dia-mas]').onclick = g.acercar;
@@ -96,12 +96,13 @@ export async function pendientesProfesor() {
   ]);
   const entregas = tareas.length ? await E.db.select('tarea_entregas', { in: { tarea_id: tareas.map((t) => t.id) } }) : [];
   const sinRevisar = entregas.filter((e) => !e.revisada_en).length;
-  return `<div class="pendientes">
+  // Fabio, 15-nov-2026 («todos deben tener este sistema»): la columna del día reemplaza el recuadro «Hoy» del docente
+  return `<div class="tablero-con-dia"><div class="pendientes">
     ${tarjeta('#/bandeja', '✉️', noLeidos, 'Mensajes sin leer', true)}
     ${tarjeta('#/aula', '📝', sinRevisar, 'Entregas por revisar', true)}
     ${tarjeta('#/planeaciones?tab=devuelta', '↩️', plan.filter((x) => x.estado === 'devuelta').length, 'Planeaciones devueltas', true)}
     ${tarjeta('#/planeaciones?tab=enviada', '🕓', plan.filter((x) => x.estado === 'enviada').length, 'Planeaciones en revisión')}
-  </div>${htmlEventos(await proximosEventos())}`;
+  </div>${columnaCaja()}</div>${htmlEventos(await proximosEventos())}`;
 }
 
 // Novedades de los últimos días para la familia (como las Notificaciones de Phidias):

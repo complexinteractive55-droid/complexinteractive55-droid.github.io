@@ -69,6 +69,7 @@ const PATRONES = [
   [/^Firmado por (.+) el (.+)$/, 'Signed by $1 on $2'], [/^Asistencia ya tomada para el (.+)\. Puedes corregirla\.$/, 'Attendance already taken for $1. You can correct it.'],
   [/^Periodo (\d+)$/, 'Term $1'], [/^P(\d+)$/, 'T$1'], [/^Sexto$/, 'Sixth'], [/^Primero$/, 'First'], [/^Segundo$/, 'Second'], [/^Tercero$/, 'Third'], [/^Cuarto$/, 'Fourth'], [/^Quinto$/, 'Fifth'],
   [/^Envían: (.+)$/, 'Sent by: $1'], [/^Te escribimos a (\S+) cuando te llegue un mensaje o una circular\.$/, 'We email you at $1 when you get a message or a circular.'],
+  [/^Ciclo (\d+) · Día (\d+)$/, 'Cycle $1 · Day $2'], [/^Día (\d+)$/, 'Day $1'], // columna del día (15-nov-2026)
   [/^Octavo$/, 'Eighth'], [/^Noveno$/, 'Ninth'], [/^Once$/, 'Eleventh'],
   // Circulares institucionales (3-nov-2026 noche)
   [/^(\d{1,2}) de (enero|febrero|marzo|abril|mayo|junio|julio|agosto|septiembre|octubre|noviembre|diciembre) (?:de )?(\d{4})$/, (_, d, m, y) => `${MESES[m]} ${d}, ${y}`],

@@ -1,4 +1,4 @@
-// Columna del día en el Tablero (Fabio, 15-nov-2026: «en el tablero que aparece el día en el que se está… que una flecha me señale la
+// Columna del día en el Tablero de TODOS los perfiles (Fabio, 15-nov-2026: «en el tablero que aparece el día en el que se está… que una flecha me señale la
 // hora que es y también actúe por gestos del usuario zoom, mover»). Es la misma agenda de hoy que el recuadro «Hoy» del docente
 // (agenda_hoy.js: mis clases + calendario institucional + eventos), pintada como una columna de horas: cada bloque ocupa su franja,
 // los que se cruzan van lado a lado, y una flecha roja marca la hora de Colombia (con la hora del servidor como referencia).
@@ -41,12 +41,14 @@ export const minutosDe = (h) => { const [a, b] = String(h || '').split(':').map(
 const tono = (x) => (x.tipo === 'clase' ? (x.descanso ? 'descanso' : 'clase') : x.sub === 'Mi agenda' ? 'personal' : 'evento');
 
 // ---------------------------------------------------------------- Pintar
-// Encabezado: «vie 20» y, si el calendario institucional lo imprime, «Día 5» (nunca se calcula)
+// Encabezado: «vie 20» y el ciclo y el día de ciclo TAL COMO los imprime el calendario institucional (Fabio, 15-nov-2026: «debe
+// aparecer el ciclo y día»): «Ciclo 3 · Día 5», o solo «Día 5» si la fuente no trae el ciclo ese día. Nunca se calculan ni se
+// arrastran de otro día; si la fuente no trae el día de ciclo, lo dice: «Sin día de ciclo».
 export function cabeceraDiaHTML(a) {
   const [y, m, d] = a.fecha.split('-').map(Number);
   const sem = SEMANA[new Date(Date.UTC(y, m - 1, d)).getUTCDay()];
   return `<div class="dia-cab" title="${esc(fechaLarga(a.fecha))}"><span class="dia-semana">${sem}</span><b class="dia-num">${d}</b>
-    ${a.ciclo ? `<span class="dia-ciclo">Día ${esc(a.ciclo.dia)}</span>` : ''}</div>`;
+    ${a.ciclo ? `<span class="dia-ciclo">${a.ciclo.ciclo ? `Ciclo ${esc(a.ciclo.ciclo)} · ` : ''}Día ${esc(a.ciclo.dia)}</span>` : '<span class="dia-ciclo sin">Sin día de ciclo</span>'}</div>`;
 }
 
 // Lienzo de horas con los bloques y la flecha de «ahora». Las posiciones van en minutos (--i, --d) y la escala en --ppm (en la vista),
@@ -59,23 +61,24 @@ export function lienzoHTML(a, rango) {
   return `<div class="dia-lienzo" data-dia-lienzo data-ini="${rango.ini}" data-fin="${rango.fin}" style="--total:${rango.fin - rango.ini}">
     ${horas.map((h) => `<div class="dia-linea" style="--i:${h - rango.ini}"><span>${hhmm(h)}</span></div>`).join('')}
     <div class="dia-bloques">${bloques.map((x) => {
-      const que = `${hhmm(x.ini)}${x.sinFin ? '' : '–' + hhmm(x.fin)} · ${x.titulo}${x.sub ? ' · ' + x.sub : ''}${x.actual ? ' · Ahora' : ''}${x.conflicto ? ' · Se cruza' : ''}${x.porConfirmar ? ' · Por confirmar' : ''}`;
+      const que = `${hhmm(x.ini)}${x.sinFin ? '' : '–' + hhmm(x.fin)} · ${x.titulo}${x.sub ? ' · ' + x.sub : ''}${x.actual ? ' · Ahora' : ''}${x.siguiente ? ' · Siguiente' : ''}${x.conflicto ? ' · Se cruza' : ''}${x.porConfirmar ? ' · Por confirmar' : ''}`;
       return `<a class="dia-bloque ${tono(x)}${x.carriles > 1 ? ' angosto' : ''}${x.actual ? ' actual' : ''}${x.conflicto ? ' conflicto' : ''}${x.porConfirmar ? ' por-confirmar' : ''}" draggable="false"
         href="${x.tipo === 'clase' ? '#/horario' : '#/calendario?fecha=' + a.fecha}" title="${esc(que)}" aria-label="${esc(que)}"
         style="--i:${x.ini - rango.ini};--d:${Math.max(x.fin - x.ini, 10)};--c:${x.carril};--n:${x.carriles}">
-        <b>${esc(x.titulo)}</b><small>${hhmm(x.ini)}${x.sinFin ? '' : '–' + hhmm(x.fin)}${x.sub ? ' · ' + esc(x.sub) : ''}</small></a>`;
+        <b>${esc(x.titulo)}</b><small>${x.actual ? '<i class="dia-etq">Ahora</i> ' : x.siguiente ? '<i class="dia-etq sig">Siguiente</i> ' : ''}${hhmm(x.ini)}${x.sinFin ? '' : '–' + hhmm(x.fin)}${x.sub ? ' · ' + esc(x.sub) : ''}</small></a>`;
     }).join('')}</div>
     <div class="dia-ahora" data-dia-ahora style="--i:${ahora - rango.ini}" role="img" aria-label="Hora actual ${esc(a.hora)}"><span class="dia-ahora-hora">${esc(a.hora)}</span></div>
   </div>`;
 }
 
-export const columnaCaja = () => `
-  <section class="dia-col" data-dia-col aria-labelledby="dia-col-titulo">
+// sola: la columna va sin tarjetas al lado (estudiante, familia) y tiene alto propio
+export const columnaCaja = ({ sola = false } = {}) => `
+  <section class="dia-col${sola ? ' dia-sola' : ''}" data-dia-col aria-labelledby="dia-col-titulo">
     <h2 class="oculto-visual" id="dia-col-titulo">Mi día</h2>
     <div data-dia-cab><div class="dia-cab"><span class="dia-semana">…</span></div></div>
     <div class="dia-acciones"><button type="button" class="btn btn-chico" data-dia-menos aria-label="Alejar las horas">−</button><button type="button" class="btn btn-chico" data-dia-ahora-btn>Ahora</button><button type="button" class="btn btn-chico" data-dia-mas aria-label="Acercar las horas">＋</button></div>
     <div data-dia-notas></div>
-    <div class="dia-vista" data-dia-vista tabindex="0" role="group" aria-label="Mi día por horas. Dos dedos o las teclas + y − acercan o alejan; arrastra para moverte.">
+    <div class="dia-vista" data-dia-vista tabindex="0" role="group" aria-label="Mi día por horas. Dos dedos o las teclas + y − acercan o alejan; arrastra para moverte. Enter abre el horario completo.">
       <p class="ayuda dia-cargando">Cargando…</p>
     </div>
   </section>`;
@@ -88,7 +91,7 @@ export function notasHTML(a) {
 }
 
 // ---------------------------------------------------------------- Gestos (solo dentro de la vista de la columna)
-export function conectarColumna(vista, { inicial = ESCALA.base, alCambiar = () => {} } = {}) {
+export function conectarColumna(vista, { inicial = ESCALA.base, alCambiar = () => {}, abrir = () => { location.hash = '#/horario'; } } = {}) {
   let ppm = limitar(inicial), pinza = null, raton = null, arrastro = false;
   const lienzo = () => vista.querySelector('[data-dia-lienzo]');
   const aplicar = () => { vista.style.setProperty('--ppm', ppm); vista.dataset.ppm = ppm; };
@@ -131,6 +134,7 @@ export function conectarColumna(vista, { inicial = ESCALA.base, alCambiar = () =
   vista.addEventListener('keydown', (e) => {
     if (e.key === '+' || e.key === '=') { e.preventDefault(); escalar(ppm * ESCALA.paso); }
     else if (e.key === '-' || e.key === '_') { e.preventDefault(); escalar(ppm / ESCALA.paso); }
+    else if ((e.key === 'Enter' || e.key === ' ') && e.target === vista) { e.preventDefault(); abrir(); } // en un bloque, Enter abre ese bloque
   });
   // Lleva la flecha de «ahora» a un tercio de la altura de la vista
   const irAhora = (suave = false) => {

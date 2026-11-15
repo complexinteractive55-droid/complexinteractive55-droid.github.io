@@ -3,8 +3,7 @@ import { E, base, perfiles, misAsignaciones, pref, fotos } from '../estado.js';
 import { esc, aviso, ventana, leerForm, confirmar, nombre, nombreLista, vacio, fecha, hoy, avatarHTML } from '../ui.js';
 import { cabecera, camposHTML } from './comun.js';
 import { visiblesParaMi } from './circulares.js';
-import { pendientesProfesor, previaBandeja } from './tablero.js';
-import { agendaCaja, montarAgenda } from './agenda_docente.js';
+import { pendientesProfesor, previaBandeja, montarColumnaDia } from './tablero.js';
 import { avisosCartelera } from './salas.js';
 import { notaPeriodo, notaConIndicadores, definitiva, mostrarNota, desempeno, sumaPorcentajes, redondear } from '../calculos.js';
 
@@ -18,7 +17,6 @@ export async function inicio(m) {
   const circ = (await visiblesParaMi(b, await E.db.select('circulares', { eq: { colegio_id: E.colegio.id }, order: 'publicada_en desc' }))).slice(0, 3);
   m.innerHTML = `
     <h1 class="titulo">Hola, ${esc(E.yo.nombres || 'profe')}</h1>
-    ${agendaCaja()}
     <div data-avisos-cartelera></div>
     ${await pendientesProfesor()}
     ${await previaBandeja()}
@@ -32,7 +30,7 @@ export async function inicio(m) {
       ${circ.filter((c) => c.publicada_en).length ? `<div class="lista">${circ.filter((c) => c.publicada_en).map((c) => `<a class="fila fila-boton" href="#/circular/${c.id}"><span>📣</span><span><b>${esc(c.titulo)}</b><small>${fecha(c.publicada_en)}</small></span></a>`).join('')}</div>` : vacio('Sin circulares.')}
     </section>`;
   m.querySelectorAll('[data-director]').forEach((a) => (a.onclick = (e) => { e.preventDefault(); verCursoDirector(b, a.dataset.director); }));
-  montarAgenda(m.querySelector('[data-agenda-hoy]'), b); // carga aparte: no retrasa el resto del inicio
+  montarColumnaDia(m.querySelector('[data-dia-col]'), b); // carga aparte: no retrasa el resto del inicio (antes: recuadro «Hoy»)
   avisosCartelera().then((h) => { const el = m.querySelector('[data-avisos-cartelera]'); if (el) el.outerHTML = h; }).catch(() => {}); // también aparte
 }
 

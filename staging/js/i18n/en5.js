@@ -182,4 +182,6 @@ export default {
   // Columna del día en el Tablero (15-nov-2026)
   'Ahora': 'Now', 'Mi día': 'My day', 'Hoy no tienes clases ni eventos.': 'You have no classes or events today.', 'Sin clases hoy.': 'No classes today.',
   'No se pudo cargar el día.': 'The day could not be loaded.', 'Abrir el horario': 'Open the schedule', 'Alejar las horas': 'Zoom out the hours', 'Acercar las horas': 'Zoom in the hours',
+  'Día de ciclo: no disponible': 'Cycle day: not available', 'Sin día de ciclo': 'No cycle day',
+  'Mi día por horas. Dos dedos o las teclas + y − acercan o alejan; arrastra para moverte. Enter abre el horario completo.': 'My day by the hour. Two fingers or the + and − keys zoom in or out; drag to move. Enter opens the full schedule.',
 };
