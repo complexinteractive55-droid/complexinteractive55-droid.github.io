@@ -6,6 +6,8 @@ import { pendientesAdmin } from './tablero.js';
 import { agregarPersona, importar, restablecer } from './usuarios.js';
 
 const personasColegio = () => E.db.rpc('personas_colegio', { p_colegio: E.colegio.id });
+// Eliminaciones vigentes del colegio (solo el administrador las ve; si la tabla aún no existe, ninguna)
+const eliminadosColegio = () => E.db.select('usuarios_eliminados', { eq: { colegio_id: E.colegio.id } }).then((l) => l.filter((e) => !e.restaurado_en)).catch(() => []);
 
 // ---------------------------------------------------------------- Inicio
 export async function inicio(m) {
@@ -262,7 +264,8 @@ const TABS_P = [['todos', 'Todos'], ['profesor', 'Profesores'], ['estudiante', '
 
 export async function personas(m, p) {
   const tab = TABS_P.some((t) => t[0] === p.tab) ? p.tab : 'todos';
-  const gente = await personasColegio();
+  const [gente, elims] = await Promise.all([personasColegio(), eliminadosColegio()]);
+  const eliminados = new Set(elims.map((e) => e.perfil_id));
   const porPersona = new Map();
   for (const g of gente) {
     const x = porPersona.get(g.perfil_id) || { ...g, roles: [] };
@@ -281,7 +284,7 @@ export async function personas(m, p) {
         <button class="fila fila-boton ${x.roles.every((r) => !r.activo) ? 'inactivo' : ''}" data-persona="${x.perfil_id}" data-buscar="${esc(nombreLista(x) + ' ' + (x.correo || ''))}">
           <span class="avatar">${esc(iniciales(x))}</span>
           <span><b>${esc(nombreLista(x))}</b><small>${esc(x.correo || '')}</small></span>
-          <span class="chips">${x.roles.map((r) => `<span class="chip ${r.activo ? '' : 'tachado'}">${ROL[r.rol]}</span>`).join('')}</span>
+          <span class="chips">${eliminados.has(x.perfil_id) ? '<span class="chip chip-eliminado" data-eliminado>🚫 Eliminado</span>' : x.roles.map((r) => `<span class="chip ${r.activo ? '' : 'tachado'}">${ROL[r.rol]}</span>`).join('')}</span>
         </button>`).join('')}</div>` : vacio('No hay personas aquí todavía.')}
     </div>`;
   conectarBuscador(m);
@@ -325,13 +328,22 @@ async function fichaPersona(x, alCambiar) {
   const mat = mats.find((mm) => mm.estado === 'activa' && b.cursos.some((c) => c.id === mm.curso_id));
   const todosRoles = Object.keys(ROL);
   const tiene = (r) => x.roles.find((y) => y.rol === r);
+  // ¿Fue eliminado? (Fabio, 14-nov-2026: el administrador elimina usuarios y esa cuenta ya no entra a nodo; se conserva el historial)
+  const elim = (await eliminadosColegio()).find((e) => e.perfil_id === id);
+  if (elim?.eliminado_por) await perfiles([elim.eliminado_por]);
+  const esAdminActivo = x.roles.some((r) => r.rol === 'admin' && r.activo);
+  const puedeEliminar = !elim && id !== E.yo.id && !esAdminActivo;
 
   await ventana({
     titulo: nombre(x),
     html: `
-      <p class="ayuda">Usuario: <b>${esc((x.correo || '').endsWith('@usuarios.complex') ? x.correo.split('@')[0] : x.correo || '')}</b> <button class="btn btn-chico" data-clave>🔑 Restablecer contraseña</button></p>
+      ${elim ? `<div class="aviso-caja aviso-eliminado" data-eliminado>
+        <p><b>🚫 Usuario eliminado</b> el ${esc(fecha(elim.eliminado_en))}${elim.eliminado_por ? ` por ${esc(nombre(E.perfiles.get(elim.eliminado_por)))}` : ''}.</p>
+        <p>${elim.cuenta_bloqueada ? 'Su cuenta está bloqueada: <b>no puede entrar a nodo</b>.' : 'También pertenece a otro colegio: salió de este, pero allá puede seguir entrando.'} Sus notas, asistencia, mensajes y PQRS se conservan en el historial.</p>
+        <button class="btn btn-chico" data-restaurar>↩ Restaurar usuario</button></div>` : ''}
+      <p class="ayuda">Usuario: <b>${esc((x.correo || '').endsWith('@usuarios.complex') ? x.correo.split('@')[0] : x.correo || '')}</b> ${elim ? '' : '<button class="btn btn-chico" data-clave>🔑 Restablecer contraseña</button>'}</p>
       <h3 class="sub">Roles en el colegio</h3>
-      <div class="lista">${todosRoles.map((r) => `<label class="fila check"><input type="checkbox" data-rol="${r}" ${tiene(r)?.activo ? 'checked' : ''} ${r === 'admin' && id === E.yo.id ? 'disabled' : ''}><span><b>${ROL[r]}</b></span></label>`).join('')}</div>
+      <div class="lista">${todosRoles.map((r) => `<label class="fila check"><input type="checkbox" data-rol="${r}" ${tiene(r)?.activo ? 'checked' : ''} ${(r === 'admin' && id === E.yo.id) || elim ? 'disabled' : ''}><span><b>${ROL[r]}</b></span></label>`).join('')}</div>
       ${tiene('profesor')?.activo ? `<p><a class="btn btn-chico" href="#/docente/${id}" data-cerrar>🧑‍🏫 Ficha del docente: clases, horario y planeaciones</a></p>` : ''}
       ${tiene('director_seccion')?.activo ? `<h3 class="sub">Sección (grados que dirige)</h3>
         <div class="lista">${b.grados.map((g) => `<label class="fila check"><input type="checkbox" data-grado-sec="${g.id}"><span><b>${esc(g.nombre)}</b></span></label>`).join('')}</div>
@@ -343,9 +355,35 @@ async function fichaPersona(x, alCambiar) {
         <div class="lista">${susAcud.map((a) => `<div class="fila"><span><b>${esc(nombre(P.get(a.acudiente_id)))}</b><small>${esc(a.parentesco || '')}</small></span><button class="btn-icono" data-quitar-acu="${a.acudiente_id}" aria-label="Quitar acudiente">🗑</button></div>`).join('') || '<p class="ayuda">Sin acudientes.</p>'}</div>
         <button class="btn btn-chico" data-agregar-acu>＋ Vincular acudiente</button>
         <p><a class="btn btn-chico" href="#/estudiante/${id}" data-cerrar>Ver notas y observador</a></p>` : ''}
-      ${esAcu ? `<h3 class="sub">Acudiente de</h3><div class="lista">${susHijos.map((a) => `<a class="fila fila-boton" href="#/estudiante/${a.estudiante_id}" data-cerrar><span><b>${esc(nombre(P.get(a.estudiante_id)))}</b><small>${esc(a.parentesco || '')}</small></span></a>`).join('') || '<p class="ayuda">Aún no está vinculado a ningún estudiante.</p>'}</div>` : ''}`,
+      ${esAcu ? `<h3 class="sub">Acudiente de</h3><div class="lista">${susHijos.map((a) => `<a class="fila fila-boton" href="#/estudiante/${a.estudiante_id}" data-cerrar><span><b>${esc(nombre(P.get(a.estudiante_id)))}</b><small>${esc(a.parentesco || '')}</small></span></a>`).join('') || '<p class="ayuda">Aún no está vinculado a ningún estudiante.</p>'}</div>` : ''}
+      ${puedeEliminar ? `<h3 class="sub">Eliminar usuario</h3>
+        <p class="ayuda">Sale del colegio y su cuenta queda bloqueada: ya no podrá entrar a nodo. Su historial se conserva y lo puedes restaurar después.</p>
+        <button class="btn btn-peligro" data-eliminar>🗑 Eliminar usuario</button>`
+      : esAdminActivo && id !== E.yo.id && !elim ? '<p class="ayuda">Para eliminar a un administrador, primero quítale el rol de Administrador.</p>' : ''}`,
     alAbrir: (caja, cerrar) => {
       caja.querySelector('[data-clave]')?.addEventListener('click', () => restablecer(x));
+      caja.querySelector('[data-eliminar]')?.addEventListener('click', async () => {
+        const si = await ventana({
+          titulo: `¿Eliminar a ${nombre(x)}?`,
+          html: `<p>Saldrá del colegio y <b>su cuenta quedará bloqueada: ya no podrá entrar a nodo</b>, ni con contraseña ni con huella.</p>
+            <p class="ayuda">Si también pertenece a otro colegio, solo sale de este. Sus notas, asistencia, mensajes y PQRS se conservan en el historial. Puedes restaurarlo después.</p>`,
+          botones: [{ texto: 'Cancelar', valor: false }, { texto: 'Eliminar usuario', valor: true }],
+        });
+        if (!si) return;
+        try {
+          const r = await E.db.funcion('admin-usuarios', { accion: 'eliminar', colegio_id: E.colegio.id, perfil_id: id });
+          aviso(r.cuenta_bloqueada ? 'Usuario eliminado: su cuenta quedó bloqueada' : 'Usuario eliminado de este colegio (sigue en otro colegio)');
+          cerrar(null); alCambiar();
+        } catch (e) { aviso(e.message, 'error'); }
+      });
+      caja.querySelector('[data-restaurar]')?.addEventListener('click', async () => {
+        if (!(await confirmar(`¿Restaurar a ${nombre(x)}?`, 'Vuelve al colegio con los mismos roles que tenía y su cuenta se desbloquea.', 'Restaurar'))) return;
+        try {
+          await E.db.funcion('admin-usuarios', { accion: 'restaurar', colegio_id: E.colegio.id, perfil_id: id });
+          aviso('Usuario restaurado: ya puede volver a entrar');
+          cerrar(null); alCambiar();
+        } catch (e) { aviso(e.message, 'error'); }
+      });
       // grados de la sección (se leen de su fila de miembros y se guardan al marcar)
       const chkSec = [...caja.querySelectorAll('[data-grado-sec]')];
       if (chkSec.length) {

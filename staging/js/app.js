@@ -719,7 +719,7 @@ async function entrarDemo() {
     titulo: 'Modo demo: ¿quién eres?',
     html: `<p class="ayuda">Es un colegio inventado para probar nodo. Lo que cambies se guarda solo en este equipo.</p>
       ${grupos.map(([r, l]) => `<h3 class="sub">${ROL[r]}</h3><div class="lista">${l.map((u) => `
-        <button class="fila fila-boton" data-id="${u.id}"><span class="avatar">${esc(iniciales(u))}</span><span><b>${esc(nombre(u))}</b>${u.roles.length > 1 ? `<small>${u.roles.map((x) => ROL[x]).join(' · ')}</small>` : ''}</span></button>`).join('')}</div>`).join('')}
+        <button class="fila fila-boton" data-id="${u.id}"><span class="avatar">${esc(iniciales(u))}</span><span><b>${esc(nombre(u))}</b>${u.eliminado ? '<small>🚫 Cuenta eliminada por el colegio</small>' : u.roles.length > 1 ? `<small>${u.roles.map((x) => ROL[x]).join(' · ')}</small>` : ''}</span></button>`).join('')}</div>`).join('')}
       <button class="btn-link" id="btn-reiniciar-demo">Reiniciar los datos del demo</button>`,
     alAbrir: (caja, cerrar) => {
       caja.querySelectorAll('[data-id]').forEach((b) => (b.onclick = () => cerrar(b.dataset.id)));
@@ -727,8 +727,8 @@ async function entrarDemo() {
     },
   });
   if (!id) return;
+  try { await db.auth.signIn(id); } catch (e) { aviso(e.message, 'error'); return entrarDemo(); } // cuenta eliminada: no entra
   E.db = db;
-  await db.auth.signIn(id);
   pref('modo', 'demo');
   await arrancarSesion();
 }

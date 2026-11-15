@@ -405,3 +405,7 @@ fieldset.tambien legend { font-weight: 600; font-size: 13px; padding: 0 6px; }
 .avance-docente .barra-avance { flex: 1; }
 .horario-docente { display: grid; grid-template-columns: repeat(auto-fill, minmax(180px, 1fr)); gap: 8px 16px; }
 .horario-docente p { margin: 4px 0; }
+
+/* Usuarios eliminados por el administrador (14-nov-2026) */
+.chip-eliminado { background: color-mix(in srgb, var(--peligro) 14%, transparent); color: var(--peligro); }
+.aviso-caja.aviso-eliminado { background: color-mix(in srgb, var(--peligro) 12%, transparent); }

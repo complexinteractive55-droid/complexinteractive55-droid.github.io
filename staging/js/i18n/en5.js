@@ -163,4 +163,18 @@ export default {
   '✓ Es el archivo enviado (misma huella).': '✓ It is the file that was sent (same fingerprint).', 'Usa «Abrir el PDF» o «Descargar».': 'Use “Open the PDF” or “Download”.',
   'No se pudo traer el documento: usa «Abrir el PDF» o «Descargar».': 'The document could not be loaded: use “Open the PDF” or “Download”.',
   'No se pudo mostrar aquí: usa «Abrir el PDF» o «Descargar».': 'It could not be shown here: use “Open the PDF” or “Download”.',
+  // Eliminar / restaurar usuarios (14-nov-2026)
+  'Eliminar usuario': 'Delete user', '🗑 Eliminar usuario': '🗑 Delete user', '↩ Restaurar usuario': '↩ Restore user', '🚫 Eliminado': '🚫 Deleted',
+  '🚫 Usuario eliminado': '🚫 User deleted', '🚫 Cuenta eliminada por el colegio': '🚫 Account deleted by the school', 'Restaurar': 'Restore',
+  'Sale del colegio y su cuenta queda bloqueada: ya no podrá entrar a nodo. Su historial se conserva y lo puedes restaurar después.': 'They leave the school and their account is blocked: they will no longer be able to sign in to nodo. Their history is kept and you can restore them later.',
+  'Para eliminar a un administrador, primero quítale el rol de Administrador.': 'To delete an administrator, first remove their Administrator role.',
+  'Si también pertenece a otro colegio, solo sale de este. Sus notas, asistencia, mensajes y PQRS se conservan en el historial. Puedes restaurarlo después.': 'If they also belong to another school, they only leave this one. Their grades, attendance, messages and PQRS stay in the history. You can restore them later.',
+  'Vuelve al colegio con los mismos roles que tenía y su cuenta se desbloquea.': 'They return to the school with the same roles they had and their account is unblocked.',
+  'Usuario eliminado: su cuenta quedó bloqueada': 'User deleted: their account is now blocked', 'Usuario eliminado de este colegio (sigue en otro colegio)': 'User deleted from this school (still in another school)',
+  'Usuario restaurado: ya puede volver a entrar': 'User restored: they can sign in again',
+  'Esta cuenta fue eliminada por el colegio: ya no puede entrar a nodo. Si crees que es un error, comunícate con el colegio.': 'This account was deleted by the school: it can no longer sign in to nodo. If you think this is a mistake, contact the school.',
+  'Esta persona fue eliminada del colegio: usa «Restaurar usuario» para que vuelva.': 'This person was deleted from the school: use “Restore user” to bring them back.',
+  'No puedes eliminar a otro administrador: primero quítale el rol de administrador': 'You cannot delete another administrator: first remove their administrator role',
+  'No puedes eliminarte a ti mismo': 'You cannot delete yourself', 'Esa persona ya estaba eliminada': 'That person was already deleted', 'Esa persona no está eliminada': 'That person is not deleted',
+  'Esta persona fue eliminada del colegio: restáurala primero': 'This person was deleted from the school: restore them first',
 };

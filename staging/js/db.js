@@ -270,6 +270,8 @@ const AFECTA = {
   mensaje_enviar: ['mensajes', 'mensaje_destinatarios', 'tipos_mensaje'],
   circular_enviar: ['mensajes', 'mensaje_destinatarios', 'mensaje_adjuntos', 'circular_borradores', 'circular_envios', 'tipos_mensaje', 'circular_series'],
   circular_envio_reponer: ['mensaje_destinatarios'],
+  // Edge Function admin-usuarios: crear, eliminar y restaurar cambian los miembros y la lista de Personas (14-nov-2026)
+  'admin-usuarios': ['usuarios_eliminados', 'miembros', 'personas_colegio', 'perfiles'],
 };
 const clonar = (x) => (x == null ? x : typeof structuredClone === 'function' ? structuredClone(x) : JSON.parse(JSON.stringify(x)));
 
@@ -368,6 +370,8 @@ function conMemoria(db, { persistir = false } = {}) {
     update: escribe(db.update),
     remove: escribe(db.remove),
     escuchar: db.escuchar || (() => () => {}),
+    // admin-usuarios escribe por el servidor: lo que cambia se pide de nuevo (las demás funciones no tocan la copia)
+    funcion: (nombre, cuerpo) => (nombre === 'admin-usuarios' ? escribe(db.funcion, nombre)(nombre, cuerpo) : db.funcion(nombre, cuerpo)),
   };
 }
 
@@ -378,6 +382,7 @@ export async function huellaEnEsteEquipo() {
 
 function traducirError(m) {
   if (/Invalid login credentials/i.test(m)) return 'Correo o contraseña incorrectos.';
+  if (/user is banned|user_banned/i.test(m)) return 'Esta cuenta fue eliminada por el colegio: ya no puede entrar a nodo. Si crees que es un error, comunícate con el colegio.'; // cuenta bloqueada al eliminarla (admin-usuarios, 14-nov-2026)
   if (/Email not confirmed/i.test(m)) return 'Aún no confirmas tu correo. Revisa tu bandeja de entrada.';
   if (/User already registered/i.test(m)) return 'Ese correo ya tiene cuenta. Inicia sesión.';
   if (/Password should be at least/i.test(m)) return 'La contraseña debe tener al menos 6 caracteres.';
@@ -434,6 +439,9 @@ export function crearDbDemo() {
   const err = (m) => { throw new Error(m); };
 
   const esAdmin = (colegio) => tabla('miembros').some((m) => m.colegio_id === colegio && m.perfil_id === usuario() && m.rol === 'admin' && m.activo);
+  // Usuarios eliminados por el administrador (como public.usuarios_eliminados + la cuenta bloqueada en Auth, 14-nov-2026)
+  const eliminadoVigente = (colegio, perfil) => tabla('usuarios_eliminados').find((e) => e.colegio_id === colegio && e.perfil_id === perfil && !e.restaurado_en);
+  const cuentaBloqueada = (perfil) => tabla('usuarios_eliminados').some((e) => e.perfil_id === perfil && !e.restaurado_en && e.cuenta_bloqueada);
   let pqrsDemo = null; // PQRS (pqrs_demo.js, mismas reglas que la base): se carga la primera vez que se usa
   let salasDemo = null; // salas de sección y avisos (salas_demo.js, mismas reglas que la base)
   let calendarioDemo = null;
@@ -668,6 +676,8 @@ export function crearDbDemo() {
     const r = { ...(DEF[n]?.() || {}), ...Object.fromEntries(Object.entries(f).filter(([, v]) => v !== undefined)) };
     if (!LLAVES[n] && !r.id) r.id = crypto.randomUUID();
     if (n === 'miembros') r.activo ??= true;
+    // como el trigger miembros_no_eliminado: no se encienden roles de alguien eliminado (hay que restaurarlo)
+    if (n === 'miembros' && r.activo && eliminadoVigente(r.colegio_id, r.perfil_id)) err('Esta persona fue eliminada del colegio: usa «Restaurar usuario» para que vuelva.');
     if (n === 'calificaciones') {
       const co = tabla('colegios').find((c) => c.id === r.colegio_id);
       if (r.valor != null && co && (r.valor < co.nota_min || r.valor > co.nota_max))
@@ -863,9 +873,10 @@ export function crearDbDemo() {
       async session() {
         const id = usuario();
         const p = id && tabla('perfiles').find((x) => x.id === id);
+        if (p && cuentaBloqueada(p.id)) return null; // la cuenta bloqueada ya no tiene sesión
         return p ? { user: { id: p.id, email: p.correo } } : null;
       },
-      async signIn(idDemo) { localStorage.setItem(CLAVE_DEMO_USUARIO, idDemo); try { sessionStorage.setItem(CLAVE_DEMO_USUARIO, idDemo); } catch {} },
+      async signIn(idDemo) { if (cuentaBloqueada(idDemo)) err('Esta cuenta fue eliminada por el colegio: ya no puede entrar a nodo. Si crees que es un error, comunícate con el colegio.'); localStorage.setItem(CLAVE_DEMO_USUARIO, idDemo); try { sessionStorage.setItem(CLAVE_DEMO_USUARIO, idDemo); } catch {} },
       async signUp() { err('En el modo demo no se crean cuentas.'); },
       async signOut() { localStorage.removeItem(CLAVE_DEMO_USUARIO); try { sessionStorage.removeItem(CLAVE_DEMO_USUARIO); } catch {} },
       async updatePassword() { err('En el modo demo no se cambian contraseñas.'); },
@@ -881,6 +892,7 @@ export function crearDbDemo() {
       return tabla('perfiles').map((p) => ({
         ...p,
         roles: tabla('miembros').filter((m) => m.perfil_id === p.id).map((m) => m.rol),
+        eliminado: cuentaBloqueada(p.id),
       }));
     },
     reiniciarDemo() { t = crearSemillaDemo(); guardar(); },
@@ -891,6 +903,7 @@ export function crearDbDemo() {
       if (n === 'circular_borradores') filas = filas.filter(borradorMio); // como la RLS: Administración todos; quien prepara, los suyos
       if (n === 'circular_firmas') filas = filas.filter((f) => f.perfil_id === usuario()); // la firma solo la ve su dueño
       if (n === 'circular_emisores') filas = filas.filter((f) => esAdmin(f.colegio_id) || f.perfil_id === usuario());
+      if (n === 'usuarios_eliminados') filas = filas.filter((f) => esAdmin(f.colegio_id)); // como la RLS: solo el administrador
       if (n === 'circular_series') filas = filas.filter((f) => esAdmin(f.colegio_id)); // como la RLS (serie_circular_ver): solo Administración
       filas = ordenar(copia(filas), q.order);
       return q.limit ? filas.slice(0, q.limit) : filas;
@@ -1155,7 +1168,33 @@ export function crearDbDemo() {
       if (nombre !== 'admin-usuarios') err('Función desconocida');
       if (!esAdmin(a.colegio_id)) err('Solo el administrador del colegio puede hacer esto');
       const clave = () => Math.random().toString(36).slice(2, 6).replace(/^./, (c) => c.toUpperCase()) + String(1000 + Math.floor(Math.random() * 9000));
-      if (a.accion === 'clave') { const p = tabla('perfiles').find((x) => x.id === a.perfil_id); return { usuario: p?.correo, clave: clave() }; }
+      if (a.accion === 'clave') {
+        if (eliminadoVigente(a.colegio_id, a.perfil_id)) err('Esta persona fue eliminada del colegio: restáurala primero');
+        const p = tabla('perfiles').find((x) => x.id === a.perfil_id); return { usuario: p?.correo, clave: clave() };
+      }
+      // Eliminar / restaurar: mismas reglas que la Edge Function (14-nov-2026)
+      if (a.accion === 'eliminar') {
+        const yo = usuario(), per = a.perfil_id;
+        if (per === yo) err('No puedes eliminarte a ti mismo');
+        const suyas = tabla('miembros').filter((m) => m.perfil_id === per), aqui = suyas.filter((m) => m.colegio_id === a.colegio_id);
+        if (!aqui.length) err('Esa persona no pertenece al colegio');
+        if (aqui.some((m) => m.rol === 'admin' && m.activo !== false)) err('No puedes eliminar a otro administrador: primero quítale el rol de administrador');
+        if (eliminadoVigente(a.colegio_id, per)) err('Esa persona ya estaba eliminada');
+        const roles = aqui.filter((m) => m.activo !== false).map((m) => m.rol);
+        const bloquear = !suyas.some((m) => m.colegio_id !== a.colegio_id);
+        tabla('usuarios_eliminados').push({ id: crypto.randomUUID(), colegio_id: a.colegio_id, perfil_id: per, roles, cuenta_bloqueada: bloquear, eliminado_en: ahora(), eliminado_por: yo, restaurado_en: null, restaurado_por: null });
+        for (const m of aqui) m.activo = false;
+        guardar();
+        return { ok: true, cuenta_bloqueada: bloquear, roles };
+      }
+      if (a.accion === 'restaurar') {
+        const v = eliminadoVigente(a.colegio_id, a.perfil_id);
+        if (!v) err('Esa persona no está eliminada');
+        v.restaurado_en = ahora(); v.restaurado_por = usuario();
+        for (const m of tabla('miembros').filter((x) => x.colegio_id === a.colegio_id && x.perfil_id === a.perfil_id && v.roles.includes(x.rol))) m.activo = true;
+        guardar();
+        return { ok: true, cuenta_desbloqueada: v.cuenta_bloqueada, roles: v.roles };
+      }
       const resultados = [];
       for (const p of a.personas || []) {
         try {
