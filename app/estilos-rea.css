@@ -197,7 +197,7 @@ details.indicador > .lista { padding: 0 0 8px 40px; }
 .dia-nota { margin: 0 6px 6px; padding: 4px 8px; border-radius: 8px; background: var(--primario-suave); font-size: 13px; }
 .dia-todo { display: block; margin: 0 6px 6px; padding: 4px 8px; border-radius: 8px; background: #7c4dbd; color: #fff; font-size: 13px; font-weight: 600; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .dia-vacio { margin: 0 8px 6px; font-size: 13px; text-align: center; }
-.dia-vista { --ppm: 1.2; position: relative; flex: 1 1 0; min-height: 300px; overflow-x: hidden; overflow-y: auto; touch-action: pan-y; overscroll-behavior: contain; user-select: none; -webkit-user-select: none; border-top: 1px solid var(--borde); cursor: grab; }
+.dia-vista { --ppm: 1.2; position: relative; flex: 1 1 0; min-height: 300px; overflow-x: hidden; overflow-y: auto; touch-action: pan-y; overscroll-behavior-y: auto; /* al llegar al borde sigue la página (Fabio, 15-nov) */ overscroll-behavior-x: contain; user-select: none; -webkit-user-select: none; border-top: 1px solid var(--borde); cursor: grab; }
 .dia-vista:active { cursor: grabbing; }
 .dia-vista:focus-visible { outline: 3px solid var(--primario); outline-offset: -3px; }
 .dia-cargando { margin: 12px 8px; text-align: center; }
