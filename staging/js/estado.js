@@ -81,6 +81,9 @@ export async function refrescarMembresias() {
 }
 
 // Mi título en el colegio activo («rectoria» o «gerencia» si soy administrador con ese nombre)
+// «Administrador» sin cargo (no Rectoría ni Gerencia) en algún colegio: el ÚNICO que cambia de colegio y crea colegios (Fabio,
+// 16-nov-2026: «Solo el administrador puede tener este acceso. Nadie más»). El servidor lo exige igual (crear_colegio).
+export const esAdministrador = () => (E.membresias || []).some((m) => m.rol === 'admin' && m.activo !== false && !m.titulo);
 export const miTitulo = () => (E.membresias || []).find((m) => m.colegio_id === E.colegio?.id && m.rol === 'admin')?.titulo || null;
 
 export function cambiarRol(r) {
