@@ -2,7 +2,7 @@
 import { E, base, misAsignaciones, perfiles, pref } from '../estado.js';
 import { esc, fecha, fechaHora, nombre } from '../ui.js';
 import { construirAgenda } from '../agenda_hoy.js';
-import { columnaCaja, cabeceraDiaHTML, notasHTML, lienzoHTML, rangoDia, minutosDe, conectarColumna } from '../dia_columna.js';
+import { columnaCaja, cabeceraDiaHTML, notasHTML, lienzoHTML, minutosDe, conectarQuieta, RANGO_TABLERO, escalaQueCabe } from '../dia_columna.js';
 import { fuenteDeHoy, alDia } from './agenda_docente.js';
 import { contarNoLeidos } from './mensajeria.js';
 import { estadoCobro, dinero } from './tesoreria.js';
@@ -43,28 +43,39 @@ export async function pendientesAdmin() {
 }
 
 // Columna del día (dia_columna.js): carga «hoy» de la misma fuente que el recuadro «Hoy» del docente, la pinta y la mantiene al día.
-// Sin zoom: siempre la escala de entrada (Fabio, 16-nov-2026). opciones.estudiantes: el día de esos estudiantes (familia).
+// Quieta, siempre de 7 a.m. a 7 p.m. (Fabio, 16-nov-2026: «en tablero el calendario del día no puede moverse, debe estar estático»);
+// lo que cae por fuera de esa franja lo avisa una nota. opciones.estudiantes: el día de esos estudiantes (familia).
 export async function montarColumnaDia(sec, b, opciones = {}) {
   if (!sec) return;
   const f = fuenteDeHoy(b, opciones);
   const vista = sec.querySelector('[data-dia-vista]');
-  const g = conectarColumna(vista);
-  let rango = null;
+  conectarQuieta(vista);
   const pintar = () => {
     if (!f.datos) return;
     const a = construirAgenda({ ahora: f.ahora(), ...f.datos, etiquetar: f.etiquetar });
-    const nuevo = rangoDia(a.items, minutosDe(a.hora));
-    // Si cambia la primera hora, se corrige el desplazamiento para que no salte lo que se está viendo
-    const corrimiento = rango ? (rango.ini - nuevo.ini) * g.escala() : 0;
+    const fuera = a.items.filter((x) => x.fin <= RANGO_TABLERO.ini || x.ini >= RANGO_TABLERO.fin).length;
     sec.querySelector('[data-dia-cab]').innerHTML = cabeceraDiaHTML(a);
-    sec.querySelector('[data-dia-notas]').innerHTML = notasHTML(a);
-    const arriba = vista.scrollTop;
-    vista.innerHTML = lienzoHTML(a, nuevo);
-    vista.scrollTop = arriba + corrimiento;
-    const primera = !rango;
-    rango = nuevo;
-    if (primera) g.irAhora();
+    sec.querySelector('[data-dia-notas]').innerHTML = notasHTML(a) + (fuera ? `<a class="dia-fuera" href="#/calendario?vista=semana" data-dia-fuera>+ ${fuera} fuera de 7 a.m.–7 p.m.</a>` : '');
+    vista.innerHTML = lienzoHTML(a, RANGO_TABLERO);
+    ajustar();
   };
+  // Que la columna se vea ENTERA al entrar al Tablero (Fabio, 16-nov-2026: «debe aparecer completo cuando el usuario entre a su
+  // tablero, no debe aparecer cortado»): el alto de cada hora sale del espacio que queda en la pantalla debajo del encabezado de la
+  // columna (con la página arriba del todo); se recalcula al girar el equipo o cambiar el tamaño de la ventana.
+  let espera = 0;
+  function ajustar() {
+    if (!document.body.contains(vista)) { window.removeEventListener('resize', alCambiar); return; }
+    let p = vista.parentElement;
+    for (; p && p !== document.body; p = p.parentElement) { const o = getComputedStyle(p).overflowY; if (o === 'auto' || o === 'scroll') break; }
+    const ventana = !p || p === document.body;
+    const desplazado = ventana ? window.scrollY : p.scrollTop;
+    const abajo = ventana ? (window.visualViewport?.height || window.innerHeight) : Math.min(p.getBoundingClientRect().bottom, window.innerHeight);
+    const arriba = vista.getBoundingClientRect().top + desplazado; // dónde empiezan las horas con la página arriba del todo
+    const ppm = escalaQueCabe(abajo - arriba);
+    vista.style.setProperty('--ppm', ppm); vista.dataset.ppm = ppm;
+  }
+  function alCambiar() { cancelAnimationFrame(espera); espera = requestAnimationFrame(ajustar); }
+  window.addEventListener('resize', alCambiar);
   try { await f.cargar(); pintar(); }
   catch { vista.innerHTML = '<p class="ayuda">No se pudo cargar el día. <a href="#/horario">Abrir el horario</a></p>'; return; }
   alDia(sec, f, pintar);

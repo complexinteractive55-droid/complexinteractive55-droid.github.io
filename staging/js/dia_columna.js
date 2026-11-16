@@ -5,11 +5,12 @@
 // Gestos SOLO dentro de la columna (nunca en toda la app): dos dedos acercan o alejan las horas; un dedo (o arrastrar con el ratón)
 // la mueve; Ctrl + rueda (o el pellizco del panel táctil) acerca en el PC; botones − / ＋ / «Ahora» y teclas + / − para el teclado.
 // Lo de calcular está en funciones puras (pruebas en pruebas/unitarias/dia_columna.test.mjs); lo de pintar y los gestos, abajo.
-// 16-nov-2026 (Fabio, con una captura de Google Calendar): «que el calendario no se pueda hacer zoom ni nada, solo aparece como cuando
-// se entra a la aplicación» → la columna tiene la escala fija de entrada; ya no hay pellizco, Ctrl + rueda, teclas + / − ni botones
-// de zoom. Un dedo (o arrastrar con el ratón) sigue moviendo las horas, y en el borde pasa a la página. Y luego: «en el tablero del
-// docente debe seguir apareciendo como estaba solo el día pero debe haber un botón ahí mismo que al presionar debe llevar al
-// calendario para ver la semana» → botón «Ver semana» (abre Calendario › Semana, como Google Calendar: ver la parte «Semana» abajo).
+// 16-nov-2026 (Fabio, con una captura de Google Calendar): «en el tablero del docente debe seguir apareciendo como estaba solo el día
+// pero debe haber un botón ahí mismo que al presionar debe llevar al calendario para ver la semana» → botón «Ver semana» (Calendario ›
+// Semana, ver la parte «Semana» abajo). Y: «En el calendario sí se puede hacer el zoom y demás; donde no se puede hacer es en tablero.
+// En tablero el calendario del día no puede moverse, debe estar estático mostrando la franja horaria de 7:00 AM a 7:00 PM» → en el
+// Tablero la columna NO tiene gestos ni se desplaza (arrastrar encima mueve la página) y muestra siempre 7 a.m.–7 p.m. completa
+// (RANGO_TABLERO, escala ESCALA_TABLERO); el zoom y el desplazamiento quedan en Calendario › Semana (conectarColumna con zoom).
 import { fechaLarga, construirAgenda, enBogota } from './agenda_hoy.js';
 import { icono } from './iconos.js';
 
@@ -19,6 +20,12 @@ const hhmm = (min) => `${Math.floor(min / 60)}:${String(min % 60).padStart(2, '0
 // Etiqueta de cada hora a la izquierda, en a.m. / p.m. como Google Calendar (Fabio, 16-nov-2026: «de 7:00 AM a 7:00 PM»)
 export const horaAmPm = (min) => { const h = Math.floor(min / 60) % 24; return `${h % 12 || 12} ${h < 12 ? 'a.m.' : 'p.m.'}`; };
 export const ESCALA = { min: 0.5, max: 4, base: 1.2, paso: 1.25 }; // píxeles por minuto (1,2 → una hora mide 72 px)
+// Tablero: siempre de 7 a.m. a 7 p.m., quieta. Escala de partida 1 hora = 44 px; al pintar se ajusta para que las 12 horas quepan
+// ENTERAS en lo que queda de pantalla (escalaQueCabe), entre 27 px y 60 px por hora.
+export const RANGO_TABLERO = { ini: 7 * 60, fin: 19 * 60 };
+export const ESCALA_TABLERO = 44 / 60;
+// Píxeles por minuto para que el lienzo (12 horas + 22 px de márgenes + 10 px de aire abajo) quepa en `alto` píxeles
+export const escalaQueCabe = (alto) => Math.round(Math.min(1, Math.max(0.45, (Number(alto) - 32) / (RANGO_TABLERO.fin - RANGO_TABLERO.ini))) * 1000) / 1000;
 export const limitar = (ppm) => Math.round(Math.min(ESCALA.max, Math.max(ESCALA.min, Number(ppm) || ESCALA.base)) * 1000) / 1000;
 
 // Horas que muestra la columna: por lo menos de 7:00 a. m. a 7:00 p. m. (Fabio, 16-nov-2026; antes desde las 6:00), ampliadas para
@@ -66,7 +73,9 @@ export function lienzoHTML(a, rango) {
   const ahora = minutosDe(a.hora);
   const horas = [];
   for (let h = rango.ini; h <= rango.fin; h += 60) horas.push(h);
-  const bloques = carriles(a.items);
+  // Lo que cae por fuera de las horas que se muestran (Tablero: 7 a.m.–7 p.m. fijas) se recorta; lo que queda del todo fuera no se pinta
+  const bloques = carriles(a.items.filter((x) => x.fin > rango.ini && x.ini < rango.fin).map((x) => ({ ...x, ini: Math.max(x.ini, rango.ini), fin: Math.min(x.fin, rango.fin) })));
+  const conFlecha = ahora >= rango.ini && ahora <= rango.fin;
   return `<div class="dia-lienzo" data-dia-lienzo data-ini="${rango.ini}" data-fin="${rango.fin}" style="--total:${rango.fin - rango.ini}">
     ${horas.map((h) => `<div class="dia-linea" style="--i:${h - rango.ini}"><span>${horaAmPm(h)}</span></div>`).join('')}
     <div class="dia-bloques">${bloques.map((x) => {
@@ -76,18 +85,18 @@ export function lienzoHTML(a, rango) {
         style="--i:${x.ini - rango.ini};--d:${Math.max(x.fin - x.ini, 10)};--c:${x.carril};--n:${x.carriles}">
         <b>${esc(x.titulo)}</b><small>${x.actual ? '<i class="dia-etq">Ahora</i> ' : x.siguiente ? '<i class="dia-etq sig">Siguiente</i> ' : ''}${hhmm(x.ini)}${x.sinFin ? '' : '–' + hhmm(x.fin)}${x.sub ? ' · ' + esc(x.sub) : ''}</small></a>`;
     }).join('')}</div>
-    <div class="dia-ahora" data-dia-ahora style="--i:${ahora - rango.ini}" role="img" aria-label="Hora actual ${esc(a.hora)}"><span class="dia-ahora-hora">${esc(a.hora)}</span></div>
+    ${conFlecha ? `<div class="dia-ahora" data-dia-ahora style="--i:${ahora - rango.ini}" role="img" aria-label="Hora actual ${esc(a.hora)}"><span class="dia-ahora-hora">${esc(a.hora)}</span></div>` : ''}
   </div>`;
 }
 
-// sola: la columna va sin tarjetas al lado (estudiante, familia) y tiene alto propio. Sin zoom; «Ver semana» abre el calendario
+// sola: la columna va sin tarjetas al lado (estudiante, familia). Quieta, de 7 a.m. a 7 p.m.; «Ver semana» abre el calendario
 export const columnaCaja = ({ sola = false } = {}) => `
   <section class="dia-col${sola ? ' dia-sola' : ''}" data-dia-col aria-labelledby="dia-col-titulo">
     <h2 class="oculto-visual" id="dia-col-titulo">Mi día</h2>
     <div data-dia-cab><div class="dia-cab"><span class="dia-semana">…</span></div></div>
     <div class="dia-acciones"><a class="btn btn-chico" href="#/calendario?vista=semana" data-ver-semana>${icono('calendario')}Ver semana</a></div>
     <div data-dia-notas></div>
-    <div class="dia-vista" data-dia-vista tabindex="0" role="group" aria-label="Mi día por horas. Arrastra para moverte. Enter abre el horario completo.">
+    <div class="dia-vista dia-quieta" data-dia-vista tabindex="0" role="group" aria-label="Mi día de 7 a.m. a 7 p.m. Enter abre el horario completo." style="--ppm:${ESCALA_TABLERO}" data-ppm="${Math.round(ESCALA_TABLERO * 1000) / 1000}">
       <p class="ayuda dia-cargando">Cargando…</p>
     </div>
   </section>`;
@@ -100,12 +109,26 @@ export function notasHTML(a) {
 }
 
 // ---------------------------------------------------------------- Gestos (solo dentro de la vista de la columna)
-export function conectarColumna(vista, { abrir = () => { location.hash = '#/horario'; } } = {}) {
-  const ppm = ESCALA.base; // escala fija: la de entrada (sin zoom, Fabio 16-nov-2026)
-  let raton = null, arrastro = false;
+// zoom (Calendario › Semana; Fabio 16-nov-2026: «en el calendario sí se puede hacer el zoom y demás»): dos dedos acercan o alejan
+// las horas alrededor del punto medio, Ctrl + rueda (o el pellizco del panel táctil) en el PC, y las teclas + / −.
+export function conectarColumna(vista, { zoom = false, inicial = ESCALA.base, alCambiar = () => {}, abrir = () => { location.hash = '#/horario'; } } = {}) {
+  let ppm = zoom ? limitar(inicial) : ESCALA.base, pinza = null, raton = null, arrastro = false;
   const lienzo = () => vista.querySelector('[data-dia-lienzo]');
   const aplicar = () => { vista.style.setProperty('--ppm', ppm); vista.dataset.ppm = ppm; };
+  // Cambia la escala dejando quieto el minuto que está bajo `ay` (píxeles desde el borde de arriba de la vista)
+  const escalar = (nuevo, ay = vista.clientHeight / 2) => {
+    if (!zoom) return;
+    nuevo = limitar(nuevo);
+    if (nuevo === ppm) return;
+    const arriba = lienzo()?.offsetTop || 0;
+    const minuto = (vista.scrollTop + ay - arriba) / ppm;
+    ppm = nuevo; aplicar();
+    vista.scrollTop = minuto * ppm + arriba - ay;
+    alCambiar(ppm);
+  };
   aplicar();
+  const dist = (t) => Math.hypot(t[0].clientX - t[1].clientX, t[0].clientY - t[1].clientY);
+  const medioY = (t) => (t[0].clientY + t[1].clientY) / 2 - vista.getBoundingClientRect().top;
   // Al llegar arriba o abajo de la columna, seguir arrastrando mueve la PÁGINA, como si se deslizara fuera de la columna (Fabio,
   // 15-nov-2026, video). Si el gesto empieza ya en el borde, eso lo hace el navegador solo (overscroll-behavior-y: auto); si llega al
   // borde a mitad del gesto, el navegador se queda «pegado» a la columna y aquí se le pasa el resto del movimiento a la página.
@@ -113,9 +136,9 @@ export function conectarColumna(vista, { abrir = () => { location.hash = '#/hora
   const enTope = () => vista.scrollTop <= 0;
   const enFondo = () => vista.scrollTop + vista.clientHeight >= vista.scrollHeight - 1;
   let dedo = null;
-  // Un dedo mueve (desplazamiento nativo, touch-action: pan-y). Dos dedos no hacen nada aquí (sin zoom)
+  // Un dedo mueve (desplazamiento nativo, touch-action: pan-y); con zoom, dos dedos acercan o alejan alrededor del punto medio
   vista.addEventListener('touchstart', (e) => {
-    if (e.touches.length >= 2) { dedo = null; return; }
+    if (e.touches.length >= 2) { pinza = zoom ? { d: dist(e.touches), ppm } : null; dedo = null; return; }
     dedo = { y: e.touches[0].clientY, tope: enTope(), fondo: enFondo() };
   }, { passive: true });
   vista.addEventListener('touchmove', (e) => {
@@ -125,9 +148,19 @@ export function conectarColumna(vista, { abrir = () => { location.hash = '#/hora
       if (!enTope()) dedo.tope = false;
       if (!enFondo()) dedo.fondo = false;
       if ((dy < 0 && enFondo() && !dedo.fondo) || (dy > 0 && enTope() && !dedo.tope)) pagina().scrollBy(0, -dy);
+      return;
     }
-  }, { passive: true });
-  vista.addEventListener('touchend', (e) => { if (!e.touches.length) dedo = null; });
+    if (e.touches.length < 2 || !pinza) return;
+    e.preventDefault();
+    escalar(pinza.ppm * dist(e.touches) / pinza.d, medioY(e.touches));
+  }, { passive: false });
+  vista.addEventListener('touchend', (e) => { if (e.touches.length < 2) pinza = null; if (!e.touches.length) dedo = null; });
+  // PC: Ctrl + rueda o pellizco del panel táctil (llega como rueda con Ctrl). La rueda sola desplaza como siempre.
+  if (zoom) vista.addEventListener('wheel', (e) => {
+    if (!e.ctrlKey) return;
+    e.preventDefault();
+    escalar(ppm * Math.exp(-e.deltaY * 0.01), e.clientY - vista.getBoundingClientRect().top);
+  }, { passive: false });
   // Ratón: arrastrar mueve la columna (y, pasado su borde, la página); si hubo arrastre, el clic que sigue no abre el bloque
   const mover = (e) => {
     if (!raton) return;
@@ -146,7 +179,9 @@ export function conectarColumna(vista, { abrir = () => { location.hash = '#/hora
   });
   vista.addEventListener('click', (e) => { if (arrastro) { e.preventDefault(); e.stopPropagation(); arrastro = false; } }, true);
   vista.addEventListener('keydown', (e) => {
-    if ((e.key === 'Enter' || e.key === ' ') && e.target === vista) { e.preventDefault(); abrir(); } // en un bloque, Enter abre ese bloque
+    if (zoom && (e.key === '+' || e.key === '=')) { e.preventDefault(); escalar(ppm * ESCALA.paso); }
+    else if (zoom && (e.key === '-' || e.key === '_')) { e.preventDefault(); escalar(ppm / ESCALA.paso); }
+    else if ((e.key === 'Enter' || e.key === ' ') && e.target === vista) { e.preventDefault(); abrir(); } // en un bloque, Enter abre ese bloque
   });
   // Lleva la flecha de «ahora» a un tercio de la altura de la vista
   const irAhora = (suave = false) => {
@@ -155,7 +190,12 @@ export function conectarColumna(vista, { abrir = () => { location.hash = '#/hora
     const i = Number(getComputedStyle(f).getPropertyValue('--i')) || 0;
     vista.scrollTo({ top: Math.max(0, l.offsetTop + i * ppm - vista.clientHeight / 3), behavior: suave ? 'smooth' : 'auto' });
   };
-  return { irAhora, escala: () => ppm };
+  return { irAhora, escala: () => ppm, acercar: () => escalar(ppm * ESCALA.paso), alejar: () => escalar(ppm / ESCALA.paso) };
+}
+
+// Tablero: la columna quieta no escucha gestos (arrastrar encima mueve la página como cualquier otra parte); Enter abre el horario
+export function conectarQuieta(vista, abrir = () => { location.hash = '#/horario'; }) {
+  vista.addEventListener('keydown', (e) => { if ((e.key === 'Enter' || e.key === ' ') && e.target === vista) { e.preventDefault(); abrir(); } });
 }
 
 // ---------------------------------------------------------------- Semana (Fabio, 16-nov-2026: «por semana como el de Google calendario»)

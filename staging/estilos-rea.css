@@ -176,13 +176,16 @@ details.indicador > .lista { padding: 0 0 8px 40px; }
    ocupa una columna fija. La escala va en --ppm (píxeles por minuto) y la pone dia_columna.js. */
 .tablero-con-dia { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: 10px; margin-bottom: 16px; align-items: stretch; }
 .tablero-con-dia > .pendientes, .tablero-con-dia > .cifras { margin-bottom: 0; grid-template-columns: minmax(0, 1fr); align-content: start; }
-/* Familia: en el celular el día va debajo (a lo ancho); en el PC, a la derecha como en los demás perfiles */
+/* Familia: en el celular el día va ARRIBA, a lo ancho (16-nov-2026: «debe aparecer completo cuando el usuario entre a su tablero»;
+   antes iba debajo de avisos e hijos); en el PC, a la derecha como en los demás perfiles */
 .tablero-con-dia.dia-ancho { grid-template-columns: minmax(0, 1fr); }
+.tablero-con-dia.dia-ancho > .dia-col { order: -1; }
 .tablero-izq { min-width: 0; }
 .dia-sola { margin-bottom: 16px; }
 .tablero-con-dia > .dia-sola { margin-bottom: 0; }
 @media (min-width: 720px) {
   .tablero-con-dia, .tablero-con-dia.dia-ancho { grid-template-columns: minmax(0, 1fr) 320px; }
+  .tablero-con-dia.dia-ancho > .dia-col { order: 0; }
   .tablero-con-dia > .pendientes { grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); }
   .tablero-con-dia > .cifras { grid-template-columns: repeat(auto-fit, minmax(130px, 1fr)); }
 }
@@ -199,6 +202,17 @@ details.indicador > .lista { padding: 0 0 8px 40px; }
 .dia-vacio { margin: 0 8px 6px; font-size: 13px; text-align: center; }
 .dia-vista { --ppm: 1.2; position: relative; flex: 1 1 0; min-height: 300px; overflow-x: hidden; overflow-y: auto; touch-action: pan-y; overscroll-behavior-y: auto; /* al llegar al borde sigue la página (Fabio, 15-nov) */ overscroll-behavior-x: contain; user-select: none; -webkit-user-select: none; border-top: 1px solid var(--borde); cursor: grab; }
 .dia-vista:active { cursor: grabbing; }
+/* Tablero: quieta, 7 a.m.–7 p.m. enteras (Fabio, 16-nov-2026: «no puede moverse, debe estar estático»). Sin desplazamiento propio: arrastrar
+   encima mueve la página (touch-action normal); el alto es exactamente el de las 12 horas */
+.dia-vista.dia-quieta { flex: none; height: auto; min-height: 0; overflow: hidden; touch-action: auto; overscroll-behavior: auto; cursor: default; user-select: auto; -webkit-user-select: auto; }
+.dia-vista.dia-quieta:active { cursor: default; }
+.dia-vista.dia-quieta .dia-lienzo { margin: 10px 0 12px; height: calc(var(--total) * var(--ppm) * 1px); }
+.dia-vista.dia-quieta .dia-bloque { padding: 2px 5px; }
+.dia-vista.dia-quieta .dia-bloque b { font-size: 13px; }
+.dia-vista.dia-quieta .dia-bloque small { font-size: 10.5px; }
+.dia-col:has(.dia-quieta) { min-height: 0; }
+.dia-fuera { display: block; margin: 0 6px 6px; font-size: 12px; font-weight: 600; text-align: center; }
+.sem-acciones { justify-content: flex-end; padding: 6px 8px 0; }
 .dia-vista:focus-visible { outline: 3px solid var(--primario); outline-offset: -3px; }
 .dia-cargando { margin: 12px 8px; text-align: center; }
 .dia-lienzo { position: relative; height: calc(var(--total) * var(--ppm) * 1px + 16px); margin-top: 8px; }
@@ -538,3 +552,5 @@ fieldset.tambien legend { font-weight: 600; font-size: 13px; padding: 0 6px; }
 .sem-col .dia-bloque.conflicto { outline-width: 1px; outline-offset: -1px; }
 .sem-col .dia-bloque.actual { box-shadow: 0 0 0 1px var(--superficie), 0 0 0 3px var(--texto); }
 .sem-titulo { margin: 8px 10px 0; font-size: 13px; font-weight: 700; color: var(--texto-2); }
+/* La columna del Tablero tiene SU alto (el que cabe en la pantalla): no se estira al de las tarjetas de al lado (16-nov-2026) */
+.tablero-con-dia > .dia-col { align-self: start; }

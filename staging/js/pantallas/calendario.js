@@ -229,8 +229,9 @@ async function armarSemana(b, fechaRef, visibles, crono) {
   return {
     titulo,
     html: `<section class="dia-col semana cal-semana" data-semana aria-label="Semana del ${esc(titulo)}">
+      <div class="dia-acciones sem-acciones"><button type="button" class="btn btn-chico" data-sem-menos aria-label="Alejar las horas">−</button>${conHoy ? '<button type="button" class="btn btn-chico" data-sem-ahora>Ahora</button>' : ''}<button type="button" class="btn btn-chico" data-sem-mas aria-label="Acercar las horas">＋</button></div>
       ${cabeceraSemanaHTML(dias)}
-      <div class="dia-vista" data-dia-vista tabindex="0" role="group" aria-label="La semana por horas. Arrastra para moverte.">${lienzoSemanaHTML(dias, rango, horaHoy)}</div>
+      <div class="dia-vista" data-dia-vista tabindex="0" role="group" aria-label="La semana por horas. Dos dedos o las teclas + y − acercan o alejan; arrastra para moverte.">${lienzoSemanaHTML(dias, rango, horaHoy)}</div>
     </section>`,
     conectar(raiz) {
       const caja = raiz.querySelector('[data-semana]');
@@ -241,7 +242,12 @@ async function armarSemana(b, fechaRef, visibles, crono) {
         el.removeAttribute('href'); el.setAttribute('role', 'button'); el.tabIndex = 0; el.dataset.dia = dia;
         el.addEventListener('keydown', (e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); el.click(); } });
       });
-      const g = conectarColumna(caja.querySelector('[data-dia-vista]'), { abrir: () => {} });
+      // Aquí sí hay zoom (Fabio, 16-nov-2026: «en el calendario sí se puede hacer el zoom y demás»); la escala se recuerda en este equipo
+      const g = conectarColumna(caja.querySelector('[data-dia-vista]'), { zoom: true, inicial: pref('sem_ppm'), alCambiar: (x) => pref('sem_ppm', x), abrir: () => {} });
+      caja.querySelector('[data-sem-mas]').onclick = g.acercar;
+      caja.querySelector('[data-sem-menos]').onclick = g.alejar;
+      const ahoraBtn = caja.querySelector('[data-sem-ahora]');
+      if (ahoraBtn) ahoraBtn.onclick = () => g.irAhora(true);
       if (conHoy) g.irAhora();
     },
   };
