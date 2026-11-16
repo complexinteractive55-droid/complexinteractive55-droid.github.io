@@ -384,7 +384,7 @@ function menuBase() {
   const conSalas = (g) => conSer({ ...g, items: [...g.items, ['salas', 'Salas de sección']] }); // chats de sección y avisos (personal)
   // SER · Psicología (15-nov-2026): estudiantes y acudientes siempre; del personal, solo quien el administrador designó
   const serResp = E.ser?.colegio === E.colegio?.id && E.ser?.soy_responsable;
-  function conSer(g) { return E.rol === 'estudiante' || E.rol === 'acudiente' || serResp ? { ...g, items: [...g.items, ['ser', 'SER · Psicología', 'ser']] } : g; }
+  function conSer(g) { return E.rol === 'estudiante' || E.rol === 'acudiente' || serResp ? { ...g, items: [...g.items, ['ser', 'SER', 'ser']] } : g; }
   if (E.rol === 'admin') return [tablero, conSalas(COMUNICACION),
     { t: 'Comunidad', ic: '👥', items: [['calendario', 'Calendario'], ['personas', 'Personas'], ['seguimientos', 'Seguimientos'], ['compromisos', 'Compromisos'], ['ausencias', 'Ausencias reportadas'], ['procesos', 'Procesos en línea'], ['archivos', 'Archivos']] },
     { t: 'Académico', ic: '🎓', items: [['estructura', 'Estructura del colegio'], ['horario', 'Horarios'], ['album', 'Álbum por curso'], ['planeaciones', 'Planeaciones'], ['reportes', 'Reportes'], ['espacios-solicitudes', 'Solicitudes de espacios']] },
@@ -505,7 +505,7 @@ function pintarArmazon(patron) {
     ${menuDe().map((g) => g.r
       ? `<a href="#/${g.r}" data-texto="${esc(g.t)}" class="${itemActivo(g.r, patron) ? 'activo' : ''}"><span class="ic">${icono(ICONO_GRUPO[g.t]) || iconoRuta(g.r) || g.ic}</span><span>${g.t}</span></a>`
       : `<details class="menu-grupo" open><summary><span class="ic">${icono(ICONO_GRUPO[g.t]) || g.ic}</span><span>${g.t}</span></summary>
-          ${g.items.map(([r, t, badge]) => `<a href="#/${r}" data-texto="${esc(g.t + ' ' + t)}" class="sub ${itemActivo(r, patron) ? 'activo' : ''}" ${itemActivo(r, patron) ? 'aria-current="page"' : ''}><span class="ic ic-sub">${iconoRuta(r)}</span><span>${t}</span>${badge ? `<span class="contador" data-contador="${badge}" hidden></span>` : ''}</a>`).join('')}
+          ${g.items.map(([r, t, badge]) => r === 'ser' ? serMenu(patron) : `<a href="#/${r}" data-texto="${esc(g.t + ' ' + t)}" class="sub ${itemActivo(r, patron) ? 'activo' : ''}" ${itemActivo(r, patron) ? 'aria-current="page"' : ''}><span class="ic ic-sub">${iconoRuta(r)}</span><span>${t}</span>${badge ? `<span class="contador" data-contador="${badge}" hidden></span>` : ''}</a>`).join('')}
         </details>`).join('')}
     <div class="menu-pie">
       ${E.roles.length > 1 ? `<button class="menu-boton" data-ver-como><span class="ic">${icono('cambiar')}</span><span>Ver como…</span></button>` : ''}
@@ -513,6 +513,13 @@ function pintarArmazon(patron) {
     </div>`;
   pintarContadores();
   ponerFotos($('#app'));
+}
+
+// SER · Psicología en el menú (Fabio, 16-nov-2026): en su lugar de Comunicación, del mismo
+// tamaño que las demás opciones, con la insignia del colegio como ícono y en su rosa; con su contador; no en el Tablero
+function serMenu(patron) {
+  const act = itemActivo('ser', patron);
+  return `<a href="#/ser" data-texto="Comunicación SER Psicología" class="sub ser-menu ${act ? 'activo' : ''}" ${act ? 'aria-current="page"' : ''} aria-label="SER"><span class="ic ic-sub"><img class="ser-insignia" src="img/ser_insignia.png" alt="" width="552" height="438"></span><span>SER</span><span class="contador" data-contador="ser" hidden></span></a>`;
 }
 
 // Foto de la persona en el menú, las pestañas de persona y Mi cuenta: primero las iniciales; si tiene foto, la foto.
@@ -551,10 +558,8 @@ async function contadorSER() {
   if (!!s.soy_responsable !== antes && patronPintado && $('#menu')) pintarArmazon(patronPintado);
   tarjetaSER();
 }
-function tarjetaSER() {
-  const m = main();
-  if (!m || !enTablero() || !(E.ser?.colegio === E.colegio?.id && E.ser?.soy_responsable)) { m?.querySelector(':scope > [data-ser-psi]')?.remove(); return; }
-  pant.ser().then((x) => { const vieja = m.querySelector(':scope > [data-ser-psi]'); const html = x.tarjetaResponsable(E.ser); if (vieja) vieja.outerHTML = html; else (m.querySelector(':scope > [data-sin-red]') || null) ? m.querySelector(':scope > [data-sin-red]').insertAdjacentHTML('afterend', html) : m.insertAdjacentHTML('afterbegin', html); }).catch(() => {});
+function tarjetaSER() { // SER ya no va en el Tablero (Fabio, 16-nov-2026): solo quita una tarjeta vieja si quedó
+  document.querySelector('#principal > [data-ser-psi]')?.remove();
 }
 
 function abrirMenu(si) {

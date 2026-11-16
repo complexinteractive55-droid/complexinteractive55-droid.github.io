@@ -489,3 +489,11 @@ fieldset.tambien legend { font-weight: 600; font-size: 13px; padding: 0 6px; }
 .ser-vacio { text-align: center; padding: 24px 8px; }
 .ser-fila.sin-leer b { font-weight: 800; }
 .ser-ultimo { display: block; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; max-width: 60ch; }
+/* SER en el menú (Fabio, 16-nov-2026): en su lugar de Comunicación, del mismo tamaño que las demás opciones, con la insignia
+   del colegio como ícono y su rosa (#f6b9bc) con el azul noche (#1d2541) de la insignia */
+.menu a.sub.ser-menu { background: #f6b9bc; color: #1d2541; font-weight: 700; }
+.menu a.sub.ser-menu:hover { background: #f3a9ad; }
+.menu a.sub.ser-menu.activo { background: #f6b9bc; color: #1d2541; box-shadow: inset 3px 0 0 #1d2541; }
+.menu a.sub.ser-menu .ic-sub { color: inherit; }
+.menu a.sub.ser-menu .ser-insignia { width: 24px; max-width: none; height: auto; margin: 0 -4px; } /* cabe en el lugar del ícono: el texto queda alineado con las demás */
+.menu a.ser-menu:focus-visible { outline: 3px solid var(--primario); outline-offset: 2px; }

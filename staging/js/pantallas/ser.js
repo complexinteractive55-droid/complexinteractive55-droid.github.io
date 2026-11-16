@@ -14,32 +14,10 @@ window.addEventListener('hashchange', () => { if (!/^#\/ser(\/|$|\?)/.test(locat
 const pendientes = new Map(); // conversación → mensajes sin confirmar (en memoria: se olvidan al cerrar sesión)
 export function olvidar() { soltar?.(); soltar = null; pendientes.clear(); }
 
-// ---------------------------------------------------------------- Insignia (versión de la imagen que mandó Fabio)
-// Círculo azul noche con anillo, centro rosado con «SER», el lema arriba siguiendo el borde, cintas a los lados con el año
-// lectivo y espigas abajo. Sin el escudo del colegio (es de su marca): en su lugar, un corazón (empatía).
-const AZUL = '#1d2541', ROSA = '#f6b9bc';
-export function insigniaSER({ anios = [], clase = '' } = {}) {
-  const [a, z] = anios;
-  const cinta = (x, y) => (y ? `<tspan x="${x}" dy="0">${esc(String(y).slice(0, 2))}</tspan><tspan x="${x}" dy="21">${esc(String(y).slice(2))}</tspan>` : '');
-  // Con dos años, cada cinta lleva uno (20/26 · 20/27); con uno solo, se parte: «20» a la izquierda y «26» a la derecha
-  const izq = z && z !== a ? cinta(26, a) : a ? `<tspan x="26" dy="10">${esc(String(a).slice(0, 2))}</tspan>` : '';
-  const der = z && z !== a ? cinta(274, z) : a ? `<tspan x="274" dy="10">${esc(String(a).slice(2))}</tspan>` : '';
-  const espiga = (s) => `<g transform="${s}" fill="${ROSA}">${[0, 1, 2, 3].map((i) => `<ellipse cx="${-i * 7}" cy="${-i * 5}" rx="7" ry="3" transform="rotate(-35 ${-i * 7} ${-i * 5})"/><ellipse cx="${-i * 7 + 3}" cy="${-i * 5 - 5}" rx="7" ry="3" transform="rotate(25 ${-i * 7 + 3} ${-i * 5 - 5})"/>`).join('')}</g>`;
-  return `<svg class="ser-insignia ${clase}" viewBox="0 0 300 210" role="img" aria-label="SER · Social, Empathic, Responsible" xmlns="http://www.w3.org/2000/svg">
-    <defs><path id="ser-arco" d="M 68 105 A 82 82 0 0 1 232 105"/></defs>
-    <rect x="2" y="70" width="296" height="72" rx="8" fill="${AZUL}"/>
-    <rect x="7" y="75" width="286" height="62" rx="5" fill="none" stroke="${ROSA}" stroke-width="2"/>
-    <circle cx="150" cy="105" r="100" fill="${AZUL}"/>
-    <circle cx="150" cy="105" r="71" fill="${ROSA}"/>
-    <circle cx="150" cy="105" r="66" fill="none" stroke="${AZUL}" stroke-width="1.5"/>
-    <text font-family="Georgia, 'Times New Roman', serif" font-size="12.5" letter-spacing="1.6" fill="${ROSA}"><textPath href="#ser-arco" startOffset="50%" text-anchor="middle">SOCIAL, EMPATHIC, RESPONSIBLE</textPath></text>
-    <text x="150" y="112" text-anchor="middle" font-family="Georgia, 'Times New Roman', serif" font-size="50" letter-spacing="4" fill="${AZUL}">SER</text>
-    <circle cx="150" cy="146" r="17" fill="${ROSA}" stroke="${AZUL}" stroke-width="2"/>
-    <path transform="translate(138 135) scale(1)" d="M20.8 8.6a5 5 0 0 0-8.8-3.2 5 5 0 0 0-8.8 3.2c0 5.4 8.8 11.4 8.8 11.4s8.8-6 8.8-11.4z" fill="${AZUL}"/>
-    <text font-family="Arial, Helvetica, sans-serif" font-weight="700" font-size="19" fill="${ROSA}" text-anchor="middle" y="100">${izq}</text>
-    <text font-family="Arial, Helvetica, sans-serif" font-weight="700" font-size="19" fill="${ROSA}" text-anchor="middle" y="100">${der}</text>
-    ${espiga('translate(125 192)')}${espiga('translate(175 192) scale(-1 1)')}
-  </svg>`;
+// ---------------------------------------------------------------- Insignia
+// La imagen de la insignia SER que mandó Fabio, tal cual (16-nov-2026: «debe ser el botón igual a este»), sin el fondo crema.
+export function insigniaSER({ clase = '' } = {}) {
+  return `<img class="ser-insignia ${clase}" src="img/ser_insignia.png" alt="SER · Social, Empathic, Responsible" width="552" height="438" decoding="async">`;
 }
 // Años de la cinta: los del año lectivo activo (inicio y fin); si no tiene fechas, su año
 export async function aniosSER() {
@@ -63,7 +41,7 @@ export async function estadoSER() {
 export function botonSER(anios = []) {
   return `<a class="ser-boton" href="#/ser" data-ser-boton>
     ${insigniaSER({ anios })}
-    <span class="ser-boton-texto"><b>SER · Psicología</b><small data-ser-quien>Habla en privado con Psicología del colegio</small></span>
+    <span class="ser-boton-texto"><b>SER</b><small data-ser-quien>Habla en privado con Psicología del colegio</small></span>
     <span class="contador" data-contador="ser" hidden></span>
   </a>`;
 }
@@ -80,7 +58,7 @@ export async function completarBoton(raiz) {
 // Tarjeta del Tablero de la persona designada (solo ella la ve)
 export function tarjetaResponsable(s) {
   const n = Number(s?.sin_leer) || 0;
-  return `<a class="ser-boton ser-psi" href="#/ser" data-ser-psi>${insigniaSER({ clase: 'mini' })}<span class="ser-boton-texto"><b>SER · Psicología</b>
+  return `<a class="ser-boton ser-psi" href="#/ser" data-ser-psi>${insigniaSER({ clase: 'mini' })}<span class="ser-boton-texto"><b>SER</b>
     <small>${n ? `Tienes <b>${n}</b> mensaje${n === 1 ? '' : 's'} sin leer` : 'Conversaciones privadas con estudiantes y familias'}</small></span>${n ? `<span class="contador">${n}</span>` : ''}</a>`;
 }
 
@@ -88,22 +66,22 @@ export function tarjetaResponsable(s) {
 export async function ser(m) {
   soltar?.(); soltar = null;
   const s = await estadoSER();
-  if (!s) { m.innerHTML = cabecera('SER · Psicología', { volver: '#/inicio' }) + vacio('No se pudo abrir SER. Revisa tu conexión e intenta de nuevo.'); return; }
+  if (!s) { m.innerHTML = cabecera('SER', { volver: '#/inicio' }) + vacio('No se pudo abrir SER. Revisa tu conexión e intenta de nuevo.'); return; }
   if (s.soy_responsable) return bandeja(m, s);
   if (!s.puedo_escribir) {
-    m.innerHTML = cabecera('SER · Psicología', { volver: '#/inicio' }) + `<section class="tarjeta ser-intro">${insigniaSER({ anios: await aniosSER(), clase: 'mediana' })}
+    m.innerHTML = cabecera('SER', { volver: '#/inicio' }) + `<section class="tarjeta ser-intro">${insigniaSER({ anios: await aniosSER(), clase: 'mediana' })}
       <p>SER es la conversación <b>privada</b> de estudiantes y familias con Psicología del colegio. Solo la ve la persona designada${s.responsable ? ` (hoy: <b>${esc(s.responsable)}</b>)` : ''}: ni el administrador ni los docentes la pueden leer.</p>
       ${s.admin ? `<p class="ayuda">${s.responsable ? 'Para cambiar quién responde' : 'Para que SER funcione, designa a quien responde'} en <a href="#/ajustes-colegio#f-ser">Ajustes del colegio → SER</a>.</p>` : ''}</section>`;
     return;
   }
   if (!s.responsable) {
-    m.innerHTML = cabecera('SER · Psicología', { volver: '#/inicio' }) + `<section class="tarjeta ser-intro">${insigniaSER({ anios: await aniosSER(), clase: 'mediana' })}
+    m.innerHTML = cabecera('SER', { volver: '#/inicio' }) + `<section class="tarjeta ser-intro">${insigniaSER({ anios: await aniosSER(), clase: 'mediana' })}
       <p><b>SER aún no tiene a alguien de Psicología designado.</b> Pronto podrás escribir aquí. Si necesitas ayuda ya, busca a un docente o a alguien del colegio en quien confíes.</p></section>`;
     return;
   }
   let conv = s.conversacion;
   if (!conv) {
-    try { conv = (await rpc('ser_abrir', { p_colegio: E.colegio.id })).id; } catch (e) { m.innerHTML = cabecera('SER · Psicología', { volver: '#/inicio' }) + vacio(e.message); return; }
+    try { conv = (await rpc('ser_abrir', { p_colegio: E.colegio.id })).id; } catch (e) { m.innerHTML = cabecera('SER', { volver: '#/inicio' }) + vacio(e.message); return; }
   }
   return chat(m, conv, { volver: '#/inicio', anios: await aniosSER() });
 }
@@ -116,9 +94,9 @@ export async function conversacion(m, p) {
 
 // Bandeja de la persona designada
 async function bandeja(m, s) {
-  const lista = await rpc('ser_bandeja', { p_colegio: E.colegio.id }).catch((e) => { m.innerHTML = cabecera('SER · Psicología', { volver: '#/inicio' }) + vacio(e.message); return null; });
+  const lista = await rpc('ser_bandeja', { p_colegio: E.colegio.id }).catch((e) => { m.innerHTML = cabecera('SER', { volver: '#/inicio' }) + vacio(e.message); return null; });
   if (!lista) return;
-  m.innerHTML = cabecera('SER · Psicología', { volver: '#/inicio' }) + `
+  m.innerHTML = cabecera('SER', { volver: '#/inicio' }) + `
     <p class="ayuda ser-privado">🔒 Conversaciones privadas: solo tú (persona designada en Ajustes del colegio) y cada persona que te escribe las ven.</p>
     ${lista.length ? `<div class="lista ser-lista">${lista.map((c) => `
       <a class="fila ser-fila ${Number(c.sin_leer) ? 'sin-leer' : ''}" href="#/ser/${esc(c.id)}">
@@ -134,7 +112,7 @@ async function bandeja(m, s) {
 
 // ---------------------------------------------------------------- Conversación (las dos partes)
 async function chat(m, conv, { volver, anios = [] }) {
-  m.innerHTML = cabecera('SER · Psicología', { volver }) + `
+  m.innerHTML = cabecera('SER', { volver }) + `
     <section class="tarjeta ser-chat">
       <div class="ser-cab" data-ser-cab>${insigniaSER({ anios, clase: 'mini' })}<span class="crece"><b>…</b></span></div>
       <p class="ayuda ser-privado" data-ser-privado></p>
@@ -221,7 +199,7 @@ async function chat(m, conv, { volver, anios = [] }) {
 // ---------------------------------------------------------------- Ajustes del colegio: quién responde SER (administrador)
 export async function seccionAjustes() {
   return `<section class="tarjeta" id="f-ser">
-      <div class="ser-cab">${insigniaSER({ clase: 'mini' })}<span class="crece"><h2>SER · Psicología</h2><small>Quién responde las conversaciones privadas de estudiantes y familias</small></span></div>
+      <div class="ser-cab">${insigniaSER({ clase: 'mini' })}<span class="crece"><h2>SER</h2><small>Quién responde las conversaciones privadas de estudiantes y familias</small></span></div>
       <div data-ser-ajustes><p class="ayuda">Cargando…</p></div>
     </section>`;
 }
