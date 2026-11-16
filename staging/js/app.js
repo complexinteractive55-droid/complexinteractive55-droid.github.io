@@ -4,6 +4,7 @@ import { E, pref, base, cargarYo, elegirColegio, cambiarRol, refrescarMembresias
 import { esc, $, aviso, ventana, leerForm, confirmar, ROL, nombreRol, nombre, iniciales, etiquetarTablas, fecha, fechaHora, vacio } from './ui.js';
 import { APP_VERSION } from './config.js';
 import { icono, iconoRuta, ICONO_GRUPO, vigilarBotones } from './iconos.js';
+import { abrirCapa } from './atras.js';
 import { enIngles, preferenciaIdioma, idiomaDispositivo, elegirIdioma, activarTraduccion, t } from './i18n.js';
 
 // ---------------------------------------------------------------- Cargo en vez del rol genérico (1-nov-2026)
@@ -458,7 +459,11 @@ function pintarArmazon(patron) {
     $('#btn-menu').onclick = () => abrirMenu(!app.classList.contains('menu-abierto'));
     $('#menu-fondo').onclick = () => abrirMenu(false);
     $('#menu').addEventListener('click', (e) => {
-      if (e.target.closest('a')) abrirMenu(false);
+      // Un enlace del menú: se cierra el menú (quitando su entrada del historial) y luego se va a la pantalla, para que Atrás vuelva
+      // a la anterior sin pasos «muertos» (atras.js, 16-nov-2026)
+      const enlace = e.target.closest('a[href^="#"]');
+      if (enlace && app.classList.contains('menu-abierto') && soltarMenu) { e.preventDefault(); const h = enlace.getAttribute('href'); abrirMenu(false, () => { if (location.hash === h) navegar(); else location.hash = h; }); }
+      else if (e.target.closest('a')) abrirMenu(false);
       if (e.target.closest('[data-salir]')) salir();
       if (e.target.closest('[data-ver-como]')) { abrirMenu(false); elegirRol(); }
     });
@@ -561,8 +566,13 @@ function tarjetaSER() { // SER ya no va en el Tablero (Fabio, 16-nov-2026): solo
   document.querySelector('#principal > [data-ser-psi]')?.remove();
 }
 
-function abrirMenu(si) {
+// El menú lateral abierto (celular) es una «capa»: Atrás lo cierra en vez de cambiar de pantalla (atras.js, Fabio 16-nov-2026)
+let soltarMenu = null;
+function abrirMenu(si, luego) {
   const app = $('#app');
+  if (si && !soltarMenu) soltarMenu = abrirCapa(() => { soltarMenu = null; abrirMenu(false); });
+  else if (!si && soltarMenu) { const s = soltarMenu; soltarMenu = null; s(luego); luego = null; }
+  luego?.();
   app.classList.toggle('menu-abierto', si);
   document.documentElement.classList.toggle('menu-bloqueo', !!si); // la página de atrás no se desplaza
   $('#btn-menu')?.setAttribute('aria-expanded', si);
