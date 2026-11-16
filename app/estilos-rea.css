@@ -176,35 +176,51 @@ details.indicador > .lista { padding: 0 0 8px 40px; }
    ocupa una columna fija. La escala va en --ppm (píxeles por minuto) y la pone dia_columna.js. */
 .tablero-con-dia { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: 10px; margin-bottom: 16px; align-items: stretch; }
 .tablero-con-dia > .pendientes, .tablero-con-dia > .cifras { margin-bottom: 0; grid-template-columns: minmax(0, 1fr); align-content: start; }
-/* Familia: en el celular el día va debajo (a lo ancho); en el PC, a la derecha como en los demás perfiles */
+/* Familia: en el celular el día va ARRIBA, a lo ancho (16-nov-2026: «debe aparecer completo cuando el usuario entre a su tablero»;
+   antes iba debajo de avisos e hijos); en el PC, a la derecha como en los demás perfiles */
 .tablero-con-dia.dia-ancho { grid-template-columns: minmax(0, 1fr); }
+.tablero-con-dia.dia-ancho > .dia-col { order: -1; }
 .tablero-izq { min-width: 0; }
 .dia-sola { margin-bottom: 16px; }
 .tablero-con-dia > .dia-sola { margin-bottom: 0; }
 @media (min-width: 720px) {
   .tablero-con-dia, .tablero-con-dia.dia-ancho { grid-template-columns: minmax(0, 1fr) 320px; }
+  .tablero-con-dia.dia-ancho > .dia-col { order: 0; }
   .tablero-con-dia > .pendientes { grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); }
   .tablero-con-dia > .cifras { grid-template-columns: repeat(auto-fit, minmax(130px, 1fr)); }
 }
 .dia-col { display: flex; flex-direction: column; min-width: 0; min-height: 440px; background: var(--superficie); border: 1px solid var(--borde); border-radius: var(--radio); box-shadow: var(--sombra); overflow: hidden; }
-.dia-cab { display: flex; flex-direction: column; align-items: center; gap: 2px; padding: 10px 6px 4px; }
-.dia-semana { font-size: 15px; font-weight: 700; color: var(--texto-2); }
-.dia-num { font-size: 34px; line-height: 1; }
-.dia-ciclo { margin-top: 4px; padding: 2px 12px; border-radius: 999px; background: var(--superficie-2); color: var(--texto); font-size: 14px; font-weight: 600; }
-.dia-ciclo.sin { background: transparent; color: var(--texto-2); font-size: 12px; font-weight: 500; padding: 0 6px; }
-.dia-acciones { display: flex; justify-content: center; gap: 4px; padding: 4px 6px 6px; }
-.dia-acciones .btn-chico { min-height: 30px; padding: 2px 10px; }
+/* Encabezado compacto (Fabio, 16-nov-2026: «el lunes, la fecha y el ciclo pueden quedar más ajustados para que de 7 a 7 quede más
+   grande; lo importante es el horario»): «lun 16» en un renglón, el ciclo debajo en pequeño y el botón bajito */
+.dia-cab { display: grid; grid-template-columns: 1fr auto auto 1fr; align-items: baseline; column-gap: 6px; row-gap: 2px; padding: 6px 6px 2px; }
+.dia-semana { grid-column: 2; font-size: 14px; font-weight: 700; color: var(--texto-2); }
+.dia-num { grid-column: 3; font-size: 22px; line-height: 1.1; }
+.dia-ciclo { grid-column: 1 / -1; justify-self: center; padding: 1px 8px; border-radius: 999px; background: var(--superficie-2); color: var(--texto); font-size: 12px; font-weight: 600; white-space: nowrap; }
+.dia-ciclo.sin { background: transparent; color: var(--texto-2); font-size: 11px; font-weight: 500; padding: 0 6px; }
+.dia-acciones { display: flex; justify-content: center; gap: 4px; padding: 3px 6px 5px; }
+.dia-acciones .btn-chico { min-height: 26px; padding: 1px 8px; font-size: 13px; }
 .dia-nota { margin: 0 6px 6px; padding: 4px 8px; border-radius: 8px; background: var(--primario-suave); font-size: 13px; }
 .dia-todo { display: block; margin: 0 6px 6px; padding: 4px 8px; border-radius: 8px; background: #7c4dbd; color: #fff; font-size: 13px; font-weight: 600; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .dia-vacio { margin: 0 8px 6px; font-size: 13px; text-align: center; }
 .dia-vista { --ppm: 1.2; position: relative; flex: 1 1 0; min-height: 300px; overflow-x: hidden; overflow-y: auto; touch-action: pan-y; overscroll-behavior-y: auto; /* al llegar al borde sigue la página (Fabio, 15-nov) */ overscroll-behavior-x: contain; user-select: none; -webkit-user-select: none; border-top: 1px solid var(--borde); cursor: grab; }
 .dia-vista:active { cursor: grabbing; }
+/* Tablero: quieta, 7 a.m.–7 p.m. enteras (Fabio, 16-nov-2026: «no puede moverse, debe estar estático»). Sin desplazamiento propio: arrastrar
+   encima mueve la página (touch-action normal); el alto es exactamente el de las 12 horas */
+.dia-vista.dia-quieta { flex: none; height: auto; min-height: 0; overflow: hidden; touch-action: auto; overscroll-behavior: auto; cursor: default; user-select: auto; -webkit-user-select: auto; }
+.dia-vista.dia-quieta:active { cursor: default; }
+.dia-vista.dia-quieta .dia-lienzo { margin: 10px 0 12px; height: calc(var(--total) * var(--ppm) * 1px); }
+.dia-vista.dia-quieta .dia-bloque { padding: 2px 5px; }
+.dia-vista.dia-quieta .dia-bloque b { font-size: 13px; }
+.dia-vista.dia-quieta .dia-bloque small { font-size: 10.5px; }
+.dia-col:has(.dia-quieta) { min-height: 0; }
+.dia-fuera { display: block; margin: 0 6px 6px; font-size: 12px; font-weight: 600; text-align: center; }
+.sem-acciones { justify-content: flex-end; padding: 6px 8px 0; }
 .dia-vista:focus-visible { outline: 3px solid var(--primario); outline-offset: -3px; }
 .dia-cargando { margin: 12px 8px; text-align: center; }
 .dia-lienzo { position: relative; height: calc(var(--total) * var(--ppm) * 1px + 16px); margin-top: 8px; }
 .dia-linea { position: absolute; left: 0; right: 0; top: calc(var(--i) * var(--ppm) * 1px); border-top: 1px solid var(--borde); }
 .dia-linea span { position: absolute; left: 3px; top: -8px; padding: 0 2px; background: var(--superficie); color: var(--texto-2); font-size: 11px; font-variant-numeric: tabular-nums; }
-.dia-bloques { position: absolute; inset: 0 3px 0 34px; }
+.dia-bloques { position: absolute; inset: 0 3px 0 50px; } /* 50 px: caben «10 a.m.» y «12 p.m.» (16-nov-2026) */
 .dia-bloque { --ancho: calc((100% - (var(--n) - 1) * 3px) / var(--n)); position: absolute; top: calc(var(--i) * var(--ppm) * 1px + 1px); height: calc(var(--d) * var(--ppm) * 1px - 3px); min-height: 14px;
   left: calc(var(--c) * (var(--ancho) + 3px)); width: var(--ancho); box-sizing: border-box; padding: 3px 6px; border-radius: 8px; overflow: hidden;
   display: flex; flex-direction: column; color: #fff; text-decoration: none; background: var(--fondo-bloque); -webkit-user-drag: none; }
@@ -226,6 +242,43 @@ details.indicador > .lista { padding: 0 0 8px 40px; }
 .dia-ahora { position: absolute; left: 0; right: 0; top: calc(var(--i) * var(--ppm) * 1px); height: 0; border-top: 2px solid #d93025; z-index: 3; pointer-events: none; }
 .dia-ahora-hora { position: absolute; left: 0; top: -10px; height: 20px; padding: 0 9px 0 4px; display: flex; align-items: center; background: #d93025; color: #fff;
   font-size: 11px; font-weight: 700; font-variant-numeric: tabular-nums; clip-path: polygon(0 0, calc(100% - 8px) 0, 100% 50%, calc(100% - 8px) 100%, 0 100%); }
+
+/* Calendario › Semana (Fabio, 16-nov-2026, con su captura de Google Calendar): 7 columnas de domingo a sábado, la hora a la
+   izquierda, hoy resaltado, el día de ciclo y lo de todo el día arriba de cada día; escala fija (sin zoom) */
+.dia-col.semana { min-height: 0; }
+.dia-acciones .btn-chico[data-ver-semana] { white-space: nowrap; }
+.sem-cab, .sem-todo { display: grid; grid-template-columns: 40px repeat(7, minmax(0, 1fr)); }
+.sem-cab { padding: 8px 2px 2px; }
+.sem-dia { display: flex; flex-direction: column; align-items: center; gap: 2px; min-width: 0; padding: 2px 0; border-radius: 10px; color: var(--texto); text-decoration: none; }
+.sem-nom { font-size: 13px; font-weight: 600; color: var(--texto-2); }
+.sem-num { display: grid; place-items: center; width: 34px; height: 34px; border-radius: 50%; font-size: 19px; line-height: 1; font-variant-numeric: tabular-nums; }
+.sem-dia.hoy .sem-nom { color: var(--primario); }
+.sem-dia.hoy .sem-num { background: var(--primario); color: #fff; }
+.sem-todo { padding: 2px 2px 6px; }
+.sem-chips { display: flex; flex-direction: column; gap: 2px; min-width: 0; padding: 0 1px; }
+.sem-chip { display: block; padding: 1px 4px; border-radius: 6px; font-size: 11px; font-weight: 600; line-height: 1.4; white-space: nowrap; overflow: hidden; text-overflow: clip; color: #fff; background: #6b7280; text-decoration: none; }
+.sem-chip.ciclo { background: var(--superficie-2); color: var(--texto); }
+.sem-chip.tipo.especial { background: #a15c00; }
+.sem-chip.evento { background: #1f7a6d; }
+.semana .dia-vista { flex: none; height: clamp(340px, 62vh, 760px); min-height: 0; }
+.sem-lienzo .dia-linea span { left: 1px; padding: 0 1px; font-size: 9.5px; letter-spacing: -.2px; }
+.sem-cols { position: absolute; inset: 0 0 0 40px; display: grid; grid-template-columns: repeat(7, minmax(0, 1fr)); }
+.sem-col { position: relative; min-width: 0; border-left: 1px solid var(--borde); }
+.sem-col.hoy { background: var(--primario-suave); }
+.sem-col .dia-bloque { --ancho: calc((100% - 2px - (var(--n) - 1) * 2px) / var(--n)); left: calc(1px + var(--c) * (var(--ancho) + 2px)); padding: 2px 3px; border-radius: 6px; }
+/* Las palabras pasan de renglón solo por los espacios (nunca a la mitad, Fabio 15-nov); la que no cabe se corta en el borde */
+.sem-col .dia-bloque b, .sem-col .dia-bloque.angosto b { font-size: 11px; line-height: 1.15; white-space: normal; text-overflow: clip; }
+.sem-col .dia-ahora { left: 0; right: 0; }
+.sem-col .dia-ahora::before { content: ''; position: absolute; left: -5px; top: -6px; width: 10px; height: 10px; border-radius: 50%; background: #d93025; }
+.sem-col .dia-ahora-hora { display: none; }
+@media (min-width: 720px) {
+  .sem-cab, .sem-todo { grid-template-columns: 52px repeat(7, minmax(0, 1fr)); }
+  .sem-cols { left: 52px; }
+  .sem-lienzo .dia-linea span { font-size: 11px; letter-spacing: 0; }
+  .sem-num { width: 40px; height: 40px; font-size: 22px; }
+  .sem-col .dia-bloque b, .sem-col .dia-bloque.angosto b { font-size: 13px; }
+  .sem-chip { font-size: 12px; }
+}
 
 /* Certificados */
 .certificado .cert-titulo { text-align: center; margin: 28px 0 18px; font-size: 17px; letter-spacing: .5px; line-height: 1.5; }
@@ -497,3 +550,9 @@ fieldset.tambien legend { font-weight: 600; font-size: 13px; padding: 0 6px; }
 .menu a.sub.ser-menu .ic-sub { color: inherit; }
 .menu a.sub.ser-menu .ser-insignia { width: 24px; max-width: none; height: auto; margin: 0 -4px; } /* cabe en el lugar del ícono: el texto queda alineado con las demás */
 .menu a.ser-menu:focus-visible { outline: 3px solid var(--primario); outline-offset: 2px; }
+/* En la semana los bloques son angostos: el cruce se marca con una línea fina (la gruesa tapaba el texto) */
+.sem-col .dia-bloque.conflicto { outline-width: 1px; outline-offset: -1px; }
+.sem-col .dia-bloque.actual { box-shadow: 0 0 0 1px var(--superficie), 0 0 0 3px var(--texto); }
+.sem-titulo { margin: 8px 10px 0; font-size: 13px; font-weight: 700; color: var(--texto-2); }
+/* La columna del Tablero tiene SU alto (el que cabe en la pantalla): no se estira al de las tarjetas de al lado (16-nov-2026) */
+.tablero-con-dia > .dia-col { align-self: start; }

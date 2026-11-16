@@ -2,10 +2,14 @@
 // (eventos del colegio por tipo y tareas por estudiante), navegación ‹ Hoy ›, exportar .ics.
 // 29-oct-2026: tarjeta «Hoy» y cronograma institucional importado del Excel (capas propias, separadas de los eventos que
 // crea el administrador), y reuniones privadas de cada persona (solo las ve su dueño). Ver calendario_importar.js.
+// 16-nov-2026 (Fabio, con su captura de Google Calendar): vista Semana, de domingo a sábado por horas, con las clases del horario,
+// los eventos de las capas visibles y el día de ciclo; a ella lleva el botón «Ver semana» de la columna del día del Tablero.
 import { E, base, misEstudiantes, perfiles, misAsignaciones, pref } from '../estado.js';
 import { esc, aviso, ventana, leerForm, confirmar, nombre, vacio, fecha, fechaHora } from '../ui.js';
 import { cabecera, camposHTML } from './comun.js';
 import { leerXlsx, leerCronograma, planImportacion, paraImportar, sha256, hoyDe, fechaBogota, diaSemana } from '../calendario_importar.js';
+import { semanaDe, agendaSemana, rangoSemana, cabeceraSemanaHTML, lienzoSemanaHTML, conectarColumna, minutosDe } from '../dia_columna.js';
+import { enBogota } from '../agenda_hoy.js';
 
 const TIPOS = {
   institucional: ['Institucional', '#1f4fd1'], reunion: ['Reunión', '#7a4fa3'], festivo: ['Festivo / sin clases', '#c62828'],
@@ -113,7 +117,7 @@ async function cargarItems(b, crono) {
 
 export async function calendario(m, p) {
   const b = await base();
-  const vista = p.vista === 'agenda' ? 'agenda' : 'mes';
+  const vista = p.vista === 'agenda' ? 'agenda' : p.vista === 'semana' ? 'semana' : 'mes';
   const ref = p.fecha ? new Date(p.fecha + 'T12:00:00') : new Date();
   const crono = await cargarCronograma();
   const { items, capas } = await cargarItems(b, crono);
@@ -130,8 +134,10 @@ export async function calendario(m, p) {
   const mover = (meses) => { const d = new Date(ref); d.setDate(1); d.setMonth(d.getMonth() + meses); return clave(d); };
   const ruta = (f, v = vista) => `#/calendario?vista=${v}&fecha=${f}`;
 
-  let cuerpo = '';
-  if (vista === 'mes') {
+  let cuerpo = '', semana = null;
+  if (vista === 'semana') semana = await armarSemana(b, clave(ref), visibles, crono);
+  if (vista === 'semana') cuerpo = semana.html;
+  else if (vista === 'mes') {
     const ini = new Date(ref.getFullYear(), ref.getMonth(), 1);
     const desde = new Date(ini); desde.setDate(1 - ((ini.getDay() + 6) % 7)); // lunes
     const celdas = [];
@@ -162,18 +168,19 @@ export async function calendario(m, p) {
     ${tarjetaHoy(hoy, crono)}
     <div class="cal-barra">
       <div class="cal-nav">
-        <a class="btn btn-chico" href="${ruta(vista === 'mes' ? mover(-1) : clave(new Date(ref.getTime() - 30 * 864e5)))}" aria-label="Anterior">‹</a>
+        <a class="btn btn-chico" href="${ruta(vista === 'mes' ? mover(-1) : clave(new Date(ref.getTime() - (vista === 'semana' ? 7 : 30) * 864e5)))}" aria-label="Anterior">‹</a>
         <a class="btn btn-chico" href="${ruta(clave(new Date()))}">Hoy</a>
-        <a class="btn btn-chico" href="${ruta(vista === 'mes' ? mover(1) : clave(new Date(ref.getTime() + 30 * 864e5)))}" aria-label="Siguiente">›</a>
-        <h2 class="${vista === "mes" ? "mes-titulo" : ""}">${vista === "mes" ? `${MESES[ref.getMonth()]} ${ref.getFullYear()}` : "Desde " + fecha(clave(ref))}</h2>
+        <a class="btn btn-chico" href="${ruta(vista === 'mes' ? mover(1) : clave(new Date(ref.getTime() + (vista === 'semana' ? 7 : 30) * 864e5)))}" aria-label="Siguiente">›</a>
+        <h2 class="${vista === 'mes' ? 'mes-titulo' : ''}">${vista === 'mes' ? `${MESES[ref.getMonth()]} ${ref.getFullYear()}` : vista === 'semana' ? semana.titulo : 'Desde ' + fecha(clave(ref))}</h2>
       </div>
-      <div class="segmentos"><a href="${ruta(clave(ref), 'mes')}" class="${vista === 'mes' ? 'activo' : ''}">Mes</a><a href="${ruta(clave(ref), 'agenda')}" class="${vista === 'agenda' ? 'activo' : ''}">Agenda</a></div>
+      <div class="segmentos"><a href="${ruta(clave(ref), 'semana')}" class="${vista === 'semana' ? 'activo' : ''}">Semana</a><a href="${ruta(clave(ref), 'mes')}" class="${vista === 'mes' ? 'activo' : ''}">Mes</a><a href="${ruta(clave(ref), 'agenda')}" class="${vista === 'agenda' ? 'activo' : ''}">Agenda</a></div>
     </div>
     <div class="cal-cuerpo">
       <div class="cal-principal">${cuerpo}</div>
       <aside class="cal-capas"><h3 class="sub">Capas</h3>${capas.map((c) => `<label class="check"><input type="checkbox" data-capa="${c.id}" ${ocultas.has(c.id) ? '' : 'checked'}><i class="capa-color" style="background:${c.color}"></i> ${esc(c.nombre)}</label>`).join('')}</aside>
     </div>`;
 
+  if (semana) semana.conectar(m);
   m.querySelectorAll('[data-capa]').forEach((c) => (c.onchange = () => {
     const s = new Set(pref('cal_ocultas') || []);
     c.checked ? s.delete(c.dataset.capa) : s.add(c.dataset.capa);
@@ -196,6 +203,54 @@ export async function calendario(m, p) {
   m.querySelector('[data-privada]')?.addEventListener('click', async () => { if (await editarPrivada(null, hoy.fecha)) calendario(m, p); });
   m.querySelector('[data-importar]')?.addEventListener('click', async () => { if (await importarCronograma(crono)) calendario(m, p); });
   m.querySelector('[data-exportar]').onclick = () => exportarICS(visibles);
+}
+
+// ---------------------------------------------------------------- Semana (Fabio, 16-nov-2026: «por semana como el de Google calendario»)
+// De domingo a sábado por horas (dia_columna.js, las mismas piezas y reglas que la columna del día): mis clases del horario (las del
+// curso de cada estudiante en la familia), lo de las capas visibles del calendario (lo de todo el día arriba de su día; los festivos y
+// recesos del cronograma ya salen como etiqueta del día) y el día de ciclo impreso en el cronograma. Sin zoom; la flecha de la hora
+// solo si la semana es la de hoy. Tocar una clase abre el horario; tocar lo demás (o el día) abre el detalle del día, como en Mes.
+async function armarSemana(b, fechaRef, visibles, crono) {
+  const { fuenteDeHoy } = await import('./agenda_docente.js');
+  const familia = E.rol === 'estudiante' || E.rol === 'acudiente';
+  const f = fuenteDeHoy(b, familia ? { estudiantes: await misEstudiantes() } : {});
+  await f.cargar().catch(() => { f.datos = { bloques: [] }; });
+  const ahora = f.ahora();
+  const fechas = semanaDe(fechaRef);
+  const eventos = visibles.filter((x) => !(x.tipo === 'crono' && x.capa === 'cr_festivo')).map((x) => ({
+    titulo: x.titulo, inicio: x.tipo === 'crono' ? x.dato.fecha + 'T00:00:00Z' : x.cuando, fin: x.tipo === 'crono' ? null : x.dato.fin || null,
+    todo_el_dia: !!x.todo, origen: x.tipo === 'personal' ? 'Mi agenda' : x.sub || '' }));
+  const dias = agendaSemana({ ahora, fecha: fechaRef, bloques: f.datos?.bloques || [], etiquetar: f.etiquetar, diasSemana: crono.dias.filter((d) => fechas.includes(d.fecha)), eventos });
+  const horaHoy = enBogota(ahora).hhmm;
+  const conHoy = dias.some((a) => a.esHoy);
+  const rango = rangoSemana(dias, conHoy ? minutosDe(horaHoy) : NaN);
+  const [y1, m1, d1] = fechas[0].split('-').map(Number), [y2, m2, d2] = fechas[6].split('-').map(Number);
+  const titulo = m1 === m2 ? `${d1} – ${d2} de ${MESES[m2 - 1]} ${y2}` : `${d1} de ${MESES[m1 - 1]}${y1 !== y2 ? ' ' + y1 : ''} – ${d2} de ${MESES[m2 - 1]} ${y2}`;
+  return {
+    titulo,
+    html: `<section class="dia-col semana cal-semana" data-semana aria-label="Semana del ${esc(titulo)}">
+      <div class="dia-acciones sem-acciones"><button type="button" class="btn btn-chico" data-sem-menos aria-label="Alejar las horas">−</button>${conHoy ? '<button type="button" class="btn btn-chico" data-sem-ahora>Ahora</button>' : ''}<button type="button" class="btn btn-chico" data-sem-mas aria-label="Acercar las horas">＋</button></div>
+      ${cabeceraSemanaHTML(dias)}
+      <div class="dia-vista" data-dia-vista tabindex="0" role="group" aria-label="La semana por horas. Dos dedos o las teclas + y − acercan o alejan; arrastra para moverte.">${lienzoSemanaHTML(dias, rango, horaHoy)}</div>
+    </section>`,
+    conectar(raiz) {
+      const caja = raiz.querySelector('[data-semana]');
+      // Lo que no es clase abre el detalle del día (el manejador de [data-dia] de abajo), sin salir de la semana
+      caja.querySelectorAll('.sem-dia, .sem-chip.evento, .sem-col .dia-bloque:not(.clase)').forEach((el) => {
+        const dia = el.closest('[data-fecha]')?.dataset.fecha || (el.getAttribute('href') || '').match(/fecha=([\d-]+)/)?.[1];
+        if (!dia) return;
+        el.removeAttribute('href'); el.setAttribute('role', 'button'); el.tabIndex = 0; el.dataset.dia = dia;
+        el.addEventListener('keydown', (e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); el.click(); } });
+      });
+      // Aquí sí hay zoom (Fabio, 16-nov-2026: «en el calendario sí se puede hacer el zoom y demás»); la escala se recuerda en este equipo
+      const g = conectarColumna(caja.querySelector('[data-dia-vista]'), { zoom: true, inicial: pref('sem_ppm'), alCambiar: (x) => pref('sem_ppm', x), abrir: () => {} });
+      caja.querySelector('[data-sem-mas]').onclick = g.acercar;
+      caja.querySelector('[data-sem-menos]').onclick = g.alejar;
+      const ahoraBtn = caja.querySelector('[data-sem-ahora]');
+      if (ahoraBtn) ahoraBtn.onclick = () => g.irAhora(true);
+      if (conHoy) g.irAhora();
+    },
+  };
 }
 
 const itemHTML = (x) => `

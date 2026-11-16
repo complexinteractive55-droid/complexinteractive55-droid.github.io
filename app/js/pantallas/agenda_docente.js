@@ -4,6 +4,7 @@
 import { E, misAsignaciones, perfiles } from '../estado.js';
 import { nombre } from '../ui.js';
 import { enBogota, construirAgenda, agendaHTML, conectarGestos } from '../agenda_hoy.js';
+import { semanaDe } from '../dia_columna.js';
 
 export const agendaCaja = () => `
   <section class="tarjeta agenda-hoy" data-agenda-hoy aria-labelledby="agenda-titulo">
@@ -20,7 +21,8 @@ export const agendaCaja = () => `
 // y los eventos del colegio y de mis cursos. Estudiante o acudiente (opción `estudiantes`): el horario del curso de cada estudiante
 // (la misma consulta que «Horario») y los eventos del colegio y de esos cursos. Para todos: el día del calendario institucional y mis
 // reuniones privadas, con la hora del servidor como referencia. f.cargar() trae los datos; f.ahora() es el instante de referencia.
-export function fuenteDeHoy(b, { estudiantes = null } = {}) {
+// semana: true trae también el calendario institucional de los 7 días de esta semana (la semana del Tablero, 16-nov-2026).
+export function fuenteDeHoy(b, { estudiantes = null, semana = false } = {}) {
   const familia = Array.isArray(estudiantes);
   const mias = familia ? [] : misAsignaciones(b);
   let misCursos = new Set(mias.map((a) => a.curso_id));
@@ -53,12 +55,12 @@ export function fuenteDeHoy(b, { estudiantes = null } = {}) {
     } else bloquesDe = mias.length ? E.db.select('horario_bloques', { in: { asignacion_id: mias.map((a) => a.id) } }) : [];
     const [bloques, dias, eventos, propios] = await Promise.all([
       bloquesDe,
-      E.db.select('calendario_dias', { eq: { colegio_id: E.colegio.id, fecha: hoy, vigente: true } }).catch(() => []),
+      (semana ? E.db.select('calendario_dias', { eq: { colegio_id: E.colegio.id, vigente: true }, in: { fecha: semanaDe(hoy) } }) : E.db.select('calendario_dias', { eq: { colegio_id: E.colegio.id, fecha: hoy, vigente: true } })).catch(() => []),
       E.db.select('eventos', { eq: { colegio_id: E.colegio.id } }).catch(() => []),
       E.db.select('eventos_personales', { eq: { colegio_id: E.colegio.id, perfil_id: E.yo.id } }).catch(() => []),
     ]);
     if (familia) await perfiles(bloques.map((x) => b.asignacionPorId.get(x.asignacion_id)?.profesor_id).filter(Boolean));
-    f.datos = { bloques, dia: dias[0] || null, eventos: [
+    f.datos = { bloques, dia: dias.find((x) => x.fecha === hoy) || null, diasSemana: dias, eventos: [
       ...eventos.filter((e) => !e.curso_id || misCursos.has(e.curso_id)).map((e) => ({ ...e, origen: e.curso_id ? 'Curso ' + (b.cursoPorId.get(e.curso_id)?.nombre || '') : 'Colegio' })),
       ...propios.map((e) => ({ ...e, origen: 'Mi agenda' }))] };
     f.cargadoPara = hoy;
