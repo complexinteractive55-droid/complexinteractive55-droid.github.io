@@ -1,6 +1,6 @@
 // Complex_ — arranque, enrutador y armazón de la app.
 import { crearDbSupabase, crearDbDemo, cargarSemillaDemo, huellaEnEsteEquipo } from './db.js';
-import { E, pref, base, cargarYo, elegirColegio, cambiarRol, refrescarMembresias, cargarPersonas, elegirPersona, personaActiva, viendoHijo, logoHTML, aplicarMarca, fotos, olvidarFoto, olvidarFotos, miTitulo } from './estado.js';
+import { E, pref, base, cargarYo, elegirColegio, cambiarRol, refrescarMembresias, cargarPersonas, elegirPersona, personaActiva, viendoHijo, logoHTML, aplicarMarca, fotos, olvidarFoto, olvidarFotos, miTitulo, esAdministrador } from './estado.js';
 import { esc, $, aviso, ventana, leerForm, confirmar, ROL, nombreRol, nombre, iniciales, etiquetarTablas, fecha, fechaHora, vacio } from './ui.js';
 import { APP_VERSION } from './config.js';
 import { icono, iconoRuta, ICONO_GRUPO, vigilarBotones } from './iconos.js';
@@ -449,7 +449,7 @@ function pintarArmazon(patron) {
         <main id="principal" tabindex="-1"></main>
       </div>`;
     $('#btn-colegio').onclick = () => {
-      if (!(E.colegios.length > 1 || E.roles.includes('admin'))) return;
+      if (!esAdministrador()) return; // cambiar de colegio / crear colegios: solo el «Administrador» (16-nov-2026)
       // Al cambiar de colegio: se cierra el canal en vivo del colegio anterior y se olvidan las fotos (cada colegio, sus permisos)
       dejarNotas?.(); dejarNotas = null; notasDe = null; olvidarFotos(); pant.album().then((x) => x.olvidar()).catch(() => {}); pant.salas().then((x) => x.olvidar()).catch(() => {});
       E.colegio = null; navegar();
@@ -486,6 +486,8 @@ function pintarArmazon(patron) {
   }
   aplicarMarca();
   pintarBarraColegio();
+  $('#btn-colegio').title = esAdministrador() ? 'Cambiar de colegio' : '';
+  $('#btn-colegio').classList.toggle('sin-cambio', !esAdministrador());
   $('#btn-rol').textContent = etiquetaRol() + (E.roles.length > 1 ? ' ▾' : '');
   $('#btn-rol').disabled = E.roles.length < 2;
   pintarCargo();
@@ -805,14 +807,15 @@ async function pantallaColegios() {
         <div class="marca"><img class="logo logo-img logo-complex" src="img/simbolo.svg" alt="nodo"><h1>Hola, ${esc(E.yo.nombres || E.sesion.user.email)}</h1></div>
         ${E.colegios.length ? `<p class="ayuda">Elige el colegio:</p><div class="lista">${E.colegios.map((c) => `
           <button class="fila fila-boton" data-id="${c.id}">${c.logo_ruta ? logoHTML('logo-mini', c) : '<span class="avatar">🏫</span>'}<span><b>${esc(c.nombre)}</b><small>${esc([...new Set(E.membresias.filter((m) => m.colegio_id === c.id).map((m) => ROL[m.rol]))].join(' · '))}</small></span></button>`).join('')}</div>`
-        : `<div class="aviso-caja"><p><b>Todavía no perteneces a ningún colegio.</b></p><p>Si eres profesor, acudiente o estudiante, pídele al colegio que te agregue con tu correo <b>${esc(E.sesion.user.email || '')}</b>.</p><p>Si administras un colegio, créalo aquí:</p></div>`}
-        <button class="btn btn-ancho" id="btn-nuevo-colegio">＋ Crear un colegio</button>
+        : `<div class="aviso-caja"><p><b>Todavía no perteneces a ningún colegio.</b></p><p>Pídele al colegio que te agregue con tu correo <b>${esc(E.sesion.user.email || '')}</b>.</p></div>`}
+        ${esAdministrador() ? '<button class="btn btn-ancho" id="btn-nuevo-colegio">＋ Crear un colegio</button>' : ''}
         <button class="btn-link" id="btn-salir">Cerrar sesión</button>
       </div>
     </div>`;
   app.querySelectorAll('[data-id]').forEach((b) => (b.onclick = async () => { await elegirColegio(b.dataset.id); location.hash = '#/inicio'; navegar(); }));
   $('#btn-salir').onclick = salir;
-  $('#btn-nuevo-colegio').onclick = async () => {
+  // Crear un colegio: solo el «Administrador» (Fabio, 16-nov-2026); el servidor también lo exige
+  if ($('#btn-nuevo-colegio')) $('#btn-nuevo-colegio').onclick = async () => {
     const id = await ventana({
       titulo: 'Crear colegio',
       html: `<div class="form"><label>Nombre del colegio<input name="nombre" required></label><label>Ciudad<input name="ciudad"></label><p class="ayuda">Quedarás como administrador. Luego podrás agregar sedes, cursos, profesores y familias.</p></div>`,
@@ -878,7 +881,7 @@ async function perfil(m = main()) {
     <section class="tarjeta">
       ${E.roles.length > 1 ? `<button class="fila fila-boton" id="btn-cambiar-rol"><span>🔁</span><span><b>Ver como…</b><small>Ahora: ${esc(nombreRol(E.rol, miTitulo()))}</small></span></button>` : ''}
       <button class="fila fila-boton" id="btn-cambiar-clave"><span>🔑</span><span><b>Cambiar contraseña</b></span></button>
-      <button class="fila fila-boton" id="btn-cambiar-colegio"><span>🏫</span><span><b>Cambiar de colegio</b></span></button>
+      ${esAdministrador() ? '<button class="fila fila-boton" id="btn-cambiar-colegio"><span>🏫</span><span><b>Cambiar de colegio</b></span></button>' : ''}
       ${instalada() ? '' : '<button class="fila fila-boton" data-instalar><span>📲</span><span><b>Instalar la app</b><small>Android, iPhone y computador</small></span></button>'}
       <button class="fila fila-boton peligro" id="btn-salir"><span>🚪</span><span><b>Cerrar sesión</b></span></button>
     </section>
@@ -901,7 +904,7 @@ async function perfil(m = main()) {
     catch (err) { e.target.checked = !e.target.checked; aviso(err.message, 'error'); }
   });
   $('#btn-cambiar-rol')?.addEventListener('click', elegirRol);
-  $('#btn-cambiar-colegio').onclick = () => { E.colegio = null; navegar(); };
+  $('#btn-cambiar-colegio')?.addEventListener('click', () => { E.colegio = null; navegar(); });
   $('#btn-salir').onclick = salir;
   // El módulo de la foto se carga ANTES del toque: si se esperaba a descargarlo después, en una red lenta el navegador
   // dejaba de considerar el toque como de la persona y no abría el selector (el botón «no respondía»).

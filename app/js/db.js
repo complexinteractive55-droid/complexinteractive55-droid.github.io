@@ -1184,6 +1184,7 @@ export function crearDbDemo() {
         } catch (e) { if (existente()) return copia(existente()); throw e; }
       }
       if (nombre === 'crear_colegio') {
+        if (!tabla('miembros').some((m) => m.perfil_id === yo && m.rol === 'admin' && m.activo !== false && !m.titulo)) err('Solo el Administrador puede crear un colegio.'); // como la base (20261116120000)
         const [c] = await db.insert('colegios', [{ nombre: a.p_nombre, ciudad: a.p_ciudad ?? null, nota_min: 1, nota_max: 5, nota_aprobacion: 3, decimales: 1 }]);
         await db.insert('miembros', [{ colegio_id: c.id, perfil_id: yo, rol: 'admin' }]);
         return c.id;
