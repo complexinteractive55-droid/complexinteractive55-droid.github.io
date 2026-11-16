@@ -70,9 +70,14 @@ const PATRONES = [
   [/^Periodo (\d+)$/, 'Term $1'], [/^P(\d+)$/, 'T$1'], [/^Sexto$/, 'Sixth'], [/^Primero$/, 'First'], [/^Segundo$/, 'Second'], [/^Tercero$/, 'Third'], [/^Cuarto$/, 'Fourth'], [/^Quinto$/, 'Fifth'],
   [/^Envían: (.+)$/, 'Sent by: $1'], [/^Te escribimos a (\S+) cuando te llegue un mensaje o una circular\.$/, 'We email you at $1 when you get a message or a circular.'],
   [/^Ciclo (\d+) · Día (\d+)$/, 'Cycle $1 · Day $2'], [/^Día (\d+)$/, 'Day $1'], // columna del día (15-nov-2026)
+  [/^Ciclo (\d+)$/, 'Cycle $1'], [/^Ciclos (\d+)–(\d+)$/, 'Cycles $1–$2'], // semana del Tablero (16-nov-2026)
+  [/^(\d{1,2}) a\.m\.$/, '$1 AM'], [/^(\d{1,2}) p\.m\.$/, '$1 PM'], // horas de la columna del día y de la semana (16-nov-2026)
   [/^Octavo$/, 'Eighth'], [/^Noveno$/, 'Ninth'], [/^Once$/, 'Eleventh'],
   // Circulares institucionales (3-nov-2026 noche)
   [/^(\d{1,2}) de (enero|febrero|marzo|abril|mayo|junio|julio|agosto|septiembre|octubre|noviembre|diciembre) (?:de )?(\d{4})$/, (_, d, m, y) => `${MESES[m]} ${d}, ${y}`],
+  // Título de Calendario › Semana (16-nov-2026): «15 – 21 de noviembre 2026» y «29 de noviembre – 5 de diciembre 2026»
+  [/^(\d{1,2}) – (\d{1,2}) de (enero|febrero|marzo|abril|mayo|junio|julio|agosto|septiembre|octubre|noviembre|diciembre) (\d{4})$/, (_, a, z, m, y) => `${MESES[m]} ${a} – ${z}, ${y}`],
+  [/^(\d{1,2}) de (enero|febrero|marzo|abril|mayo|junio|julio|agosto|septiembre|octubre|noviembre|diciembre)(?: (\d{4}))? – (\d{1,2}) de (enero|febrero|marzo|abril|mayo|junio|julio|agosto|septiembre|octubre|noviembre|diciembre) (\d{4})$/, (_, a, m1, y1, z, m2, y2) => `${MESES[m1]} ${a}${y1 ? ', ' + y1 : ''} – ${MESES[m2]} ${z}, ${y2}`],
   [/^([\d.]+) de ([\d.]+) caracteres$/, (_, a, b) => `${miles(a)} of ${miles(b)} characters`],
   [/^guardado (.+) por (.+)$/, 'saved $1 by $2'], [/^Guardado ([^·]+)$/, 'Saved $1'], [/^versión (\d+)(\.?)$/, 'version $1$2'],
   [/^Borrador guardado con el consecutivo (.+)$/, 'Draft saved with number $1'], [/^siguiente: (.+)$/, 'next: $1'], [/^numera en (.+)$/, 'numbers in $1'],

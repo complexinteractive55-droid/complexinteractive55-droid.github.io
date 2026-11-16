@@ -43,15 +43,12 @@ export async function pendientesAdmin() {
 }
 
 // Columna del día (dia_columna.js): carga «hoy» de la misma fuente que el recuadro «Hoy» del docente, la pinta y la mantiene al día.
-// La escala que deja cada quien (acercar / alejar) se recuerda en este equipo. opciones.estudiantes: el día de esos estudiantes (familia).
+// Sin zoom: siempre la escala de entrada (Fabio, 16-nov-2026). opciones.estudiantes: el día de esos estudiantes (familia).
 export async function montarColumnaDia(sec, b, opciones = {}) {
   if (!sec) return;
   const f = fuenteDeHoy(b, opciones);
   const vista = sec.querySelector('[data-dia-vista]');
-  const g = conectarColumna(vista, { inicial: pref('dia_ppm'), alCambiar: (ppm) => pref('dia_ppm', ppm) });
-  sec.querySelector('[data-dia-mas]').onclick = g.acercar;
-  sec.querySelector('[data-dia-menos]').onclick = g.alejar;
-  sec.querySelector('[data-dia-ahora-btn]').onclick = () => g.irAhora(true);
+  const g = conectarColumna(vista);
   let rango = null;
   const pintar = () => {
     if (!f.datos) return;
