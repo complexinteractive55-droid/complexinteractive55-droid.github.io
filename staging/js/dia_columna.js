@@ -15,6 +15,9 @@ import { fechaLarga, construirAgenda, enBogota } from './agenda_hoy.js';
 import { icono } from './iconos.js';
 
 const SEMANA = ['dom', 'lun', 'mar', 'mié', 'jue', 'vie', 'sáb'];
+// En el Tablero, el nombre completo del día (Fabio, 16-nov-2026: «que apareciera todo el nombre, lunes, martes, miércoles…»); la
+// semana del calendario usa la abreviatura (sus columnas son angostas)
+const DIAS_LARGOS = ['domingo', 'lunes', 'martes', 'miércoles', 'jueves', 'viernes', 'sábado'];
 const esc = (s) => String(s ?? '').replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
 const hhmm = (min) => `${Math.floor(min / 60)}:${String(min % 60).padStart(2, '0')}`;
 // Etiqueta de cada hora a la izquierda, en a.m. / p.m. como Google Calendar (Fabio, 16-nov-2026: «de 7:00 AM a 7:00 PM»)
@@ -62,7 +65,7 @@ const tono = (x) => (x.tipo === 'clase' ? (x.descanso ? 'descanso' : 'clase') : 
 // arrastran de otro día; si la fuente no trae el día de ciclo, lo dice: «Sin día de ciclo».
 export function cabeceraDiaHTML(a) {
   const [y, m, d] = a.fecha.split('-').map(Number);
-  const sem = SEMANA[new Date(Date.UTC(y, m - 1, d)).getUTCDay()];
+  const sem = DIAS_LARGOS[new Date(Date.UTC(y, m - 1, d)).getUTCDay()];
   return `<div class="dia-cab" title="${esc(fechaLarga(a.fecha))}"><span class="dia-semana">${sem}</span><b class="dia-num">${d}</b>
     ${a.ciclo ? `<span class="dia-ciclo">${a.ciclo.ciclo ? `Ciclo ${esc(a.ciclo.ciclo)} · ` : ''}Día ${esc(a.ciclo.dia)}</span>` : '<span class="dia-ciclo sin">Sin día de ciclo</span>'}</div>`;
 }

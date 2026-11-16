@@ -190,13 +190,15 @@ details.indicador > .lista { padding: 0 0 8px 40px; }
   .tablero-con-dia > .cifras { grid-template-columns: repeat(auto-fit, minmax(130px, 1fr)); }
 }
 .dia-col { display: flex; flex-direction: column; min-width: 0; min-height: 440px; background: var(--superficie); border: 1px solid var(--borde); border-radius: var(--radio); box-shadow: var(--sombra); overflow: hidden; }
-.dia-cab { display: flex; flex-direction: column; align-items: center; gap: 2px; padding: 10px 6px 4px; }
-.dia-semana { font-size: 15px; font-weight: 700; color: var(--texto-2); }
-.dia-num { font-size: 34px; line-height: 1; }
-.dia-ciclo { margin-top: 4px; padding: 2px 12px; border-radius: 999px; background: var(--superficie-2); color: var(--texto); font-size: 14px; font-weight: 600; }
-.dia-ciclo.sin { background: transparent; color: var(--texto-2); font-size: 12px; font-weight: 500; padding: 0 6px; }
-.dia-acciones { display: flex; justify-content: center; gap: 4px; padding: 4px 6px 6px; }
-.dia-acciones .btn-chico { min-height: 30px; padding: 2px 10px; }
+/* Encabezado compacto (Fabio, 16-nov-2026: «el lunes, la fecha y el ciclo pueden quedar más ajustados para que de 7 a 7 quede más
+   grande; lo importante es el horario»): «lun 16» en un renglón, el ciclo debajo en pequeño y el botón bajito */
+.dia-cab { display: grid; grid-template-columns: 1fr auto auto 1fr; align-items: baseline; column-gap: 6px; row-gap: 2px; padding: 6px 6px 2px; }
+.dia-semana { grid-column: 2; font-size: 14px; font-weight: 700; color: var(--texto-2); }
+.dia-num { grid-column: 3; font-size: 22px; line-height: 1.1; }
+.dia-ciclo { grid-column: 1 / -1; justify-self: center; padding: 1px 8px; border-radius: 999px; background: var(--superficie-2); color: var(--texto); font-size: 12px; font-weight: 600; white-space: nowrap; }
+.dia-ciclo.sin { background: transparent; color: var(--texto-2); font-size: 11px; font-weight: 500; padding: 0 6px; }
+.dia-acciones { display: flex; justify-content: center; gap: 4px; padding: 3px 6px 5px; }
+.dia-acciones .btn-chico { min-height: 26px; padding: 1px 8px; font-size: 13px; }
 .dia-nota { margin: 0 6px 6px; padding: 4px 8px; border-radius: 8px; background: var(--primario-suave); font-size: 13px; }
 .dia-todo { display: block; margin: 0 6px 6px; padding: 4px 8px; border-radius: 8px; background: #7c4dbd; color: #fff; font-size: 13px; font-weight: 600; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .dia-vacio { margin: 0 8px 6px; font-size: 13px; text-align: center; }

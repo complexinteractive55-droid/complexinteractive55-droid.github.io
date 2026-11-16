@@ -185,6 +185,7 @@ export default {
   'Día de ciclo: no disponible': 'Cycle day: not available', 'Sin día de ciclo': 'No cycle day',
   // Calendario › Semana y «Ver semana» (16-nov-2026)
   'Ver semana': 'See week', 'Semana': 'Week', 'Mi semana': 'My week',
+  'domingo': 'Sunday', 'lunes': 'Monday', 'martes': 'Tuesday', 'miércoles': 'Wednesday', 'jueves': 'Thursday', 'viernes': 'Friday', 'sábado': 'Saturday',
   'Mi día por horas. Arrastra para moverte. Enter abre el horario completo.': 'My day by the hour. Drag to move. Enter opens the full schedule.',
   'La semana por horas. Arrastra para moverte.': 'The week by the hour. Drag to move.',
   'Mi día por horas. Dos dedos o las teclas + y − acercan o alejan; arrastra para moverte. Enter abre el horario completo.': 'My day by the hour. Two fingers or the + and − keys zoom in or out; drag to move. Enter opens the full schedule.',
