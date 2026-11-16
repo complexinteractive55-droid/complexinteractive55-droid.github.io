@@ -293,7 +293,9 @@ const RPC_DIRECTA = new Set(['pqrs_mensajes', 'pqrs_marcar_leido', 'mensajes_sin
   'audiencia_previa', 'circular_envio_estado', 'bandeja_mia', 'enviados_mios', 'mensaje_lecturas', 'mis_docentes_diagnostico',
   // el cargo de PQRS que se muestra en el encabezado (solo lee). Antes contaba como escritura y, al abrir la app, descartaba lo que
   // se estaba pidiendo a la vez (cursos, materias, periodos…), que así nunca quedaba guardado para abrir sin internet (15-nov-2026)
-  'pqrs_mi_cargo']);
+  'pqrs_mi_cargo',
+  // SER · Psicología (15-nov-2026): conversación privada, siempre lo vigente; sus escrituras no cambian nada de la copia del equipo
+  'ser_estado', 'ser_abrir', 'ser_mensajes', 'ser_enviar', 'ser_marcar_leido', 'ser_bandeja', 'ser_responsable_guardar', 'ser_responsable_ver']);
 // Escrituras que también cambian otras tablas (triggers del servidor o lógica de la app)
 const AFECTA = {
   tarea_entregas: ['calificaciones'], examenes: ['calificaciones'], examen_intentos: ['calificaciones'],
@@ -517,6 +519,7 @@ export function crearDbDemo() {
   const cuentaBloqueada = (perfil) => tabla('usuarios_eliminados').some((e) => e.perfil_id === perfil && !e.restaurado_en && e.cuenta_bloqueada);
   let pqrsDemo = null; // PQRS (pqrs_demo.js, mismas reglas que la base): se carga la primera vez que se usa
   let salasDemo = null; // salas de sección y avisos (salas_demo.js, mismas reglas que la base)
+  let serDemo = null; // SER · conversación privada con Psicología (ser_demo.js, mismas reglas que la base)
   let calendarioDemo = null;
   let enviosDemo = null;
   const RPC_ENVIOS_DEMO = ['audiencia_previa', 'circular_enviar', 'circular_envio_estado', 'mensaje_enviar', 'bandeja_mia', 'enviados_mios', 'mensaje_lecturas', 'mis_docentes_diagnostico'];
@@ -1079,6 +1082,10 @@ export function crearDbDemo() {
       if (nombre === 'mensajes_sin_leer') {
         const vigente = (id) => { const m = tabla('mensajes').find((x) => x.id === id); return !!m && (!m.expira_en || m.expira_en > ahora()); };
         return tabla('mensaje_destinatarios').filter((d) => d.colegio_id === a.p_colegio && d.perfil_id === yo && !d.leido_en && !d.eliminado && !d.archivado && vigente(d.mensaje_id)).length;
+      }
+      if (nombre.startsWith('ser_')) {
+        serDemo ||= (await import('./ser_demo.js')).crearSerDemo({ tabla, usuario, guardar, ahora, err });
+        return serDemo(nombre, a);
       }
       if (nombre.startsWith('sala') || nombre.startsWith('aviso')) {
         salasDemo ||= (await import('./salas_demo.js')).crearSalasDemo({ tabla, usuario, guardar, ahora, err });

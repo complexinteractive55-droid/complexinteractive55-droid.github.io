@@ -72,6 +72,7 @@ const pant = {
   pqrs: () => import('./pantallas/pqrs.js'),
   album: () => import('./pantallas/album.js'),
   salas: () => import('./pantallas/salas.js'),
+  ser: () => import('./pantallas/ser.js'),
   planeaciones: () => import('./pantallas/planeaciones.js'),
   mensajeria: () => import('./pantallas/mensajeria.js'),
   aula: () => import('./pantallas/aula.js'),
@@ -227,6 +228,8 @@ const RUTAS = [
   ['album/:curso', async (p, m) => (await pant.album()).album(m, p)],
   ['salas', async (_, m) => (await pant.salas()).salas(m)],
   ['sala/:id', async (p, m) => (await pant.salas()).sala(m, p)],
+  ['ser', async (_, m) => (await pant.ser()).ser(m)], // SER · conversación privada con Psicología (15-nov-2026)
+  ['ser/:id', async (p, m) => (await pant.ser()).conversacion(m, p)],
   ['aviso/:id', async (p, m) => (await pant.salas()).avisoDetalle(m, p)],
   ['espacios', async (p, m) => (await pant.espacios()).solicitud(m, p)],
   ['espacios-solicitudes', async (p, m) => (await pant.espacios()).solicitudesAdmin(m, p)],
@@ -289,7 +292,7 @@ async function navegar() {
     console.error(err);
     if (yo === navegando) m.innerHTML = `<div class="vacio"><p>No se pudo cargar: ${esc(err.message)}</p><button class="btn" data-recargar>Reintentar</button></div>`;
   }
-  if (yo === navegando) { m.scrollTop = 0; window.scrollTo(0, 0); etiquetarTablas(m); const bx = $('#btn-exportar'); if (bx) bx.hidden = !m.querySelector('table'); avisoSinRed(); }
+  if (yo === navegando) { m.scrollTop = 0; window.scrollTo(0, 0); etiquetarTablas(m); const bx = $('#btn-exportar'); if (bx) bx.hidden = !m.querySelector('table'); avisoSinRed(); tarjetaSER(); }
 }
 
 // Llegaron datos más nuevos del servidor para la pantalla que se está viendo (db.js los pidió por detrás):
@@ -336,6 +339,7 @@ window.addEventListener('complex:datos-nuevos', async () => {
   m.scrollTop = y; window.scrollTo(0, wy);
   etiquetarTablas(m);
   avisoSinRed();
+  tarjetaSER();
 });
 
 // Sin internet: una franja discreta arriba del Tablero, no una ventana ni un aviso que tape (Fabio, 15-nov-2026: «si no hay acceso a
@@ -377,7 +381,10 @@ function menuBase() {
   const hist = est ? [[`estudiante/${est}?tab=notas`, 'Historial de notas'], [`estudiante/${est}?tab=asistencia`, 'Asistencia']] : [];
   const tablero = { r: 'inicio', ic: '▦', t: 'Tablero' };
   const perfilG = (extra = []) => ({ t: 'Perfil', ic: '👤', items: [['info-personal', 'Información personal'], ...(E.rol === 'acudiente' || E.rol === 'estudiante' ? [['edocs', 'E-docs']] : []), ['perfil', 'Mi cuenta y ajustes'], ...extra, ['ayuda', 'Ayuda']] });
-  const conSalas = (g) => ({ ...g, items: [...g.items, ['salas', 'Salas de sección']] }); // chats de sección y avisos (personal)
+  const conSalas = (g) => conSer({ ...g, items: [...g.items, ['salas', 'Salas de sección']] }); // chats de sección y avisos (personal)
+  // SER · Psicología (15-nov-2026): estudiantes y acudientes siempre; del personal, solo quien el administrador designó
+  const serResp = E.ser?.colegio === E.colegio?.id && E.ser?.soy_responsable;
+  function conSer(g) { return E.rol === 'estudiante' || E.rol === 'acudiente' || serResp ? { ...g, items: [...g.items, ['ser', 'SER', 'ser']] } : g; }
   if (E.rol === 'admin') return [tablero, conSalas(COMUNICACION),
     { t: 'Comunidad', ic: '👥', items: [['calendario', 'Calendario'], ['personas', 'Personas'], ['seguimientos', 'Seguimientos'], ['compromisos', 'Compromisos'], ['ausencias', 'Ausencias reportadas'], ['procesos', 'Procesos en línea'], ['archivos', 'Archivos']] },
     { t: 'Académico', ic: '🎓', items: [['estructura', 'Estructura del colegio'], ['horario', 'Horarios'], ['album', 'Álbum por curso'], ['planeaciones', 'Planeaciones'], ['reportes', 'Reportes'], ['espacios-solicitudes', 'Solicitudes de espacios']] },
@@ -390,7 +397,7 @@ function menuBase() {
     perfilG()];
   // Todos en la comunidad presentan PQRS, también los estudiantes (Fabio, 4-nov-2026; antes, desde el 2-nov, la presentaba solo su
   // acudiente). No tienen el módulo de Circulares: la circular les llega a la Bandeja de entrada como PDF (Fabio, 3-nov-2026)
-  if (E.rol === 'estudiante') return [tablero, { ...COMUNICACION, items: COMUNICACION.items.filter(([r]) => r !== 'circulares') },
+  if (E.rol === 'estudiante') return [tablero, conSer({ ...COMUNICACION, items: COMUNICACION.items.filter(([r]) => r !== 'circulares') }),
     { t: 'Comunidad', ic: '👥', items: [['calendario', 'Calendario'], [`estudiante/${E.yo.id}?tab=observador`, 'Seguimientos'], [`estudiante/${E.yo.id}?tab=compromisos`, 'Compromisos'], ['procesos', 'Procesos en línea'], ['archivos', 'Archivos']] },
     { t: 'Academia', ic: '🎓', items: [['aula', 'Aula'], ['planeacion', 'Planeación'], ['horario', 'Horario'], ...hist] },
     perfilG()];
@@ -410,7 +417,7 @@ function menuBase() {
     { t: 'Academia', ic: '🎓', items: [['aula', 'Aula'], ['planeacion', 'Planeación'], [`estudiante/${est}?tab=notas`, 'Historial'], ['horario', 'Horario'], [`estudiante/${est}?tab=asistencia`, 'Asistencia']] },
     { t: 'Matrícula', ic: '🎒', items: [['obligaciones', 'Obligaciones']] },
     { t: 'Tesorería', ic: '💰', items: [[`estado-cuenta/${est}`, 'Consolidado']] }];
-  return [tablero, perfilG(), COMUNICACION, { t: 'Comunidad', ic: '👥', items: [['calendario', 'Calendario'], ['procesos', 'Procesos'], ['archivos', 'Archivos globales']] }, { t: 'Matrícula', ic: '🎒', items: [['obligaciones', 'Obligaciones']] }, { t: 'Tesorería', ic: '💰', items: [['tesoreria', 'Consolidado']] }];
+  return [tablero, perfilG(), conSer(COMUNICACION), { t: 'Comunidad', ic: '👥', items: [['calendario', 'Calendario'], ['procesos', 'Procesos'], ['archivos', 'Archivos globales']] }, { t: 'Matrícula', ic: '🎒', items: [['obligaciones', 'Obligaciones']] }, { t: 'Tesorería', ic: '💰', items: [['tesoreria', 'Consolidado']] }];
 }
 const SECCION = { 'curso/:id': 'estructura', 'notas/:asig': 'clases', 'asistencia/:asig': 'clases', 'circular/:id': 'circulares', 'circulares-institucionales': 'circulares', 'circulares/ajustes': 'circulares', 'circular-institucional/:id': 'circulares', 'mensaje/:id': 'bandeja', 'pqrs/:id': 'pqrs', 'aula/:asig': 'aula', 'tarea/:id': 'aula', 'examen/:id': 'aula', 'estado-cuenta/:est': 'tesoreria', 'proceso/:id': 'procesos', 'proceso/:id/respuestas': 'procesos', 'seguimiento/:id': 'seguimientos', 'docente/:id': 'docentes', 'grupo/:asig': 'clases', 'consolidado/:asig': 'clases', 'observaciones-boletin/:asig': 'clases', 'remediales/:asig': 'clases' };
 
@@ -422,7 +429,9 @@ function itemActivo(ruta, patron) {
   return hp === rp || SECCION[patron] === rp;
 }
 
+let patronPintado = null;
 function pintarArmazon(patron) {
+  patronPintado = patron;
   const app = $('#app');
   if (!app.dataset.armado) {
     app.dataset.armado = '1';
@@ -496,7 +505,7 @@ function pintarArmazon(patron) {
     ${menuDe().map((g) => g.r
       ? `<a href="#/${g.r}" data-texto="${esc(g.t)}" class="${itemActivo(g.r, patron) ? 'activo' : ''}"><span class="ic">${icono(ICONO_GRUPO[g.t]) || iconoRuta(g.r) || g.ic}</span><span>${g.t}</span></a>`
       : `<details class="menu-grupo" open><summary><span class="ic">${icono(ICONO_GRUPO[g.t]) || g.ic}</span><span>${g.t}</span></summary>
-          ${g.items.map(([r, t, badge]) => `<a href="#/${r}" data-texto="${esc(g.t + ' ' + t)}" class="sub ${itemActivo(r, patron) ? 'activo' : ''}" ${itemActivo(r, patron) ? 'aria-current="page"' : ''}><span class="ic ic-sub">${iconoRuta(r)}</span><span>${t}</span>${badge ? `<span class="contador" data-contador="${badge}" hidden></span>` : ''}</a>`).join('')}
+          ${g.items.map(([r, t, badge]) => r === 'ser' ? serMenu(patron) : `<a href="#/${r}" data-texto="${esc(g.t + ' ' + t)}" class="sub ${itemActivo(r, patron) ? 'activo' : ''}" ${itemActivo(r, patron) ? 'aria-current="page"' : ''}><span class="ic ic-sub">${iconoRuta(r)}</span><span>${t}</span>${badge ? `<span class="contador" data-contador="${badge}" hidden></span>` : ''}</a>`).join('')}
         </details>`).join('')}
     <div class="menu-pie">
       ${E.roles.length > 1 ? `<button class="menu-boton" data-ver-como><span class="ic">${icono('cambiar')}</span><span>Ver como…</span></button>` : ''}
@@ -504,6 +513,13 @@ function pintarArmazon(patron) {
     </div>`;
   pintarContadores();
   ponerFotos($('#app'));
+}
+
+// SER · Psicología en el menú (Fabio, 16-nov-2026): en su lugar de Comunicación, del mismo
+// tamaño que las demás opciones, con la insignia del colegio como ícono y en su rosa; con su contador; no en el Tablero
+function serMenu(patron) {
+  const act = itemActivo('ser', patron);
+  return `<a href="#/ser" data-texto="Comunicación SER Psicología" class="sub ser-menu ${act ? 'activo' : ''}" ${act ? 'aria-current="page"' : ''} aria-label="SER"><span class="ic ic-sub"><img class="ser-insignia" src="img/ser_insignia.png" alt="" width="552" height="438"></span><span>SER</span><span class="contador" data-contador="ser" hidden></span></a>`;
 }
 
 // Foto de la persona en el menú, las pestañas de persona y Mi cuenta: primero las iniciales; si tiene foto, la foto.
@@ -524,9 +540,26 @@ async function ponerFotos(raiz) {
 }
 
 async function pintarContadores() {
+  contadorSER(); // SER · Psicología: en paralelo (no frena el de la Bandeja)
   const n = await (await pant.mensajeria()).contarNoLeidos();
   document.querySelectorAll('[data-contador="noLeidos"]').forEach((el) => { el.textContent = n; el.hidden = !n; });
   $('#btn-menu')?.classList.toggle('con-aviso', n > 0);
+}
+
+// SER · Psicología: mensajes sin leer en el menú; si la persona designada cambió (la designaron o se la quitaron), se repinta el
+// menú con o sin «SER · Psicología», y en su Tablero sale la tarjeta de SER.
+async function contadorSER() {
+  if (!E.colegio || viendoHijo()) return;
+  const antes = !!(E.ser?.colegio === E.colegio.id && E.ser.soy_responsable);
+  const s = await (await pant.ser()).estadoSER().catch(() => null);
+  if (!s) return;
+  const n = Number(s.sin_leer) || 0;
+  document.querySelectorAll('[data-contador="ser"]').forEach((el) => { el.textContent = n; el.hidden = !n; });
+  if (!!s.soy_responsable !== antes && patronPintado && $('#menu')) pintarArmazon(patronPintado);
+  tarjetaSER();
+}
+function tarjetaSER() { // SER ya no va en el Tablero (Fabio, 16-nov-2026): solo quita una tarjeta vieja si quedó
+  document.querySelector('#principal > [data-ser-psi]')?.remove();
 }
 
 function abrirMenu(si) {
@@ -928,6 +961,7 @@ async function salir() {
   (await pant.pqrs().catch(() => null))?.olvidarTodo?.();
   (await pant.album().catch(() => null))?.olvidar?.();
   (await pant.salas().catch(() => null))?.olvidar?.();
+  (await pant.ser().catch(() => null))?.olvidar?.(); E.ser = null;
   dejarDeEscuchar?.();
   dejarDeEscuchar = null;
   dejarNotas?.(); dejarNotas = null; notasDe = null;
