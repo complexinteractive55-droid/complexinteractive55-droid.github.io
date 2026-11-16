@@ -942,6 +942,28 @@ async function salir() {
 }
 
 // ---------------------------------------------------------------- Arranque
+// Abrir la app sin internet en un equipo que todavía no tiene nada guardado (o le falta algo para armar la entrada): en vez de
+// quedarse en la rueda de carga, lo dice y se abre sola cuando vuelva la conexión (Fabio, 15-nov-2026). Con lo guardado en el
+// equipo esto no aparece: la app abre normal con la franja «Sin conexión a internet» en el Tablero.
+async function arrancarSesionOSinRed() {
+  try { await arrancarSesion(); }
+  catch (e) {
+    console.warn(e);
+    if (navigator.onLine && !/conexión|fetch|network/i.test(e?.message || '')) throw e;
+    const app = $('#app');
+    delete app.dataset.armado;
+    app.innerHTML = `
+      <div class="entrada"><div class="entrada-caja">
+        <div class="marca"><img class="logo-grande" src="img/logo-complex.svg" alt="nodo"></div>
+        <p class="sin-red" role="status"><span aria-hidden="true">📡</span> <b>Sin conexión a internet.</b> <span>nodo se abre solo cuando vuelva la conexión.</span></p>
+        <button class="btn btn-ancho" id="btn-reintentar-red">Reintentar</button>
+      </div></div>`;
+    const otraVez = () => { window.removeEventListener('online', otraVez); arrancarSesionOSinRed(); };
+    window.addEventListener('online', otraVez);
+    $('#btn-reintentar-red').onclick = otraVez;
+  }
+}
+
 async function arrancarSesion() {
   E.sesion = await E.db.auth.session();
   if (!E.sesion) return navegar();
@@ -1003,6 +1025,8 @@ function medirLlegada(id) {
 let recuperadoEn = 0;
 async function recuperar() {
   if (!E.sesion || !E.colegio || !desbloqueada || Date.now() - recuperadoEn < 8000) return;
+  // Sin internet NO se borra lo guardado: es lo único que se puede mostrar (al volver la conexión, el evento «online» llama otra vez)
+  if (!navigator.onLine) return;
   recuperadoEn = Date.now();
   E.db.olvidar?.();
   // primero los permisos (si cambiaron, no se repinta nada con los de antes); después lo que haya llegado
@@ -1055,7 +1079,7 @@ async function arrancar() {
     // Llegó desde el enlace de "Olvidé mi contraseña": pedir la contraseña nueva
     if (evento === 'PASSWORD_RECOVERY') cambiarClave(true);
   });
-  await arrancarSesion();
+  await arrancarSesionOSinRed();
   if (new URLSearchParams(location.search).has('instalar') && !instalada()) {
     history.replaceState(null, '', location.pathname + location.hash);
     // El aviso de Chrome necesita un toque de la persona: se muestra un botón grande

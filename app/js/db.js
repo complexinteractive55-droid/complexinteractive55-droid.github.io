@@ -71,13 +71,34 @@ export async function crearDbSupabase() {
     return q;
   };
 
+  // Sesión guardada en el equipo (la que Supabase dejó en localStorage al entrar). Sin internet sirve para abrir la app con lo que
+  // ya está guardado, como una app nativa (Fabio, 15-nov-2026: «quité el internet… debería verse todo pero con el aviso»). No da
+  // acceso a nada del servidor: cada consulta sigue necesitando el permiso vigente, que Supabase renueva solo al volver la conexión
+  // (y si la cuenta fue bloqueada o cerrada, Supabase cierra la sesión y la app vuelve a «Entrar», como siempre).
+  const sesionGuardada = () => {
+    try {
+      const s = JSON.parse(localStorage.getItem('complex_auth') || 'null');
+      const u = s?.user || JSON.parse(localStorage.getItem('complex_auth-user') || 'null')?.user;
+      return s?.refresh_token && u?.id ? { user: { id: u.id, email: u.email }, guardada: true } : null;
+    } catch { return null; }
+  };
+  const sinRed = () => typeof navigator !== 'undefined' && navigator.onLine === false;
+  const errorDeRed = (e) => /RetryableFetch|Failed to fetch|NetworkError|Load failed|network/i.test(`${e?.name} ${e?.message}`);
+
   return conMemoria({
     modo: 'real',
     auth: {
       async session() {
-        const { data } = await sb.auth.getSession();
-        const u = data.session?.user;
-        return u ? { user: { id: u.id, email: u.email } } : null;
+        const guardada = sesionGuardada();
+        if (sinRed() && guardada) return guardada;
+        // Con «internet» que no llega (wifi sin salida), getSession puede tardar ~30 s reintentando: a los 6 s se abre con la guardada
+        const r = await Promise.race([
+          sb.auth.getSession().then(({ data, error }) => ({ u: data.session?.user, error })).catch((error) => ({ u: null, error })),
+          ...(guardada ? [new Promise((ok) => setTimeout(() => ok({ tarde: true }), 6000))] : []),
+        ]);
+        if (r.u) return { user: { id: r.u.id, email: r.u.email } };
+        if (guardada && (r.tarde || sinRed() || errorDeRed(r.error))) return guardada;
+        return null;
       },
       async signIn(email, pass) {
         const { error } = await sb.auth.signInWithPassword({ email, password: pass });
@@ -105,30 +126,36 @@ export async function crearDbSupabase() {
       async updatePassword(nueva) { const { error } = await sb.auth.updateUser({ password: nueva }); falla(error); },
     },
     async select(tabla, q = {}) {
+      if (sinRed()) throw new Error('Sin conexión a internet.'); // al instante, sin esperar a que Supabase reintente (ver sesionGuardada)
       const { data, error } = await aplicar(sb.from(tabla).select('*'), q);
       falla(error);
       return data;
     },
     async insert(tabla, filas) {
+      if (sinRed()) throw new Error('Sin conexión a internet.'); // al instante, sin esperar a que Supabase reintente (ver sesionGuardada)
       const { data, error } = await sb.from(tabla).insert(filas).select();
       falla(error);
       return data;
     },
     async upsert(tabla, filas, onConflict) {
+      if (sinRed()) throw new Error('Sin conexión a internet.'); // al instante, sin esperar a que Supabase reintente (ver sesionGuardada)
       const { data, error } = await sb.from(tabla).upsert(filas, { onConflict }).select();
       falla(error);
       return data;
     },
     async update(tabla, cambios, eq) {
+      if (sinRed()) throw new Error('Sin conexión a internet.'); // al instante, sin esperar a que Supabase reintente (ver sesionGuardada)
       const { data, error } = await aplicar(sb.from(tabla).update(cambios), { eq }).select();
       falla(error);
       return data;
     },
     async remove(tabla, eq) {
+      if (sinRed()) throw new Error('Sin conexión a internet.'); // al instante, sin esperar a que Supabase reintente (ver sesionGuardada)
       const { error } = await aplicar(sb.from(tabla).delete(), { eq });
       falla(error);
     },
     async rpc(nombre, args) {
+      if (sinRed()) throw new Error('Sin conexión a internet.'); // al instante, sin esperar a que Supabase reintente (ver sesionGuardada)
       const { data, error } = await sb.rpc(nombre, args);
       falla(error);
       return data;
@@ -136,6 +163,7 @@ export async function crearDbSupabase() {
     // Funciones que devuelven muchas filas (los contactos de todo un colegio): por páginas de 1.000, el máximo que entrega la API.
     // Antes llegaban solo las primeras 1.000 y «Todos» marcaba a menos personas sin avisar (3-nov-2026). Siempre del servidor.
     async rpcTodo(nombre, args) {
+      if (sinRed()) throw new Error('Sin conexión a internet.'); // al instante, sin esperar a que Supabase reintente (ver sesionGuardada)
       const todo = [];
       for (let desde = 0; ; desde += 1000) {
         const { data, error } = await sb.rpc(nombre, args).range(desde, desde + 999);
@@ -145,6 +173,7 @@ export async function crearDbSupabase() {
       }
     },
     async funcion(nombre, cuerpo) {
+      if (sinRed()) throw new Error('Sin conexión a internet.'); // al instante, sin esperar a que Supabase reintente (ver sesionGuardada)
       const { data, error } = await sb.functions.invoke(nombre, { body: cuerpo });
       if (error) {
         let msg = error.message;
@@ -156,18 +185,21 @@ export async function crearDbSupabase() {
     },
     // Archivos (Storage)
     async subirArchivo(bucket, ruta, archivo) {
+      if (sinRed()) throw new Error('Sin conexión a internet.'); // al instante, sin esperar a que Supabase reintente (ver sesionGuardada)
       const { error } = await sb.storage.from(bucket).upload(ruta, archivo, { upsert: false, contentType: archivo.type || 'application/octet-stream' });
       falla(error);
     },
     urlPublica(bucket, ruta) { return sb.storage.from(bucket).getPublicUrl(ruta).data.publicUrl; },
     // Varios enlaces firmados en UNA petición (fotos de una lista): { ruta: url }
     async urlsArchivos(bucket, rutas) {
+      if (sinRed()) throw new Error('Sin conexión a internet.'); // al instante, sin esperar a que Supabase reintente (ver sesionGuardada)
       if (!rutas.length) return {};
       const { data, error } = await sb.storage.from(bucket).createSignedUrls(rutas, 3600);
       falla(error);
       return Object.fromEntries((data || []).filter((x) => x.signedUrl).map((x) => [x.path, x.signedUrl]));
     },
     async urlArchivo(bucket, ruta, descargarComo) {
+      if (sinRed()) throw new Error('Sin conexión a internet.'); // al instante, sin esperar a que Supabase reintente (ver sesionGuardada)
       // Archivos que el navegador podría ejecutar (HTML, SVG, XML, scripts) se DESCARGAN en vez de abrirse:
       // así un adjunto malicioso no corre código al tocarlo. PDF, fotos y documentos se siguen abriendo igual.
       const peligroso = /\.(html?|xhtml|svgz?|xml|js|mjs)$/i.test(ruta);
@@ -177,17 +209,20 @@ export async function crearDbSupabase() {
     },
     // El archivo mismo (la RLS de Storage decide): para mostrar el PDF de una circular y comprobar su huella en el equipo
     async archivoBytes(bucket, ruta) {
+      if (sinRed()) throw new Error('Sin conexión a internet.'); // al instante, sin esperar a que Supabase reintente (ver sesionGuardada)
       const { data, error } = await sb.storage.from(bucket).download(ruta);
       falla(error);
       return data;
     },
     async borrarArchivo(bucket, ruta) {
+      if (sinRed()) throw new Error('Sin conexión a internet.'); // al instante, sin esperar a que Supabase reintente (ver sesionGuardada)
       const { error } = await sb.storage.from(bucket).remove([ruta]);
       falla(error);
     },
     // Subida con avance (adjuntos de PQRS): directo a la API de Storage para poder mostrar el porcentaje.
     // Sin reemplazar (x-upsert: false). Si el archivo ya estaba (un intento anterior sí llegó), se da por subido.
     async subirConAvance(bucket, ruta, archivo, tipo, alAvanzar, senal) {
+      if (sinRed()) throw new Error('Sin conexión a internet.'); // al instante, sin esperar a que Supabase reintente (ver sesionGuardada)
       const { data } = await sb.auth.getSession();
       const token = data.session?.access_token;
       if (!token) throw new Error('La sesión venció: vuelve a entrar.');
@@ -212,6 +247,7 @@ export async function crearDbSupabase() {
     verificarAdjunto(id) { return this.funcion('pqrs-adjuntos', { adjunto: id }); },
     // Enlace firmado de 2 minutos, pedido justo antes de mostrar o descargar (la RLS de Storage decide si se puede)
     async urlAdjunto(ruta, nombre, descargar) {
+      if (sinRed()) throw new Error('Sin conexión a internet.'); // al instante, sin esperar a que Supabase reintente (ver sesionGuardada)
       const { data, error } = await sb.storage.from('pqrs-adjuntos').createSignedUrl(ruta, 120, descargar ? { download: nombre } : undefined);
       falla(error);
       return data.signedUrl;
@@ -254,7 +290,10 @@ const RPC_LECTURA = new Set(['mis_contactos', 'personas_colegio', 'mi_intento'])
 const RPC_DIRECTA = new Set(['pqrs_mensajes', 'pqrs_marcar_leido', 'mensajes_sin_leer', 'hora_servidor', 'album_cursos', 'album_curso',
   'salas_mias', 'sala_mensajes', 'sala_miembros_ver', 'sala_marcar_leido', 'avisos_ver', 'aviso_detalle', 'aviso_marcar_visto', 'pqrs_adjunto_estado', 'circular_previsualizar_numero', 'circular_numeracion', 'circular_mi_perfil', 'circular_emisores_ver', 'circular_formatos_por_area', 'circular_series_disponibles',
   // envío a la bandeja y mensajería del servidor (3-nov-2026): siempre lo vigente (audiencia, docentes, bandeja por páginas)
-  'audiencia_previa', 'circular_envio_estado', 'bandeja_mia', 'enviados_mios', 'mensaje_lecturas', 'mis_docentes_diagnostico']);
+  'audiencia_previa', 'circular_envio_estado', 'bandeja_mia', 'enviados_mios', 'mensaje_lecturas', 'mis_docentes_diagnostico',
+  // el cargo de PQRS que se muestra en el encabezado (solo lee). Antes contaba como escritura y, al abrir la app, descartaba lo que
+  // se estaba pidiendo a la vez (cursos, materias, periodos…), que así nunca quedaba guardado para abrir sin internet (15-nov-2026)
+  'pqrs_mi_cargo']);
 // Escrituras que también cambian otras tablas (triggers del servidor o lógica de la app)
 const AFECTA = {
   tarea_entregas: ['calificaciones'], examenes: ['calificaciones'], examen_intentos: ['calificaciones'],
@@ -299,12 +338,17 @@ function conMemoria(db, { persistir = false } = {}) {
       idbHacer('readwrite', (s) => s.put({ t: Date.now(), entradas }, 'memo:' + uid)).catch(() => {});
     }, 2000);
   };
-  const hidratar = async (id) => {
-    if (hidratado === id) return;
-    hidratado = id;
-    const v = await idbHacer('readonly', (s) => s.get('memo:' + id)).catch(() => null);
-    if (!v || Date.now() - v.t > 7 * 864e5) return;
-    for (const [k, datos] of v.entradas) if (!memo.has(k)) memo.set(k, { t: 0, datos }); // t 0: se muestra y se revisa
+  // Quien llegue mientras se está leyendo la copia del equipo ESPERA a que termine (antes seguía de largo y, sin internet, sus
+  // consultas fallaban aunque estuvieran guardadas: al abrir, la sesión se pide dos veces casi a la vez; 15-nov-2026)
+  const hidratar = (id) => {
+    if (hidratado?.id === id) return hidratado.p;
+    const p = (async () => {
+      const v = await idbHacer('readonly', (s) => s.get('memo:' + id)).catch(() => null);
+      if (!v || Date.now() - v.t > 7 * 864e5) return;
+      for (const [k, datos] of v.entradas) if (!memo.has(k)) memo.set(k, { t: 0, datos }); // t 0: se muestra y se revisa
+    })();
+    hidratado = { id, p };
+    return p;
   };
   const olvidar = () => { memo.clear(); gen++; };
   const leer = (clave, fn) => {
