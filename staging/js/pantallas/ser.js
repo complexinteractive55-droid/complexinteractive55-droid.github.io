@@ -70,7 +70,7 @@ export async function ser(m) {
   if (s.soy_responsable) return bandeja(m, s);
   if (!s.puedo_escribir) {
     m.innerHTML = cabecera('SER', { volver: '#/inicio' }) + `<section class="tarjeta ser-intro">${insigniaSER({ anios: await aniosSER(), clase: 'mediana' })}
-      <p>SER es la conversación <b>privada</b> de estudiantes y familias con Psicología del colegio. Solo la ve la persona designada${s.responsable ? ` (hoy: <b>${esc(s.responsable)}</b>)` : ''}: ni el administrador ni los docentes la pueden leer.</p>
+      <p>SER es la conversación <b>privada</b> de cada persona del colegio con Psicología. Solo la ve la persona designada${s.responsable ? ` (hoy: <b>${esc(s.responsable)}</b>)` : ''}: ni el administrador ni los docentes la pueden leer.</p>
       ${s.admin ? `<p class="ayuda">${s.responsable ? 'Para cambiar quién responde' : 'Para que SER funcione, designa a quien responde'} en <a href="#/ajustes-colegio#f-ser">Ajustes del colegio → SER</a>.</p>` : ''}</section>`;
     return;
   }
@@ -199,7 +199,7 @@ async function chat(m, conv, { volver, anios = [] }) {
 // ---------------------------------------------------------------- Ajustes del colegio: quién responde SER (administrador)
 export async function seccionAjustes() {
   return `<section class="tarjeta" id="f-ser">
-      <div class="ser-cab">${insigniaSER({ clase: 'mini' })}<span class="crece"><h2>SER</h2><small>Quién responde las conversaciones privadas de estudiantes y familias</small></span></div>
+      <div class="ser-cab">${insigniaSER({ clase: 'mini' })}<span class="crece"><h2>SER</h2><small>Quién responde las conversaciones privadas de la comunidad del colegio</small></span></div>
       <div data-ser-ajustes><p class="ayuda">Cargando…</p></div>
     </section>`;
 }
