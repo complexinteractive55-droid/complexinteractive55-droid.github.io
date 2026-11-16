@@ -382,9 +382,8 @@ function menuBase() {
   const tablero = { r: 'inicio', ic: '▦', t: 'Tablero' };
   const perfilG = (extra = []) => ({ t: 'Perfil', ic: '👤', items: [['info-personal', 'Información personal'], ...(E.rol === 'acudiente' || E.rol === 'estudiante' ? [['edocs', 'E-docs']] : []), ['perfil', 'Mi cuenta y ajustes'], ...extra, ['ayuda', 'Ayuda']] });
   const conSalas = (g) => conSer({ ...g, items: [...g.items, ['salas', 'Salas de sección']] }); // chats de sección y avisos (personal)
-  // SER · Psicología (15-nov-2026): estudiantes y acudientes siempre; del personal, solo quien el administrador designó
-  const serResp = E.ser?.colegio === E.colegio?.id && E.ser?.soy_responsable;
-  function conSer(g) { return E.rol === 'estudiante' || E.rol === 'acudiente' || serResp ? { ...g, items: [...g.items, ['ser', 'SER', 'ser']] } : g; }
+  // SER (Fabio, 16-nov-2026: «lo deben tener todos los perfiles»): todos, al final de Comunicación; quien lo responde ve ahí su bandeja
+  function conSer(g) { return { ...g, items: [...g.items, ['ser', 'SER', 'ser']] }; }
   if (E.rol === 'admin') return [tablero, conSalas(COMUNICACION),
     { t: 'Comunidad', ic: '👥', items: [['calendario', 'Calendario'], ['personas', 'Personas'], ['seguimientos', 'Seguimientos'], ['compromisos', 'Compromisos'], ['ausencias', 'Ausencias reportadas'], ['procesos', 'Procesos en línea'], ['archivos', 'Archivos']] },
     { t: 'Académico', ic: '🎓', items: [['estructura', 'Estructura del colegio'], ['horario', 'Horarios'], ['album', 'Álbum por curso'], ['planeaciones', 'Planeaciones'], ['reportes', 'Reportes'], ['espacios-solicitudes', 'Solicitudes de espacios']] },
@@ -412,7 +411,7 @@ function menuBase() {
   // acudiente
   if (viendoHijo()) return [tablero,
     { t: 'Perfil', ic: '👤', items: [['info-personal', 'Información personal'], [`estudiante/${est}?tab=ficha`, 'Ficha médica'], ['edocs', 'E-docs']] },
-    { t: 'Comunicación', ic: '💬', items: [['bandeja-hijo', 'Bandeja de entrada del estudiante'], ['circulares', 'Circulares'], ['pqrs', 'PQRS']] }, // sus PQRS, también desde la pestaña del hijo (4-nov-2026)
+    conSer({ t: 'Comunicación', ic: '💬', items: [['bandeja-hijo', 'Bandeja de entrada del estudiante'], ['circulares', 'Circulares'], ['pqrs', 'PQRS']] }), // sus PQRS, también desde la pestaña del hijo (4-nov-2026)
     { t: 'Comunidad', ic: '👥', items: [['calendario', 'Calendario'], [`estudiante/${est}?tab=observador`, 'Seguimientos'], [`estudiante/${est}?tab=compromisos`, 'Compromisos'], ['salidas', 'Permisos de salida'], ['procesos', 'Procesos en línea'], ['archivos', 'Archivos globales']] },
     { t: 'Academia', ic: '🎓', items: [['aula', 'Aula'], ['planeacion', 'Planeación'], [`estudiante/${est}?tab=notas`, 'Historial'], ['horario', 'Horario'], [`estudiante/${est}?tab=asistencia`, 'Asistencia']] },
     { t: 'Matrícula', ic: '🎒', items: [['obligaciones', 'Obligaciones']] },

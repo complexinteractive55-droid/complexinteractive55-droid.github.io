@@ -1,5 +1,6 @@
 // SER · conversación privada con Psicología en el MODO DEMO: las mismas reglas que la base (migración 20261116100000_ser_psicologia).
-// Se carga la primera vez que se usa (db.js). Datos solo en este equipo.
+// Se carga la primera vez que se usa (db.js). Datos solo en este equipo. Desde el 16-nov-2026 escribe cualquier persona del colegio
+// (migración 20261116110000_ser_todos_los_perfiles), salvo quien responde SER.
 export function crearSerDemo({ tabla, usuario, guardar, ahora, err }) {
   const T = (n) => tabla(n);
   const yo = () => usuario();
@@ -9,7 +10,7 @@ export function crearSerDemo({ tabla, usuario, guardar, ahora, err }) {
   const nombreDe = (uid) => { const p = T('perfiles').find((x) => x.id === uid); return p ? `${p.nombres || ''} ${p.apellidos || ''}`.trim() : ''; };
   const responsable = (c) => { const a = T('ser_ajustes').find((x) => x.colegio_id === c); return a?.responsable_id && miembro(c, a.responsable_id, PERSONAL) ? a.responsable_id : null; };
   const soyResp = (c) => !!yo() && responsable(c) === yo();
-  const puedeEscribir = (c) => miembro(c, yo(), ['estudiante', 'acudiente']);
+  const puedeEscribir = (c) => miembro(c) && !soyResp(c);
   const conv = (id) => T('ser_conversaciones').find((x) => x.id === id);
   const veo = (id) => { const c = conv(id); return !!c && ((c.perfil_id === yo() && puedeEscribir(c.colegio_id)) || soyResp(c.colegio_id)); };
   const leidoDe = (cid, uid = yo()) => T('ser_lecturas').find((l) => l.conversacion_id === cid && l.perfil_id === uid)?.leido_seq || 0;
@@ -25,7 +26,8 @@ export function crearSerDemo({ tabla, usuario, guardar, ahora, err }) {
       const hijos = T('acudientes').filter((a) => a.colegio_id === c && a.acudiente_id === uid).map((a) => nombreDe(a.estudiante_id)).filter(Boolean);
       return 'Acudiente' + (hijos.length ? ' de ' + hijos.join(', ') : '');
     }
-    return '';
+    const CARGO = { admin: 'Administración', profesor: 'Docente', enfermeria: 'Enfermería', director_seccion: 'Dirección de sección' };
+    return [...new Set(m.map((x) => CARGO[x.rol] || x.rol))].join(' · ');
   };
   const sinAcceso = () => fallo('No tienes acceso a esta conversación.');
   const leer = (cid, hasta) => {
@@ -44,12 +46,13 @@ export function crearSerDemo({ tabla, usuario, guardar, ahora, err }) {
       const c = T('ser_conversaciones').find((x) => x.colegio_id === a.p_colegio && x.perfil_id === yo());
       const esAdmin = miembro(a.p_colegio, yo(), ['admin']);
       let sin = 0;
-      if (soy) sin = T('ser_conversaciones').filter((k) => k.colegio_id === a.p_colegio).reduce((n, k) => n + T('ser_mensajes').filter((x) => x.conversacion_id === k.id && !x.de_psicologia && x.seq > leidoDe(k.id)).length, 0);
+      if (soy) sin = T('ser_conversaciones').filter((k) => k.colegio_id === a.p_colegio && k.perfil_id !== yo()).reduce((n, k) => n + T('ser_mensajes').filter((x) => x.conversacion_id === k.id && !x.de_psicologia && x.seq > leidoDe(k.id)).length, 0);
       else if (c && pe) sin = T('ser_mensajes').filter((x) => x.conversacion_id === c.id && x.de_psicologia && x.seq > leidoDe(c.id)).length;
       return { responsable: r ? nombreDe(r) : null, soy_responsable: soy, puedo_escribir: pe, admin: esAdmin, conversacion: c && pe ? c.id : null, sin_leer: sin };
     },
     ser_abrir(a) {
-      if (!puedeEscribir(a.p_colegio)) fallo('SER es para estudiantes y acudientes del colegio.');
+      if (soyResp(a.p_colegio)) fallo('Tú respondes SER: las conversaciones están en tu bandeja.');
+      if (!puedeEscribir(a.p_colegio)) fallo('SER es para las personas del colegio.');
       if (!responsable(a.p_colegio)) fallo('SER aún no tiene a alguien de Psicología designado. Pronto podrás escribir.');
       let c = T('ser_conversaciones').find((x) => x.colegio_id === a.p_colegio && x.perfil_id === yo());
       if (!c) { c = { id: crypto.randomUUID(), colegio_id: a.p_colegio, perfil_id: yo(), ultimo_seq: 0, ultimo_en: null, creada_en: ahora() }; T('ser_conversaciones').push(c); guardar(); }
@@ -89,7 +92,7 @@ export function crearSerDemo({ tabla, usuario, guardar, ahora, err }) {
     },
     ser_bandeja(a) {
       if (!soyResp(a.p_colegio)) fallo('Solo quien responde SER en el colegio ve estas conversaciones.');
-      return T('ser_conversaciones').filter((c) => c.colegio_id === a.p_colegio && c.ultimo_seq > 0).sort((x, z) => String(z.ultimo_en).localeCompare(String(x.ultimo_en))).map((c) => {
+      return T('ser_conversaciones').filter((c) => c.colegio_id === a.p_colegio && c.ultimo_seq > 0 && c.perfil_id !== yo()).sort((x, z) => String(z.ultimo_en).localeCompare(String(x.ultimo_en))).map((c) => {
         const ult = T('ser_mensajes').filter((x) => x.conversacion_id === c.id).sort((x, z) => z.seq - x.seq)[0];
         return { id: c.id, de: nombreDe(c.perfil_id), quien: quien(a.p_colegio, c.perfil_id), ultimo_en: c.ultimo_en,
           ultimo: ult ? { texto: ult.texto.slice(0, 140), de_psicologia: ult.de_psicologia } : null,
