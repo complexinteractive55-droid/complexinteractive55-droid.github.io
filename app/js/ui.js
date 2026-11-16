@@ -1,5 +1,6 @@
 // Ayudas de interfaz: escapar texto, avisos, ventanas a pantalla completa, fechas.
 import { icono, iconoDeTexto } from './iconos.js';
+import { abrirCapa } from './atras.js';
 
 export const esc = (s) => String(s ?? '').replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
 
@@ -36,9 +37,14 @@ export function ventana({ titulo, html, botones = [], alAbrir, clase = '' }) {
         <div class="ventana-cuerpo">${html}</div>
         ${botones.length ? `<footer class="ventana-pie">${botones.map((b, i) => `<button class="btn ${b.clase || (i === botones.length - 1 ? 'btn-primario' : '')}" data-valor="${i}">${iconoDeTexto(b.texto)}${esc(b.texto)}</button>`).join('')}</footer>` : ''}
       </div>`;
-    const cerrar = (v) => {
+    // Atrás del celular o del navegador cierra esta ventana (atras.js; Fabio, 16-nov-2026)
+    let quitarCapa = null, cerrada = false;
+    const cerrar = (v, porAtras = false) => {
+      if (cerrada) return;
+      cerrada = true;
       fondo.remove(); document.removeEventListener('keydown', tecla);
       if (!document.querySelector('.ventana')) document.documentElement.classList.remove('con-ventana');
+      if (!porAtras) quitarCapa?.();
       resolver(v);
     };
     const tecla = (e) => { if (e.key === 'Escape') cerrar(null); };
@@ -58,6 +64,7 @@ export function ventana({ titulo, html, botones = [], alAbrir, clase = '' }) {
     });
     document.body.appendChild(fondo);
     document.documentElement.classList.add('con-ventana');
+    quitarCapa = abrirCapa(() => cerrar(null, true));
     alAbrir?.(fondo, cerrar);
     const primero = fondo.querySelector('.ventana-cuerpo input, .ventana-cuerpo select, .ventana-cuerpo textarea');
     (primero || fondo.querySelector('[data-cerrar]')).focus();
