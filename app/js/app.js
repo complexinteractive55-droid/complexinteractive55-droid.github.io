@@ -289,7 +289,7 @@ async function navegar() {
     console.error(err);
     if (yo === navegando) m.innerHTML = `<div class="vacio"><p>No se pudo cargar: ${esc(err.message)}</p><button class="btn" data-recargar>Reintentar</button></div>`;
   }
-  if (yo === navegando) { m.scrollTop = 0; window.scrollTo(0, 0); etiquetarTablas(m); const bx = $('#btn-exportar'); if (bx) bx.hidden = !m.querySelector('table'); }
+  if (yo === navegando) { m.scrollTop = 0; window.scrollTo(0, 0); etiquetarTablas(m); const bx = $('#btn-exportar'); if (bx) bx.hidden = !m.querySelector('table'); avisoSinRed(); }
 }
 
 // Llegaron datos más nuevos del servidor para la pantalla que se está viendo (db.js los pidió por detrás):
@@ -335,7 +335,26 @@ window.addEventListener('complex:datos-nuevos', async () => {
   if (yo !== navegando) return;
   m.scrollTop = y; window.scrollTo(0, wy);
   etiquetarTablas(m);
+  avisoSinRed();
 });
+
+// Sin internet: una franja discreta arriba del Tablero, no una ventana ni un aviso que tape (Fabio, 15-nov-2026: «si no hay acceso a
+// internet debe salir un aviso en tablero de forma no tan invasiva»). Se pone y se quita sola al perder o recuperar la conexión.
+const enTablero = () => /^(#\/?(inicio)?)?(\?.*)?$/.test(location.hash);
+function avisoSinRed() {
+  const m = main();
+  if (!m) return;
+  const hay = m.querySelector(':scope > [data-sin-red]');
+  const toca = !navigator.onLine && !!E.sesion && !!E.colegio && enTablero();
+  if (!toca) { hay?.remove(); return; }
+  if (hay) return;
+  const p = document.createElement('p');
+  p.className = 'sin-red'; p.dataset.sinRed = ''; p.setAttribute('role', 'status');
+  p.innerHTML = '<span aria-hidden="true">📡</span> <b>Sin conexión a internet.</b> <span>Se pone al día solo al volver.</span>';
+  m.prepend(p);
+}
+window.addEventListener('online', avisoSinRed);
+window.addEventListener('offline', avisoSinRed);
 
 // ---------------------------------------------------------------- Armazón (REA Phidias §1.2)
 // Menú lateral izquierdo agrupado (Tablero · Comunicación · Comunidad · Academia · Perfil),
@@ -1067,11 +1086,12 @@ async function arrancar() {
 // PC queda abierta todo el día: Fabio, 4-nov-2026, «siempre la app debe actualizarse automáticamente») se compara con version.txt
 // del servidor. Si hay una nueva:
 //  - recién abierta (primeros 20 s): se recarga sola, una vez por versión;
-//  - en uso: aviso "Toca para actualizar" y se aplica SOLA en el primer momento seguro, sin borrar lo que se está escribiendo:
-//    al cambiar de pantalla (lo de la pantalla anterior se descarta igual que en cualquier navegación), tras INACTIVA_MIN minutos
-//    sin usarla si no hay nada escrito, ni una ventana abierta, ni un archivo subiendo, o al volver después de MIN_FUERA minutos.
+//  - en uso: se aplica SOLA, sin botón ni aviso (Fabio, 15-nov-2026: «no debería pedir dar click en el botón de actualizar»), en el
+//    primer momento seguro, sin borrar lo que se está escribiendo: al cambiar de pantalla (lo de la pantalla anterior se descarta
+//    igual que en cualquier navegación), tras INACTIVA_MIN minutos sin tocarla si no hay nada escrito, ni una ventana abierta, ni un
+//    archivo subiendo, o al volver a la app (desde otra app o el inicio del celular) si en ese momento no hay nada a medias.
 const cargadaEn = Date.now();
-const CADA_MIN = 5, INACTIVA_MIN = 2;
+const CADA_MIN = 5, INACTIVA_MIN = 0.5;
 let actualizacionPendiente = false;
 let ocultaDesde = 0;
 let versionNueva = '', ultimaActividad = Date.now(), revisadaEn = 0;
@@ -1105,14 +1125,9 @@ setInterval(() => {
 window.addEventListener('online', () => buscarVersion(false));
 window.addEventListener('focus', () => { if (Date.now() - revisadaEn >= 60000) buscarVersion(false); }); // volver a la ventana del PC (sin minimizarla)
 
-function avisoVersion() {
-  if (document.querySelector('.aviso-version')) return;
-  const b = document.createElement('button');
-  b.className = 'aviso ver aviso-version';
-  b.textContent = '🔄 Hay una versión nueva de nodo. Toca para actualizar.';
-  b.onclick = () => location.reload();
-  document.body.appendChild(b);
-}
+// Antes mostraba «Hay una versión nueva de nodo. Toca para actualizar.»; desde el 15-nov-2026 no se pide nada: la versión nueva
+// queda pendiente y se aplica sola (arriba). (La clase .aviso-version la sigue usando el botón «Toca aquí para instalar nodo».)
+function avisoVersion() {}
 
 async function buscarVersion(puedeRecargar) {
   if (!/^\d{14}$/.test(APP_VERSION) || !navigator.onLine) return; // en desarrollo (dev) o sin internet, nada
@@ -1124,7 +1139,7 @@ async function buscarVersion(puedeRecargar) {
   const reg = await navigator.serviceWorker?.getRegistration().catch(() => null);
   await reg?.update().catch(() => {});
   const k = 'complex_recarga_' + v;
-  if (puedeRecargar && (Date.now() - cargadaEn < 20000 || !document.querySelector('.ventana')) && !sessionStorage.getItem(k)) {
+  if (puedeRecargar && (Date.now() - cargadaEn < 20000 || seguroParaActualizar()) && !sessionStorage.getItem(k)) {
     sessionStorage.setItem(k, '1');
     sessionStorage.setItem('complex_version_objetivo', v);
     setTimeout(() => location.reload(), 1500); // un momento para que el service worker nuevo tome los archivos
@@ -1139,7 +1154,9 @@ document.addEventListener('visibilitychange', () => {
   const largo = !!ocultaDesde && Date.now() - ocultaDesde >= MIN_FUERA * 60000;
   ocultaDesde = 0;
   if (largo && actualizacionPendiente) return location.reload();
-  buscarVersion(largo);
+  // Volver a la app es el momento natural (como una app nativa): si hay versión nueva y nada a medias, se toma ya
+  if (actualizacionPendiente && seguroParaActualizar() && aplicarVersion()) return;
+  buscarVersion(largo || seguroParaActualizar());
 });
 
 // Exportar a Excel (CSV) las tablas de la pantalla actual, como "Exportar xls / csv" de Phidias.
