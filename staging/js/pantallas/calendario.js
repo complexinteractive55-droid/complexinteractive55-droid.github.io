@@ -401,19 +401,38 @@ async function editarEvento(b, ev, dia) {
     html: camposHTML([
       { name: 'titulo', label: 'Título' },
       { name: 'tipo', label: 'Tipo', tipo: 'select', opciones: Object.entries(TIPOS).map(([k, [t]]) => [k, t]) },
-      { name: 'todo_el_dia', label: 'Todo el día', tipo: 'checkbox', def: true },
+      // Como Google Calendar (Fabio, 15-nov-2026): por defecto el evento va con HORA; «Todo el día» se marca a propósito y entonces
+      // se piden solo fechas (antes venía marcada y un evento con hora quedaba como de todo el día, sin su franja en la columna del día)
+      { name: 'todo_el_dia', label: 'Todo el día', tipo: 'checkbox', def: false },
       { name: 'inicio', label: 'Inicio', tipo: 'datetime-local', def: local(ev?.inicio || (dia ? dia + 'T08:00' : null)) || (dia ? dia + 'T08:00' : '') },
       { name: 'fin', label: 'Fin (opcional)', tipo: 'datetime-local', def: local(ev?.fin) },
       { name: 'curso_id', label: 'Para', tipo: 'select', vacio: 'Todo el colegio', opciones: b.cursos.map((c) => [c.id, 'Curso ' + c.nombre]) },
       { name: 'descripcion', label: 'Descripción', tipo: 'textarea', filas: 4 },
     ], ev ? { ...ev, inicio: local(ev.inicio), fin: local(ev.fin) } : {}),
+    alAbrir: (caja) => {
+      // «Todo el día» marcado → Inicio y Fin piden solo la fecha; al desmarcar vuelve la hora que tenían (o 8:00 / 9:00)
+      const todo = caja.querySelector('[name=todo_el_dia]');
+      const campos = [['inicio', '08:00'], ['fin', '09:00']].map(([n, h]) => [caja.querySelector(`[name=${n}]`), h]);
+      const aplicar = () => {
+        for (const [el, h] of campos) {
+          const v = el.value;
+          if (todo.checked && el.type !== 'date') { if (v.length > 10) el.dataset.hora = v.slice(11, 16); el.type = 'date'; el.value = v.slice(0, 10); }
+          else if (!todo.checked && el.type === 'date') { el.type = 'datetime-local'; el.value = v ? `${v}T${el.dataset.hora || h}` : ''; }
+        }
+      };
+      todo.addEventListener('change', aplicar);
+      aplicar();
+    },
     botones: [
       ...(ev ? [{ texto: 'Eliminar', clase: 'btn-peligro', antes: async () => { if (!(await confirmar('¿Eliminar el evento?', 'No se puede deshacer.', 'Eliminar'))) return false; await E.db.remove('eventos', { id: ev.id }); return true; } }] : []),
       { texto: 'Cancelar' },
       { texto: 'Guardar', antes: async (c) => {
         const d = leerForm(c);
         if (!d.titulo || !d.inicio) throw new Error('Escribe el título y la fecha de inicio.');
-        const datos = { titulo: d.titulo, tipo: d.tipo, todo_el_dia: !!d.todo_el_dia, inicio: new Date(d.inicio).toISOString(), fin: d.fin ? new Date(d.fin).toISOString() : null, curso_id: d.curso_id || null, descripcion: d.descripcion || null };
+        // De todo el día: solo la fecha (se guarda a las 8:00 de esa fecha, como siempre; el fin, al final de su día)
+        const cuando = (v, h) => new Date(d.todo_el_dia ? `${v.slice(0, 10)}T${h}` : v).toISOString();
+        const datos = { titulo: d.titulo, tipo: d.tipo, todo_el_dia: !!d.todo_el_dia, inicio: cuando(d.inicio, '08:00'), fin: d.fin ? cuando(d.fin, '23:59') : null, curso_id: d.curso_id || null, descripcion: d.descripcion || null };
+        if (datos.fin && datos.fin < datos.inicio) throw new Error('El fin no puede ser antes del inicio.');
         if (ev) await E.db.update('eventos', datos, { id: ev.id });
         else await E.db.insert('eventos', [{ colegio_id: E.colegio.id, creado_por: E.yo.id, ...datos }]);
         return true;

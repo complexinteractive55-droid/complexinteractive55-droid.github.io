@@ -197,7 +197,7 @@ details.indicador > .lista { padding: 0 0 8px 40px; }
 .dia-nota { margin: 0 6px 6px; padding: 4px 8px; border-radius: 8px; background: var(--primario-suave); font-size: 13px; }
 .dia-todo { display: block; margin: 0 6px 6px; padding: 4px 8px; border-radius: 8px; background: #7c4dbd; color: #fff; font-size: 13px; font-weight: 600; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .dia-vacio { margin: 0 8px 6px; font-size: 13px; text-align: center; }
-.dia-vista { --ppm: 1.2; position: relative; flex: 1 1 0; min-height: 300px; overflow-x: hidden; overflow-y: auto; touch-action: pan-y; overscroll-behavior: contain; user-select: none; -webkit-user-select: none; border-top: 1px solid var(--borde); cursor: grab; }
+.dia-vista { --ppm: 1.2; position: relative; flex: 1 1 0; min-height: 300px; overflow-x: hidden; overflow-y: auto; touch-action: pan-y; overscroll-behavior-y: auto; /* al llegar al borde sigue la página (Fabio, 15-nov) */ overscroll-behavior-x: contain; user-select: none; -webkit-user-select: none; border-top: 1px solid var(--borde); cursor: grab; }
 .dia-vista:active { cursor: grabbing; }
 .dia-vista:focus-visible { outline: 3px solid var(--primario); outline-offset: -3px; }
 .dia-cargando { margin: 12px 8px; text-align: center; }
@@ -208,8 +208,10 @@ details.indicador > .lista { padding: 0 0 8px 40px; }
 .dia-bloque { --ancho: calc((100% - (var(--n) - 1) * 3px) / var(--n)); position: absolute; top: calc(var(--i) * var(--ppm) * 1px + 1px); height: calc(var(--d) * var(--ppm) * 1px - 3px); min-height: 14px;
   left: calc(var(--c) * (var(--ancho) + 3px)); width: var(--ancho); box-sizing: border-box; padding: 3px 6px; border-radius: 8px; overflow: hidden;
   display: flex; flex-direction: column; color: #fff; text-decoration: none; background: var(--fondo-bloque); -webkit-user-drag: none; }
-.dia-bloque b { font-size: 14px; line-height: 1.15; overflow-wrap: break-word; hyphens: auto; }
-.dia-bloque small { font-size: 11px; color: rgba(255, 255, 255, .9); line-height: 1.2; overflow-wrap: break-word; }
+/* Las palabras pasan de renglón solo por los espacios, nunca a la mitad («cuaderno / s», Fabio 15-nov); la que no cabe sola se corta
+   con «…» (el texto completo está en el título del bloque) */
+.dia-bloque b { flex-shrink: 0; font-size: 14px; line-height: 1.15; overflow: hidden; text-overflow: ellipsis; overflow-wrap: normal; word-break: normal; hyphens: manual; }
+.dia-bloque small { flex-shrink: 0; font-size: 11px; color: rgba(255, 255, 255, .9); line-height: 1.2; overflow: hidden; text-overflow: ellipsis; overflow-wrap: normal; word-break: normal; }
 .dia-etq { font-style: normal; font-weight: 700; padding: 0 4px; border-radius: 4px; background: rgba(0, 0, 0, .28); color: #fff; }
 .dia-bloque.angosto { padding: 3px 4px; }
 .dia-bloque.angosto b { font-size: 12px; }
@@ -462,3 +464,28 @@ fieldset.tambien legend { font-weight: 600; font-size: 13px; padding: 0 6px; }
 /* Usuarios eliminados por el administrador (14-nov-2026) */
 .chip-eliminado { background: color-mix(in srgb, var(--peligro) 14%, transparent); color: var(--peligro); }
 .aviso-caja.aviso-eliminado { background: color-mix(in srgb, var(--peligro) 12%, transparent); }
+
+/* ---------- SER · Psicología (15-nov-2026): botón tipo insignia, conversación privada ---------- */
+.ser-insignia { width: 120px; height: auto; flex: none; display: block; }
+.ser-insignia.mini { width: 64px; border: 0; background: none; box-shadow: none; padding: 0; }
+.ser-insignia.mediana { width: 150px; margin: 4px auto 12px; }
+.ser-boton { display: flex; align-items: center; gap: 14px; margin: 0 0 16px; padding: 12px 16px; border-radius: var(--radio); text-decoration: none; color: #1d2541;
+  background: linear-gradient(135deg, #fde7e8, #f6b9bc); border: 2px solid #1d2541; box-shadow: var(--sombra); position: relative; }
+.ser-boton:hover, .ser-boton:focus-visible { filter: brightness(1.03); outline: 3px solid var(--primario); outline-offset: 2px; }
+.ser-boton-texto { display: flex; flex-direction: column; gap: 2px; min-width: 0; flex: 1; }
+.ser-boton-texto b { font-size: 18px; letter-spacing: .02em; }
+.ser-boton-texto small { color: #3a4060; font-size: 14px; }
+.ser-boton .contador { position: static; margin-left: auto; }
+.ser-boton.ser-psi { padding: 10px 14px; }
+.ser-intro { text-align: center; }
+.ser-intro p { max-width: 560px; margin: 8px auto; }
+.ser-cab { display: flex; align-items: center; gap: 12px; margin-bottom: 8px; }
+.ser-cab small { display: block; color: var(--texto-2); }
+.ser-cab h2 { margin: 0; }
+.ser-privado { margin: 4px 0 10px; }
+.ser-hilo { min-height: 240px; }
+.ser-hilo .sala-msj.psi:not(.mio) { border-left: 4px solid #f6b9bc; }
+.ser-visto { display: block; text-align: right; color: var(--ok); font-weight: 600; }
+.ser-vacio { text-align: center; padding: 24px 8px; }
+.ser-fila.sin-leer b { font-weight: 800; }
+.ser-ultimo { display: block; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; max-width: 60ch; }

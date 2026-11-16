@@ -87,7 +87,7 @@ export const columnaCaja = ({ sola = false } = {}) => `
 export function notasHTML(a) {
   return `${a.nota ? `<p class="dia-nota ${a.tipoDia}" role="note">${esc(a.nota)}</p>` : ''}
     ${a.todoElDia.map((x) => `<a class="dia-todo" href="#/calendario?fecha=${a.fecha}">📌 ${esc(x.titulo)}</a>`).join('')}
-    ${!a.items.length ? `<p class="ayuda dia-vacio">${a.tipoDia === 'sin_clases' ? 'Sin clases hoy.' : 'Hoy no tienes clases ni eventos.'}</p>` : ''}`;
+    ${!a.items.length ? `<p class="ayuda dia-vacio">${a.tipoDia === 'sin_clases' ? 'Sin clases hoy.' : a.todoElDia.length ? 'Hoy no tienes clases ni eventos con hora.' : 'Hoy no tienes clases ni eventos.'}</p>` : ''}`;
 }
 
 // ---------------------------------------------------------------- Gestos (solo dentro de la vista de la columna)
@@ -108,26 +108,52 @@ export function conectarColumna(vista, { inicial = ESCALA.base, alCambiar = () =
   aplicar();
   const dist = (t) => Math.hypot(t[0].clientX - t[1].clientX, t[0].clientY - t[1].clientY);
   const medioY = (t) => (t[0].clientY + t[1].clientY) / 2 - vista.getBoundingClientRect().top;
+  // Al llegar arriba o abajo de la columna, seguir arrastrando mueve la PÁGINA, como si se deslizara fuera de la columna (Fabio,
+  // 15-nov-2026, video). Si el gesto empieza ya en el borde, eso lo hace el navegador solo (overscroll-behavior-y: auto); si llega al
+  // borde a mitad del gesto, el navegador se queda «pegado» a la columna y aquí se le pasa el resto del movimiento a la página.
+  const pagina = () => { for (let p = vista.parentElement; p; p = p.parentElement) { const s = getComputedStyle(p).overflowY; if ((s === 'auto' || s === 'scroll') && p.scrollHeight > p.clientHeight) return p; } return document.scrollingElement || document.documentElement; };
+  const enTope = () => vista.scrollTop <= 0;
+  const enFondo = () => vista.scrollTop + vista.clientHeight >= vista.scrollHeight - 1;
+  let dedo = null;
   // Dedos: uno mueve (desplazamiento nativo, touch-action: pan-y); dos acercan o alejan alrededor del punto medio
-  vista.addEventListener('touchstart', (e) => { if (e.touches.length >= 2) pinza = { d: dist(e.touches), ppm }; }, { passive: true });
+  vista.addEventListener('touchstart', (e) => {
+    if (e.touches.length >= 2) { pinza = { d: dist(e.touches), ppm }; dedo = null; return; }
+    dedo = { y: e.touches[0].clientY, tope: enTope(), fondo: enFondo() };
+  }, { passive: true });
   vista.addEventListener('touchmove', (e) => {
+    if (e.touches.length === 1 && dedo) {
+      const y = e.touches[0].clientY, dy = y - dedo.y;
+      dedo.y = y;
+      if (!enTope()) dedo.tope = false;
+      if (!enFondo()) dedo.fondo = false;
+      if ((dy < 0 && enFondo() && !dedo.fondo) || (dy > 0 && enTope() && !dedo.tope)) pagina().scrollBy(0, -dy);
+      return;
+    }
     if (e.touches.length < 2 || !pinza) return;
     e.preventDefault();
     escalar(pinza.ppm * dist(e.touches) / pinza.d, medioY(e.touches));
   }, { passive: false });
-  vista.addEventListener('touchend', (e) => { if (e.touches.length < 2) pinza = null; });
+  vista.addEventListener('touchend', (e) => { if (e.touches.length < 2) pinza = null; if (!e.touches.length) dedo = null; });
   // PC: Ctrl + rueda o pellizco del panel táctil (llega como rueda con Ctrl). La rueda sola desplaza como siempre.
   vista.addEventListener('wheel', (e) => {
     if (!e.ctrlKey) return;
     e.preventDefault();
     escalar(ppm * Math.exp(-e.deltaY * 0.01), e.clientY - vista.getBoundingClientRect().top);
   }, { passive: false });
-  // Ratón: arrastrar mueve la columna; si hubo arrastre, el clic que sigue no abre el bloque
-  const mover = (e) => { if (!raton) return; const dy = e.clientY - raton.y; if (Math.abs(dy) > 4) arrastro = true; if (arrastro) vista.scrollTop = raton.top - dy; };
+  // Ratón: arrastrar mueve la columna (y, pasado su borde, la página); si hubo arrastre, el clic que sigue no abre el bloque
+  const mover = (e) => {
+    if (!raton) return;
+    if (!arrastro) { if (Math.abs(e.clientY - raton.y) <= 4) return; arrastro = true; }
+    const d = e.clientY - raton.y, antes = vista.scrollTop;
+    raton.y = e.clientY;
+    vista.scrollTop = antes - d;
+    const resto = -d - (vista.scrollTop - antes);
+    if (Math.abs(resto) >= 1) pagina().scrollBy(0, resto);
+  };
   const soltar = () => { raton = null; window.removeEventListener('pointermove', mover); window.removeEventListener('pointerup', soltar); };
   vista.addEventListener('pointerdown', (e) => {
     if (e.pointerType !== 'mouse' || e.button !== 0) return;
-    raton = { y: e.clientY, top: vista.scrollTop }; arrastro = false;
+    raton = { y: e.clientY }; arrastro = false;
     window.addEventListener('pointermove', mover); window.addEventListener('pointerup', soltar);
   });
   vista.addEventListener('click', (e) => { if (arrastro) { e.preventDefault(); e.stopPropagation(); arrastro = false; } }, true);

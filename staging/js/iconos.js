@@ -91,7 +91,7 @@ export const ICONO_GRUPO = { Tablero: 'tablero', Perfil: 'persona', 'Comunicaci�
   Docencia: 'pizarra', 'Tesorería': 'billetera', 'Enfermería': 'salud', 'Matrícula': 'mochila', Pasarelas: 'enlace' };
 export const ICONO_RUTA = {
   inicio: 'tablero', pasarelas: 'enlace', 'info-personal': 'ficha', edocs: 'documento', perfil: 'cuenta', 'ajustes-colegio': 'ajustes', ayuda: 'ayuda',
-  bandeja: 'bandeja', 'bandeja-hijo': 'bandeja', redactar: 'redactar', enviados: 'enviar', cartelera: 'megafono', circulares: 'circular', pqrs: 'pqrs', salas: 'salas',
+  bandeja: 'bandeja', 'bandeja-hijo': 'bandeja', redactar: 'redactar', enviados: 'enviar', cartelera: 'megafono', circulares: 'circular', pqrs: 'pqrs', salas: 'salas', ser: 'corazon', 'ser/:id': 'corazon',
   calendario: 'calendario', personas: 'comunidad', seguimientos: 'seguimiento', compromisos: 'compromiso', ausencias: 'ausencia', procesos: 'procesos', archivos: 'carpeta',
   estructura: 'edificio', horario: 'reloj', album: 'album', planeaciones: 'libro', planeacion: 'libro', reportes: 'grafica', 'espacios-solicitudes': 'puerta', espacios: 'puerta',
   'tes-cartera': 'billetera', 'tes-facturar': 'factura', 'tes-pagos': 'tarjeta', 'tes-conceptos': 'etiqueta', tesoreria: 'consolidado', 'estado-cuenta': 'consolidado',

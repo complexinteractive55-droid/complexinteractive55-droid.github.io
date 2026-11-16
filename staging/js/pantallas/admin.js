@@ -562,7 +562,8 @@ export async function ajustesColegio(m) {
       <p class="ayuda">Como en Phidias: cada mensaje puede llevar un tipo (Circulares, Notificaciones, Transporte y permisos…) con su color en la bandeja y el calendario. Para cada tipo eliges quién puede enviarlo, si admite respuestas y si lleva número consecutivo. Sin tipos, todos los mensajes son iguales.</p>
       ${tiposMsg.length ? `<div class="lista">${tiposMsg.map((t) => `<button class="fila fila-boton" data-tipo-msg="${t.id}"><span class="avatar" style="background:${esc(t.color)}"></span><span class="crece"><b>${esc(t.nombre)}</b><small>Envían: ${esc(quienesEnvian(t.roles))}${t.permite_respuesta === false ? ' · sin respuestas' : ''}${t.numerar ? ` · numerado (va en ${t.consecutivo || 0})` : ''}${t.activo === false ? ' · inactivo' : ''}</small></span></button>`).join('')}</div>` : '<p class="ayuda">Aún no hay tipos de mensaje.</p>'}
       <div class="acciones"><button class="btn" data-tipo-msg-nuevo>＋ Tipo</button>${tiposMsg.length ? '' : '<button class="btn" data-tipo-msg-ejemplo>Cargar los tipos de ejemplo</button>'}</div>
-    </section>`;
+    </section>` + (await (await import('./ser.js')).seccionAjustes()); // SER · Psicología (15-nov-2026)
+  (await import('./ser.js')).conectarAjustes(m).catch(() => {});
   m.querySelector('[data-tipo-msg-nuevo]').onclick = async () => { if (await editarTipoMensaje(c, { color: '#1f4fd1', roles: null, permite_respuesta: true, numerar: false, activo: true, orden: (tiposMsg.at(-1)?.orden || 0) + 1 })) ajustesColegio(m); };
   m.querySelectorAll('[data-tipo-msg]').forEach((bt) => (bt.onclick = async () => { if (await editarTipoMensaje(c, tiposMsg.find((t) => t.id === bt.dataset.tipoMsg))) ajustesColegio(m); }));
   m.querySelector('[data-tipo-msg-ejemplo]')?.addEventListener('click', async () => {

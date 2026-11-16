@@ -72,6 +72,7 @@ const pant = {
   pqrs: () => import('./pantallas/pqrs.js'),
   album: () => import('./pantallas/album.js'),
   salas: () => import('./pantallas/salas.js'),
+  ser: () => import('./pantallas/ser.js'),
   planeaciones: () => import('./pantallas/planeaciones.js'),
   mensajeria: () => import('./pantallas/mensajeria.js'),
   aula: () => import('./pantallas/aula.js'),
@@ -227,6 +228,8 @@ const RUTAS = [
   ['album/:curso', async (p, m) => (await pant.album()).album(m, p)],
   ['salas', async (_, m) => (await pant.salas()).salas(m)],
   ['sala/:id', async (p, m) => (await pant.salas()).sala(m, p)],
+  ['ser', async (_, m) => (await pant.ser()).ser(m)], // SER · conversación privada con Psicología (15-nov-2026)
+  ['ser/:id', async (p, m) => (await pant.ser()).conversacion(m, p)],
   ['aviso/:id', async (p, m) => (await pant.salas()).avisoDetalle(m, p)],
   ['espacios', async (p, m) => (await pant.espacios()).solicitud(m, p)],
   ['espacios-solicitudes', async (p, m) => (await pant.espacios()).solicitudesAdmin(m, p)],
@@ -289,7 +292,7 @@ async function navegar() {
     console.error(err);
     if (yo === navegando) m.innerHTML = `<div class="vacio"><p>No se pudo cargar: ${esc(err.message)}</p><button class="btn" data-recargar>Reintentar</button></div>`;
   }
-  if (yo === navegando) { m.scrollTop = 0; window.scrollTo(0, 0); etiquetarTablas(m); const bx = $('#btn-exportar'); if (bx) bx.hidden = !m.querySelector('table'); }
+  if (yo === navegando) { m.scrollTop = 0; window.scrollTo(0, 0); etiquetarTablas(m); const bx = $('#btn-exportar'); if (bx) bx.hidden = !m.querySelector('table'); avisoSinRed(); tarjetaSER(); }
 }
 
 // Llegaron datos más nuevos del servidor para la pantalla que se está viendo (db.js los pidió por detrás):
@@ -335,7 +338,27 @@ window.addEventListener('complex:datos-nuevos', async () => {
   if (yo !== navegando) return;
   m.scrollTop = y; window.scrollTo(0, wy);
   etiquetarTablas(m);
+  avisoSinRed();
+  tarjetaSER();
 });
+
+// Sin internet: una franja discreta arriba del Tablero, no una ventana ni un aviso que tape (Fabio, 15-nov-2026: «si no hay acceso a
+// internet debe salir un aviso en tablero de forma no tan invasiva»). Se pone y se quita sola al perder o recuperar la conexión.
+const enTablero = () => /^(#\/?(inicio)?)?(\?.*)?$/.test(location.hash);
+function avisoSinRed() {
+  const m = main();
+  if (!m) return;
+  const hay = m.querySelector(':scope > [data-sin-red]');
+  const toca = !navigator.onLine && !!E.sesion && !!E.colegio && enTablero();
+  if (!toca) { hay?.remove(); return; }
+  if (hay) return;
+  const p = document.createElement('p');
+  p.className = 'sin-red'; p.dataset.sinRed = ''; p.setAttribute('role', 'status');
+  p.innerHTML = '<span aria-hidden="true">📡</span> <b>Sin conexión a internet.</b> <span>Se pone al día solo al volver.</span>';
+  m.prepend(p);
+}
+window.addEventListener('online', avisoSinRed);
+window.addEventListener('offline', avisoSinRed);
 
 // ---------------------------------------------------------------- Armazón (REA Phidias §1.2)
 // Menú lateral izquierdo agrupado (Tablero · Comunicación · Comunidad · Academia · Perfil),
@@ -358,7 +381,10 @@ function menuBase() {
   const hist = est ? [[`estudiante/${est}?tab=notas`, 'Historial de notas'], [`estudiante/${est}?tab=asistencia`, 'Asistencia']] : [];
   const tablero = { r: 'inicio', ic: '▦', t: 'Tablero' };
   const perfilG = (extra = []) => ({ t: 'Perfil', ic: '👤', items: [['info-personal', 'Información personal'], ...(E.rol === 'acudiente' || E.rol === 'estudiante' ? [['edocs', 'E-docs']] : []), ['perfil', 'Mi cuenta y ajustes'], ...extra, ['ayuda', 'Ayuda']] });
-  const conSalas = (g) => ({ ...g, items: [...g.items, ['salas', 'Salas de sección']] }); // chats de sección y avisos (personal)
+  const conSalas = (g) => conSer({ ...g, items: [...g.items, ['salas', 'Salas de sección']] }); // chats de sección y avisos (personal)
+  // SER · Psicología (15-nov-2026): estudiantes y acudientes siempre; del personal, solo quien el administrador designó
+  const serResp = E.ser?.colegio === E.colegio?.id && E.ser?.soy_responsable;
+  function conSer(g) { return E.rol === 'estudiante' || E.rol === 'acudiente' || serResp ? { ...g, items: [...g.items, ['ser', 'SER · Psicología', 'ser']] } : g; }
   if (E.rol === 'admin') return [tablero, conSalas(COMUNICACION),
     { t: 'Comunidad', ic: '👥', items: [['calendario', 'Calendario'], ['personas', 'Personas'], ['seguimientos', 'Seguimientos'], ['compromisos', 'Compromisos'], ['ausencias', 'Ausencias reportadas'], ['procesos', 'Procesos en línea'], ['archivos', 'Archivos']] },
     { t: 'Académico', ic: '🎓', items: [['estructura', 'Estructura del colegio'], ['horario', 'Horarios'], ['album', 'Álbum por curso'], ['planeaciones', 'Planeaciones'], ['reportes', 'Reportes'], ['espacios-solicitudes', 'Solicitudes de espacios']] },
@@ -371,7 +397,7 @@ function menuBase() {
     perfilG()];
   // Todos en la comunidad presentan PQRS, también los estudiantes (Fabio, 4-nov-2026; antes, desde el 2-nov, la presentaba solo su
   // acudiente). No tienen el módulo de Circulares: la circular les llega a la Bandeja de entrada como PDF (Fabio, 3-nov-2026)
-  if (E.rol === 'estudiante') return [tablero, { ...COMUNICACION, items: COMUNICACION.items.filter(([r]) => r !== 'circulares') },
+  if (E.rol === 'estudiante') return [tablero, conSer({ ...COMUNICACION, items: COMUNICACION.items.filter(([r]) => r !== 'circulares') }),
     { t: 'Comunidad', ic: '👥', items: [['calendario', 'Calendario'], [`estudiante/${E.yo.id}?tab=observador`, 'Seguimientos'], [`estudiante/${E.yo.id}?tab=compromisos`, 'Compromisos'], ['procesos', 'Procesos en línea'], ['archivos', 'Archivos']] },
     { t: 'Academia', ic: '🎓', items: [['aula', 'Aula'], ['planeacion', 'Planeación'], ['horario', 'Horario'], ...hist] },
     perfilG()];
@@ -391,7 +417,7 @@ function menuBase() {
     { t: 'Academia', ic: '🎓', items: [['aula', 'Aula'], ['planeacion', 'Planeación'], [`estudiante/${est}?tab=notas`, 'Historial'], ['horario', 'Horario'], [`estudiante/${est}?tab=asistencia`, 'Asistencia']] },
     { t: 'Matrícula', ic: '🎒', items: [['obligaciones', 'Obligaciones']] },
     { t: 'Tesorería', ic: '💰', items: [[`estado-cuenta/${est}`, 'Consolidado']] }];
-  return [tablero, perfilG(), COMUNICACION, { t: 'Comunidad', ic: '👥', items: [['calendario', 'Calendario'], ['procesos', 'Procesos'], ['archivos', 'Archivos globales']] }, { t: 'Matrícula', ic: '🎒', items: [['obligaciones', 'Obligaciones']] }, { t: 'Tesorería', ic: '💰', items: [['tesoreria', 'Consolidado']] }];
+  return [tablero, perfilG(), conSer(COMUNICACION), { t: 'Comunidad', ic: '👥', items: [['calendario', 'Calendario'], ['procesos', 'Procesos'], ['archivos', 'Archivos globales']] }, { t: 'Matrícula', ic: '🎒', items: [['obligaciones', 'Obligaciones']] }, { t: 'Tesorería', ic: '💰', items: [['tesoreria', 'Consolidado']] }];
 }
 const SECCION = { 'curso/:id': 'estructura', 'notas/:asig': 'clases', 'asistencia/:asig': 'clases', 'circular/:id': 'circulares', 'circulares-institucionales': 'circulares', 'circulares/ajustes': 'circulares', 'circular-institucional/:id': 'circulares', 'mensaje/:id': 'bandeja', 'pqrs/:id': 'pqrs', 'aula/:asig': 'aula', 'tarea/:id': 'aula', 'examen/:id': 'aula', 'estado-cuenta/:est': 'tesoreria', 'proceso/:id': 'procesos', 'proceso/:id/respuestas': 'procesos', 'seguimiento/:id': 'seguimientos', 'docente/:id': 'docentes', 'grupo/:asig': 'clases', 'consolidado/:asig': 'clases', 'observaciones-boletin/:asig': 'clases', 'remediales/:asig': 'clases' };
 
@@ -403,7 +429,9 @@ function itemActivo(ruta, patron) {
   return hp === rp || SECCION[patron] === rp;
 }
 
+let patronPintado = null;
 function pintarArmazon(patron) {
+  patronPintado = patron;
   const app = $('#app');
   if (!app.dataset.armado) {
     app.dataset.armado = '1';
@@ -505,9 +533,28 @@ async function ponerFotos(raiz) {
 }
 
 async function pintarContadores() {
+  contadorSER(); // SER · Psicología: en paralelo (no frena el de la Bandeja)
   const n = await (await pant.mensajeria()).contarNoLeidos();
   document.querySelectorAll('[data-contador="noLeidos"]').forEach((el) => { el.textContent = n; el.hidden = !n; });
   $('#btn-menu')?.classList.toggle('con-aviso', n > 0);
+}
+
+// SER · Psicología: mensajes sin leer en el menú; si la persona designada cambió (la designaron o se la quitaron), se repinta el
+// menú con o sin «SER · Psicología», y en su Tablero sale la tarjeta de SER.
+async function contadorSER() {
+  if (!E.colegio || viendoHijo()) return;
+  const antes = !!(E.ser?.colegio === E.colegio.id && E.ser.soy_responsable);
+  const s = await (await pant.ser()).estadoSER().catch(() => null);
+  if (!s) return;
+  const n = Number(s.sin_leer) || 0;
+  document.querySelectorAll('[data-contador="ser"]').forEach((el) => { el.textContent = n; el.hidden = !n; });
+  if (!!s.soy_responsable !== antes && patronPintado && $('#menu')) pintarArmazon(patronPintado);
+  tarjetaSER();
+}
+function tarjetaSER() {
+  const m = main();
+  if (!m || !enTablero() || !(E.ser?.colegio === E.colegio?.id && E.ser?.soy_responsable)) { m?.querySelector(':scope > [data-ser-psi]')?.remove(); return; }
+  pant.ser().then((x) => { const vieja = m.querySelector(':scope > [data-ser-psi]'); const html = x.tarjetaResponsable(E.ser); if (vieja) vieja.outerHTML = html; else (m.querySelector(':scope > [data-sin-red]') || null) ? m.querySelector(':scope > [data-sin-red]').insertAdjacentHTML('afterend', html) : m.insertAdjacentHTML('afterbegin', html); }).catch(() => {});
 }
 
 function abrirMenu(si) {
@@ -909,6 +956,7 @@ async function salir() {
   (await pant.pqrs().catch(() => null))?.olvidarTodo?.();
   (await pant.album().catch(() => null))?.olvidar?.();
   (await pant.salas().catch(() => null))?.olvidar?.();
+  (await pant.ser().catch(() => null))?.olvidar?.(); E.ser = null;
   dejarDeEscuchar?.();
   dejarDeEscuchar = null;
   dejarNotas?.(); dejarNotas = null; notasDe = null;
@@ -923,6 +971,28 @@ async function salir() {
 }
 
 // ---------------------------------------------------------------- Arranque
+// Abrir la app sin internet en un equipo que todavía no tiene nada guardado (o le falta algo para armar la entrada): en vez de
+// quedarse en la rueda de carga, lo dice y se abre sola cuando vuelva la conexión (Fabio, 15-nov-2026). Con lo guardado en el
+// equipo esto no aparece: la app abre normal con la franja «Sin conexión a internet» en el Tablero.
+async function arrancarSesionOSinRed() {
+  try { await arrancarSesion(); }
+  catch (e) {
+    console.warn(e);
+    if (navigator.onLine && !/conexión|fetch|network/i.test(e?.message || '')) throw e;
+    const app = $('#app');
+    delete app.dataset.armado;
+    app.innerHTML = `
+      <div class="entrada"><div class="entrada-caja">
+        <div class="marca"><img class="logo-grande" src="img/logo-complex.svg" alt="nodo"></div>
+        <p class="sin-red" role="status"><span aria-hidden="true">📡</span> <b>Sin conexión a internet.</b> <span>nodo se abre solo cuando vuelva la conexión.</span></p>
+        <button class="btn btn-ancho" id="btn-reintentar-red">Reintentar</button>
+      </div></div>`;
+    const otraVez = () => { window.removeEventListener('online', otraVez); arrancarSesionOSinRed(); };
+    window.addEventListener('online', otraVez);
+    $('#btn-reintentar-red').onclick = otraVez;
+  }
+}
+
 async function arrancarSesion() {
   E.sesion = await E.db.auth.session();
   if (!E.sesion) return navegar();
@@ -984,6 +1054,8 @@ function medirLlegada(id) {
 let recuperadoEn = 0;
 async function recuperar() {
   if (!E.sesion || !E.colegio || !desbloqueada || Date.now() - recuperadoEn < 8000) return;
+  // Sin internet NO se borra lo guardado: es lo único que se puede mostrar (al volver la conexión, el evento «online» llama otra vez)
+  if (!navigator.onLine) return;
   recuperadoEn = Date.now();
   E.db.olvidar?.();
   // primero los permisos (si cambiaron, no se repinta nada con los de antes); después lo que haya llegado
@@ -1036,7 +1108,7 @@ async function arrancar() {
     // Llegó desde el enlace de "Olvidé mi contraseña": pedir la contraseña nueva
     if (evento === 'PASSWORD_RECOVERY') cambiarClave(true);
   });
-  await arrancarSesion();
+  await arrancarSesionOSinRed();
   if (new URLSearchParams(location.search).has('instalar') && !instalada()) {
     history.replaceState(null, '', location.pathname + location.hash);
     // El aviso de Chrome necesita un toque de la persona: se muestra un botón grande
@@ -1067,11 +1139,12 @@ async function arrancar() {
 // PC queda abierta todo el día: Fabio, 4-nov-2026, «siempre la app debe actualizarse automáticamente») se compara con version.txt
 // del servidor. Si hay una nueva:
 //  - recién abierta (primeros 20 s): se recarga sola, una vez por versión;
-//  - en uso: aviso "Toca para actualizar" y se aplica SOLA en el primer momento seguro, sin borrar lo que se está escribiendo:
-//    al cambiar de pantalla (lo de la pantalla anterior se descarta igual que en cualquier navegación), tras INACTIVA_MIN minutos
-//    sin usarla si no hay nada escrito, ni una ventana abierta, ni un archivo subiendo, o al volver después de MIN_FUERA minutos.
+//  - en uso: se aplica SOLA, sin botón ni aviso (Fabio, 15-nov-2026: «no debería pedir dar click en el botón de actualizar»), en el
+//    primer momento seguro, sin borrar lo que se está escribiendo: al cambiar de pantalla (lo de la pantalla anterior se descarta
+//    igual que en cualquier navegación), tras INACTIVA_MIN minutos sin tocarla si no hay nada escrito, ni una ventana abierta, ni un
+//    archivo subiendo, o al volver a la app (desde otra app o el inicio del celular) si en ese momento no hay nada a medias.
 const cargadaEn = Date.now();
-const CADA_MIN = 5, INACTIVA_MIN = 2;
+const CADA_MIN = 5, INACTIVA_MIN = 0.5;
 let actualizacionPendiente = false;
 let ocultaDesde = 0;
 let versionNueva = '', ultimaActividad = Date.now(), revisadaEn = 0;
@@ -1105,14 +1178,9 @@ setInterval(() => {
 window.addEventListener('online', () => buscarVersion(false));
 window.addEventListener('focus', () => { if (Date.now() - revisadaEn >= 60000) buscarVersion(false); }); // volver a la ventana del PC (sin minimizarla)
 
-function avisoVersion() {
-  if (document.querySelector('.aviso-version')) return;
-  const b = document.createElement('button');
-  b.className = 'aviso ver aviso-version';
-  b.textContent = '🔄 Hay una versión nueva de nodo. Toca para actualizar.';
-  b.onclick = () => location.reload();
-  document.body.appendChild(b);
-}
+// Antes mostraba «Hay una versión nueva de nodo. Toca para actualizar.»; desde el 15-nov-2026 no se pide nada: la versión nueva
+// queda pendiente y se aplica sola (arriba). (La clase .aviso-version la sigue usando el botón «Toca aquí para instalar nodo».)
+function avisoVersion() {}
 
 async function buscarVersion(puedeRecargar) {
   if (!/^\d{14}$/.test(APP_VERSION) || !navigator.onLine) return; // en desarrollo (dev) o sin internet, nada
@@ -1124,7 +1192,7 @@ async function buscarVersion(puedeRecargar) {
   const reg = await navigator.serviceWorker?.getRegistration().catch(() => null);
   await reg?.update().catch(() => {});
   const k = 'complexstg_recarga_' + v;
-  if (puedeRecargar && (Date.now() - cargadaEn < 20000 || !document.querySelector('.ventana')) && !sessionStorage.getItem(k)) {
+  if (puedeRecargar && (Date.now() - cargadaEn < 20000 || seguroParaActualizar()) && !sessionStorage.getItem(k)) {
     sessionStorage.setItem(k, '1');
     sessionStorage.setItem('complexstg_version_objetivo', v);
     setTimeout(() => location.reload(), 1500); // un momento para que el service worker nuevo tome los archivos
@@ -1139,7 +1207,9 @@ document.addEventListener('visibilitychange', () => {
   const largo = !!ocultaDesde && Date.now() - ocultaDesde >= MIN_FUERA * 60000;
   ocultaDesde = 0;
   if (largo && actualizacionPendiente) return location.reload();
-  buscarVersion(largo);
+  // Volver a la app es el momento natural (como una app nativa): si hay versión nueva y nada a medias, se toma ya
+  if (actualizacionPendiente && seguroParaActualizar() && aplicarVersion()) return;
+  buscarVersion(largo || seguroParaActualizar());
 });
 
 // Exportar a Excel (CSV) las tablas de la pantalla actual, como "Exportar xls / csv" de Phidias.

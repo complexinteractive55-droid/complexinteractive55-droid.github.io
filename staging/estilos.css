@@ -545,3 +545,12 @@ input[type=file] { padding: 10px; background: var(--superficie-2); }
 .chip-pdf { font-size: .8em; }
 .envio-paso { border-top: 1px solid var(--borde); padding-top: 10px; margin-top: 10px; }
 .envio-alcance { display: flex; flex-wrap: wrap; gap: 6px 14px; max-height: 220px; overflow: auto; }
+
+/* Como una app nativa (Fabio, 15-nov-2026): jalar desde arriba NO recarga la página (sin «tirar para actualizar» del navegador); la
+   app se pone al día sola. Solo quita el gesto del navegador: el desplazamiento normal sigue igual. */
+html, body { overscroll-behavior-y: none; }
+
+/* Sin internet: franja discreta arriba del Tablero (no tapa nada; se quita sola al volver la conexión) */
+.sin-red { display: flex; flex-wrap: wrap; align-items: baseline; gap: 4px 6px; margin: 0 0 12px; padding: 8px 12px; border-radius: 10px; font-size: 14px; line-height: 1.35;
+  background: color-mix(in srgb, var(--alerta, #b7791f) 14%, transparent); border: 1px solid color-mix(in srgb, var(--alerta, #b7791f) 45%, transparent); color: var(--texto); }
+.sin-red span:last-child { color: var(--texto-2); }
