@@ -74,6 +74,7 @@ const pant = {
   album: () => import('./pantallas/album.js'),
   salas: () => import('./pantallas/salas.js'),
   ser: () => import('./pantallas/ser.js'),
+  manual: () => import('./pantallas/manual.js'),
   planeaciones: () => import('./pantallas/planeaciones.js'),
   mensajeria: () => import('./pantallas/mensajeria.js'),
   aula: () => import('./pantallas/aula.js'),
@@ -229,6 +230,7 @@ const RUTAS = [
   ['album/:curso', async (p, m) => (await pant.album()).album(m, p)],
   ['salas', async (_, m) => (await pant.salas()).salas(m)],
   ['sala/:id', async (p, m) => (await pant.salas()).sala(m, p)],
+  ['manual', async (_, m) => (await pant.manual()).manual(m)], // Manual de Convivencia (18-nov-2026): toda la comunidad
   ['ser', async (_, m) => (await pant.ser()).ser(m)], // SER · conversación privada con Psicología (15-nov-2026)
   ['ser/:id', async (p, m) => (await pant.ser()).conversacion(m, p)],
   ['aviso/:id', async (p, m) => (await pant.salas()).avisoDetalle(m, p)],
@@ -386,38 +388,38 @@ function menuBase() {
   // SER (Fabio, 16-nov-2026: «lo deben tener todos los perfiles»): todos, al final de Comunicación; quien lo responde ve ahí su bandeja
   function conSer(g) { return { ...g, items: [...g.items, ['ser', 'SER', 'ser']] }; }
   if (E.rol === 'admin') return [tablero, conSalas(COMUNICACION),
-    { t: 'Comunidad', ic: '👥', items: [['calendario', 'Calendario'], ['personas', 'Personas'], ['seguimientos', 'Seguimientos'], ['compromisos', 'Compromisos'], ['ausencias', 'Ausencias reportadas'], ['procesos', 'Procesos en línea'], ['archivos', 'Archivos']] },
+    { t: 'Comunidad', ic: '👥', items: [['calendario', 'Calendario'], ['manual', 'Manual de convivencia'], ['personas', 'Personas'], ['seguimientos', 'Seguimientos'], ['compromisos', 'Compromisos'], ['ausencias', 'Ausencias reportadas'], ['procesos', 'Procesos en línea'], ['archivos', 'Archivos']] },
     { t: 'Académico', ic: '🎓', items: [['estructura', 'Estructura del colegio'], ['horario', 'Horarios'], ['album', 'Álbum por curso'], ['planeaciones', 'Planeaciones'], ['reportes', 'Reportes'], ['espacios-solicitudes', 'Solicitudes de espacios']] },
     { t: 'Tesorería', ic: '💰', items: [['tesoreria?tab=cartera', 'Cartera'], ['tesoreria?tab=facturar', 'Facturar'], ['tesoreria?tab=pagos', 'Pagos'], ['tesoreria?tab=conceptos', 'Conceptos']] },
     perfilG([['ajustes-colegio', 'Ajustes del colegio']])];
   if (E.rol === 'profesor') return [tablero, conSalas(comunicacion()),
-    { t: 'Comunidad', ic: '👥', items: [['calendario', 'Calendario'], ['seguimientos', 'Seguimientos'], ['compromisos', 'Compromisos'], ['salidas', 'Permisos de salida'], ['procesos', 'Procesos en línea'], ['archivos', 'Archivos globales']] },
+    { t: 'Comunidad', ic: '👥', items: [['calendario', 'Calendario'], ['manual', 'Manual de convivencia'], ['seguimientos', 'Seguimientos'], ['compromisos', 'Compromisos'], ['salidas', 'Permisos de salida'], ['procesos', 'Procesos en línea'], ['archivos', 'Archivos globales']] },
     { t: 'Docencia', ic: '🧑‍🏫', items: [['direccion', 'Dirección de grupo'], ['clases', 'Clases'], ['album', 'Álbum por curso'], ['reportes', 'Reportes']] },
     { t: 'Academia', ic: '🎓', items: [['aula', 'Aula'], ['horario', 'Mi horario'], ['planeaciones', 'Planeaciones'], ['espacios', 'Solicitud de espacios']] },
     perfilG()];
   // Todos en la comunidad presentan PQRS, también los estudiantes (Fabio, 4-nov-2026; antes, desde el 2-nov, la presentaba solo su
   // acudiente). No tienen el módulo de Circulares: la circular les llega a la Bandeja de entrada como PDF (Fabio, 3-nov-2026)
   if (E.rol === 'estudiante') return [tablero, conSer({ ...COMUNICACION, items: COMUNICACION.items.filter(([r]) => r !== 'circulares') }),
-    { t: 'Comunidad', ic: '👥', items: [['calendario', 'Calendario'], [`estudiante/${E.yo.id}?tab=observador`, 'Seguimientos'], [`estudiante/${E.yo.id}?tab=compromisos`, 'Compromisos'], ['procesos', 'Procesos en línea'], ['archivos', 'Archivos']] },
+    { t: 'Comunidad', ic: '👥', items: [['calendario', 'Calendario'], ['manual', 'Manual de convivencia'], [`estudiante/${E.yo.id}?tab=observador`, 'Seguimientos'], [`estudiante/${E.yo.id}?tab=compromisos`, 'Compromisos'], ['procesos', 'Procesos en línea'], ['archivos', 'Archivos']] },
     { t: 'Academia', ic: '🎓', items: [['aula', 'Aula'], ['planeacion', 'Planeación'], ['horario', 'Horario'], ...hist] },
     perfilG()];
   if (E.rol === 'enfermeria') return [tablero, conSalas(comunicacion()),
     { t: 'Enfermería', ic: '🩺', items: [['salidas', 'Permisos de salida'], ['seguimientos', 'Prerreportes'], ['album', 'Álbum por curso'], ['docentes', 'Docentes']] },
-    { t: 'Comunidad', ic: '👥', items: [['calendario', 'Calendario'], ['archivos', 'Archivos globales']] },
+    { t: 'Comunidad', ic: '👥', items: [['calendario', 'Calendario'], ['manual', 'Manual de convivencia'], ['archivos', 'Archivos globales']] },
     perfilG()];
   if (E.rol === 'director_seccion') return [tablero, conSalas(comunicacion()),
-    { t: 'Comunidad', ic: '👥', items: [['calendario', 'Calendario'], ['seguimientos', 'Seguimientos'], ['compromisos', 'Compromisos'], ['salidas', 'Permisos de salida'], ['archivos', 'Archivos globales']] },
+    { t: 'Comunidad', ic: '👥', items: [['calendario', 'Calendario'], ['manual', 'Manual de convivencia'], ['seguimientos', 'Seguimientos'], ['compromisos', 'Compromisos'], ['salidas', 'Permisos de salida'], ['archivos', 'Archivos globales']] },
     { t: 'Académico', ic: '🎓', items: [['planeaciones', 'Planeaciones'], ['horario', 'Horarios'], ['album', 'Álbum por curso'], ['reportes', 'Reportes'], ['docentes', 'Docentes']] },
     perfilG()];
   // acudiente
   if (viendoHijo()) return [tablero,
     { t: 'Perfil', ic: '👤', items: [['info-personal', 'Información personal'], [`estudiante/${est}?tab=ficha`, 'Ficha médica'], ['edocs', 'E-docs']] },
     conSer({ t: 'Comunicación', ic: '💬', items: [['bandeja-hijo', 'Bandeja de entrada del estudiante'], ['circulares', 'Circulares'], ['pqrs', 'PQRS', 'pqrs']] }), // sus PQRS, también desde la pestaña del hijo (4-nov-2026)
-    { t: 'Comunidad', ic: '👥', items: [['calendario', 'Calendario'], [`estudiante/${est}?tab=observador`, 'Seguimientos'], [`estudiante/${est}?tab=compromisos`, 'Compromisos'], ['salidas', 'Permisos de salida'], ['procesos', 'Procesos en línea'], ['archivos', 'Archivos globales']] },
+    { t: 'Comunidad', ic: '👥', items: [['calendario', 'Calendario'], ['manual', 'Manual de convivencia'], [`estudiante/${est}?tab=observador`, 'Seguimientos'], [`estudiante/${est}?tab=compromisos`, 'Compromisos'], ['salidas', 'Permisos de salida'], ['procesos', 'Procesos en línea'], ['archivos', 'Archivos globales']] },
     { t: 'Academia', ic: '🎓', items: [['aula', 'Aula'], ['planeacion', 'Planeación'], [`estudiante/${est}?tab=notas`, 'Historial'], ['horario', 'Horario'], [`estudiante/${est}?tab=asistencia`, 'Asistencia']] },
     { t: 'Matrícula', ic: '🎒', items: [['obligaciones', 'Obligaciones']] },
     { t: 'Tesorería', ic: '💰', items: [[`estado-cuenta/${est}`, 'Consolidado']] }];
-  return [tablero, perfilG(), conSer(COMUNICACION), { t: 'Comunidad', ic: '👥', items: [['calendario', 'Calendario'], ['procesos', 'Procesos'], ['archivos', 'Archivos globales']] }, { t: 'Matrícula', ic: '🎒', items: [['obligaciones', 'Obligaciones']] }, { t: 'Tesorería', ic: '💰', items: [['tesoreria', 'Consolidado']] }];
+  return [tablero, perfilG(), conSer(COMUNICACION), { t: 'Comunidad', ic: '👥', items: [['calendario', 'Calendario'], ['manual', 'Manual de convivencia'], ['procesos', 'Procesos'], ['archivos', 'Archivos globales']] }, { t: 'Matrícula', ic: '🎒', items: [['obligaciones', 'Obligaciones']] }, { t: 'Tesorería', ic: '💰', items: [['tesoreria', 'Consolidado']] }];
 }
 const SECCION = { 'curso/:id': 'estructura', 'notas/:asig': 'clases', 'asistencia/:asig': 'clases', 'circular/:id': 'circulares', 'circulares-institucionales': 'circulares', 'circulares/ajustes': 'circulares', 'circular-institucional/:id': 'circulares', 'mensaje/:id': 'bandeja', 'pqrs/:id': 'pqrs', 'aula/:asig': 'aula', 'tarea/:id': 'aula', 'examen/:id': 'aula', 'estado-cuenta/:est': 'tesoreria', 'proceso/:id': 'procesos', 'proceso/:id/respuestas': 'procesos', 'seguimiento/:id': 'seguimientos', 'docente/:id': 'docentes', 'grupo/:asig': 'clases', 'consolidado/:asig': 'clases', 'observaciones-boletin/:asig': 'clases', 'remediales/:asig': 'clases' };
 

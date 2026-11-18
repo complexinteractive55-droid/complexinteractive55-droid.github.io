@@ -284,7 +284,7 @@ export async function crearDbSupabase() {
 //  - en modo real se guarda en el equipo (IndexedDB, no localStorage: así no le quita espacio a Relax,
 //    que vive en el mismo dominio) para abrir la app al instante; se borra al cerrar sesión.
 const VIDA = 30000;
-const RPC_LECTURA = new Set(['mis_contactos', 'personas_colegio', 'mi_intento']);
+const RPC_LECTURA = new Set(['mis_contactos', 'personas_colegio', 'mi_intento', 'manual_estado', 'manual_articulo', 'manual_buscar']);
 // Lecturas que van siempre al servidor y no marcan lo demás «por revisar» (el hilo de una PQRS se consulta cada poco); también el
 // cursor de lectura de la PQRS (solo cambia «hasta dónde vi yo», nada que esté en la copia del equipo)
 const RPC_DIRECTA = new Set(['pqrs_mensajes', 'pqrs_marcar_leido', 'mensajes_sin_leer', 'hora_servidor', 'album_cursos', 'album_curso',
@@ -521,6 +521,8 @@ export function crearDbDemo() {
   const cuentaBloqueada = (perfil) => tabla('usuarios_eliminados').some((e) => e.perfil_id === perfil && !e.restaurado_en && e.cuenta_bloqueada);
   let pqrsDemo = null; // PQRS (pqrs_demo.js, mismas reglas que la base): se carga la primera vez que se usa
   let salasDemo = null; // salas de sección y avisos (salas_demo.js, mismas reglas que la base)
+  let manualDemo = null; // Manual de Convivencia (manual_demo.js, mismas reglas que 20261118100000)
+  const manDemo = async () => (manualDemo ||= (await import('./manual_demo.js')).crearManualDemo({ tabla, usuario, guardar, ahora, err }));
   let serDemo = null; // SER · conversación privada con Psicología (ser_demo.js, mismas reglas que la base)
   let calendarioDemo = null;
   let enviosDemo = null;
@@ -997,6 +999,7 @@ export function crearDbDemo() {
         if (k && tabla(n).some((x) => k.every((c) => x[c] === r[c]))) err('Ese dato ya existe.');
         // como la llave primaria de la base: un id que ya existe no entra dos veces (un reintento tras una respuesta perdida, 3-nov-2026)
         if (f.id && tabla(n).some((x) => x.id === f.id)) err('Ese dato ya existe.');
+        if (n === 'observaciones') (await manDemo()).sustento(r, null); // como el trigger observacion_sustento
         if (n === 'circular_borradores') {
           if (r.solicitud_id && tabla(n).some((x) => x.colegio_id === r.colegio_id && x.solicitud_id === r.solicitud_id)) err('Ese dato ya existe.');
           numerarBorrador(r);
@@ -1025,6 +1028,13 @@ export function crearDbDemo() {
     async update(n, cambios, eq) {
       await lento();
       const out = [];
+      if (n === 'observaciones') { // como el trigger observacion_sustento: valida antes de cambiar nada
+        const md = await manDemo();
+        const nuevas = new Map(tabla(n).filter((f) => coincide(f, { eq })).map((f) => { const r = { ...f, ...cambios }; md.sustento(r, f); return [f, r]; }));
+        tabla(n).forEach((f, i) => { if (nuevas.has(f)) { tabla(n)[i] = completar(n, nuevas.get(f)); out.push(copia(tabla(n)[i])); } });
+        guardar();
+        return out;
+      }
       tabla(n).forEach((f, i) => {
         // Como el trigger circular_borrador_fijo: la versión sube sola y lo de origen no cambia
         if (coincide(f, { eq }) && (n !== 'circular_borradores' || borradorMio(f))) { tabla(n)[i] = completar(n, n === 'circular_borradores' ? actualizarBorrador(f, cambios) : { ...f, ...cambios }); if ('nota' in cambios || 'pendiente_revision' in cambios) aPlanilla(n, tabla(n)[i]);
@@ -1085,6 +1095,7 @@ export function crearDbDemo() {
         const vigente = (id) => { const m = tabla('mensajes').find((x) => x.id === id); return !!m && (!m.expira_en || m.expira_en > ahora()); };
         return tabla('mensaje_destinatarios').filter((d) => d.colegio_id === a.p_colegio && d.perfil_id === yo && !d.leido_en && !d.eliminado && !d.archivado && vigente(d.mensaje_id)).length;
       }
+      if (nombre.startsWith('manual_')) return (await manDemo()).rpc(nombre, a);
       if (nombre.startsWith('ser_')) {
         serDemo ||= (await import('./ser_demo.js')).crearSerDemo({ tabla, usuario, guardar, ahora, err });
         return serDemo(nombre, a);
