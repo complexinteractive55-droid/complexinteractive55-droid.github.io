@@ -572,3 +572,8 @@ html, body { overscroll-behavior-y: none; }
 .grupo-faltas, .capitulo-manual { border-top: 1px solid var(--borde); }
 .grupo-faltas summary small, .capitulo-manual summary small { color: var(--texto-2); }
 .falta-manual { padding: 0 8px; border-bottom: 1px solid var(--borde); }
+/* Calendario › Semana: al deslizar el dedo, la semana se corre un poco hacia donde va mientras carga la otra (18-nov-2026) */
+.cal-semana { transition: transform .18s ease-out, opacity .18s ease-out; }
+.cal-semana.sem-sale-izq { transform: translateX(-24px); opacity: .5; }
+.cal-semana.sem-sale-der { transform: translateX(24px); opacity: .5; }
+@media (prefers-reduced-motion: reduce) { .cal-semana { transition: none; } }

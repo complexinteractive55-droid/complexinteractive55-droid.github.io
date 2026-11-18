@@ -180,7 +180,8 @@ export async function calendario(m, p) {
       <aside class="cal-capas"><h3 class="sub">Capas</h3>${capas.map((c) => `<label class="check"><input type="checkbox" data-capa="${c.id}" ${ocultas.has(c.id) ? '' : 'checked'}><i class="capa-color" style="background:${c.color}"></i> ${esc(c.nombre)}</label>`).join('')}</aside>
     </div>`;
 
-  if (semana) semana.conectar(m);
+  // Deslizar el dedo cambia de semana (Fabio, 18-nov-2026: «quiero deslizar el dedo»): a la derecha la anterior, a la izquierda la siguiente
+  if (semana) semana.conectar(m, { anterior: ruta(clave(new Date(ref.getTime() - 7 * 864e5))), siguiente: ruta(clave(new Date(ref.getTime() + 7 * 864e5))) });
   m.querySelectorAll('[data-capa]').forEach((c) => (c.onchange = () => {
     const s = new Set(pref('cal_ocultas') || []);
     c.checked ? s.delete(c.dataset.capa) : s.add(c.dataset.capa);
@@ -203,6 +204,23 @@ export async function calendario(m, p) {
   m.querySelector('[data-privada]')?.addEventListener('click', async () => { if (await editarPrivada(null, hoy.fecha)) calendario(m, p); });
   m.querySelector('[data-importar]')?.addEventListener('click', async () => { if (await importarCronograma(crono)) calendario(m, p); });
   m.querySelector('[data-exportar]').onclick = () => exportarICS(visibles);
+}
+
+// Un dedo que se desliza de lado (más de 60 px, claramente más horizontal que vertical y en menos de 0,8 s) pasa a la semana anterior
+// (hacia la derecha) o a la siguiente (hacia la izquierda), como en Google Calendar. Solo escucha en la semana (no en toda la app); dos
+// dedos (zoom) o un arrastre vertical (mover las horas) no cuentan. Las flechas ‹ › siguen igual.
+export function deslizarSemana(caja, { anterior, siguiente }) {
+  let ini = null;
+  caja.addEventListener('touchstart', (e) => { ini = e.touches.length === 1 ? { x: e.touches[0].clientX, y: e.touches[0].clientY, t: Date.now() } : null; }, { passive: true });
+  caja.addEventListener('touchmove', (e) => { if (e.touches.length > 1) ini = null; }, { passive: true });
+  caja.addEventListener('touchend', (e) => {
+    if (!ini || e.changedTouches.length !== 1) { ini = null; return; }
+    const dx = e.changedTouches[0].clientX - ini.x, dy = e.changedTouches[0].clientY - ini.y, rapido = Date.now() - ini.t < 800;
+    ini = null;
+    if (!rapido || Math.abs(dx) < 60 || Math.abs(dx) < 1.5 * Math.abs(dy)) return;
+    caja.classList.add(dx > 0 ? 'sem-sale-der' : 'sem-sale-izq');
+    location.hash = dx > 0 ? anterior : siguiente;
+  });
 }
 
 // ---------------------------------------------------------------- Semana (Fabio, 16-nov-2026: «por semana como el de Google calendario»)
@@ -231,10 +249,11 @@ async function armarSemana(b, fechaRef, visibles, crono) {
     html: `<section class="dia-col semana cal-semana" data-semana aria-label="Semana del ${esc(titulo)}">
       <div class="dia-acciones sem-acciones"><button type="button" class="btn btn-chico" data-sem-menos aria-label="Alejar las horas">−</button>${conHoy ? '<button type="button" class="btn btn-chico" data-sem-ahora>Ahora</button>' : ''}<button type="button" class="btn btn-chico" data-sem-mas aria-label="Acercar las horas">＋</button></div>
       ${cabeceraSemanaHTML(dias)}
-      <div class="dia-vista" data-dia-vista tabindex="0" role="group" aria-label="La semana por horas. Dos dedos o las teclas + y − acercan o alejan; arrastra para moverte.">${lienzoSemanaHTML(dias, rango, horaHoy)}</div>
+      <div class="dia-vista" data-dia-vista tabindex="0" role="group" aria-label="La semana por horas. Dos dedos o las teclas + y − acercan o alejan; arrastra para moverte; desliza de lado para cambiar de semana.">${lienzoSemanaHTML(dias, rango, horaHoy)}</div>
     </section>`,
-    conectar(raiz) {
+    conectar(raiz, nav = null) {
       const caja = raiz.querySelector('[data-semana]');
+      if (nav) deslizarSemana(caja, nav);
       // Lo que no es clase abre el detalle del día (el manejador de [data-dia] de abajo), sin salir de la semana
       caja.querySelectorAll('.sem-dia, .sem-chip.evento, .sem-col .dia-bloque:not(.clase)').forEach((el) => {
         const dia = el.closest('[data-fecha]')?.dataset.fecha || (el.getAttribute('href') || '').match(/fecha=([\d-]+)/)?.[1];
