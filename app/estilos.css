@@ -577,3 +577,6 @@ html, body { overscroll-behavior-y: none; }
 .cal-semana.sem-sale-izq { transform: translateX(-24px); opacity: .5; }
 .cal-semana.sem-sale-der { transform: translateX(24px); opacity: .5; }
 @media (prefers-reduced-motion: reduce) { .cal-semana { transition: none; } }
+
+/* Cargo del personal en Personas (18-nov-2026): se distingue del rol; solo lo ve el administrador */
+.chip.chip-cargo { background: var(--primario-suave); color: var(--primario); }

@@ -450,6 +450,7 @@ const leerArchivos = () => { try { return JSON.parse(localStorage.getItem(CLAVE_
 
 const LLAVES = {
   miembros: ['colegio_id', 'perfil_id', 'rol'],
+  cargos_personal: ['colegio_id', 'perfil_id', 'cargo'],
   acudientes: ['colegio_id', 'acudiente_id', 'estudiante_id'],
   calificaciones: ['actividad_id', 'estudiante_id'],
   circular_lecturas: ['circular_id', 'perfil_id'],
@@ -885,7 +886,7 @@ export function crearDbDemo() {
     const out = [];
     const add = (id, grupo, detalle = '') => id && id !== yo && out.push({ perfil_id: id, grupo, detalle });
     if (roles.size) M.filter((m) => m.rol === 'admin').forEach((m) => add(m.perfil_id, 'Administración', 'Administrador'));
-    if (roles.has('admin')) M.filter((m) => m.rol !== 'admin').forEach((m) => add(m.perfil_id, { profesor: 'Profesores', acudiente: 'Acudientes', estudiante: 'Estudiantes', enfermeria: 'Enfermería', director_seccion: 'Directores de sección' }[m.rol]));
+    if (roles.has('admin')) M.filter((m) => m.rol !== 'admin').forEach((m) => add(m.perfil_id, { profesor: 'Profesores', acudiente: 'Acudientes', estudiante: 'Estudiantes', enfermeria: 'Enfermería', director_seccion: 'Directores de sección', personal: 'Personal' }[m.rol]));
     // como mis_contactos en la base: todos escriben a enfermería y a los directores de sección
     if (roles.size) M.filter((m) => m.rol === 'enfermeria' || m.rol === 'director_seccion').forEach((m) => add(m.perfil_id, m.rol === 'enfermeria' ? 'Enfermería' : 'Directores de sección'));
     if (roles.has('enfermeria') || roles.has('director_seccion')) {
@@ -984,6 +985,7 @@ export function crearDbDemo() {
       if (n === 'circular_firmas') filas = filas.filter((f) => f.perfil_id === usuario()); // la firma solo la ve su dueño
       if (n === 'circular_emisores') filas = filas.filter((f) => esAdmin(f.colegio_id) || f.perfil_id === usuario());
       if (n === 'usuarios_eliminados') filas = filas.filter((f) => esAdmin(f.colegio_id)); // como la RLS: solo el administrador
+      if (n === 'cargos_personal') filas = filas.filter((f) => esAdmin(f.colegio_id)); // como la RLS: solo Administrador, Rectoría y Gerencia
       if (n === 'circular_series') filas = filas.filter((f) => esAdmin(f.colegio_id)); // como la RLS (serie_circular_ver): solo Administración
       filas = ordenar(copia(filas), q.order);
       return q.limit ? filas.slice(0, q.limit) : filas;
@@ -994,6 +996,7 @@ export function crearDbDemo() {
       for (const f of [].concat(filas)) {
         const r = completar(n, f);
         if (n === 'eventos_personales' && r.perfil_id !== usuario()) err('Solo puedes crear tus propias reuniones.');
+        if (n === 'cargos_personal' && !esAdmin(r.colegio_id)) err('Solo Administrador, Rectoría y Gerencia asignan cargos.'); // como la RLS
         if (n.startsWith('calendario_')) err('El calendario institucional solo se importa con la vista previa (administrador).');
         const k = LLAVES[n];
         if (k && tabla(n).some((x) => k.every((c) => x[c] === r[c]))) err('Ese dato ya existe.');
@@ -1045,7 +1048,7 @@ export function crearDbDemo() {
     },
     async remove(n, eq) {
       await lento();
-      const toca = (f) => coincide(f, { eq }) && (n !== 'circular_borradores' || borradorMio(f)); // como la RLS: un borrador ajeno no se borra
+      const toca = (f) => coincide(f, { eq }) && (n !== 'circular_borradores' || borradorMio(f)) && (n !== 'cargos_personal' || esAdmin(f.colegio_id)); // como la RLS: un borrador ajeno no se borra
       if (n === 'circular_borradores' && tabla(n).some((f) => toca(f) && (f.estado || 'borrador') !== 'borrador')) err('Una circular emitida o anulada no se elimina: queda en el historial con su número.');
       if (n === 'circular_borradores') for (const b of tabla(n).filter((f) => toca(f) && f.numero)) {
         tabla('circular_numeros_anulados').push({ serie_id: b.serie_id, numero: b.numero, colegio_id: b.colegio_id, consecutivo: b.consecutivo, borrador_id: b.id, solicitud_id: b.solicitud_id, titulo: b.datos?.titulo || null, anulado_por: usuario(), anulado_en: ahora() });
@@ -1294,7 +1297,7 @@ export function crearDbDemo() {
         try {
           // Rectoría / Gerencia = administrador con ese nombre (miembros.titulo), como la Edge Function (14-nov-2026)
           const titulo = ['rectoria', 'gerencia'].includes(p.rol) ? p.rol : null, rolBase = titulo ? 'admin' : p.rol;
-          if (!['admin', 'profesor', 'acudiente', 'estudiante', 'enfermeria', 'director_seccion'].includes(rolBase)) err('Rol no válido');
+          if (!['admin', 'profesor', 'acudiente', 'estudiante', 'enfermeria', 'director_seccion', 'personal'].includes(rolBase)) err('Rol no válido');
           if (!p.nombres) err('Falta el nombre');
           const doc = String(p.documento || '').replace(/[^\dA-Za-z]/g, '');
           const correo = String(p.correo || '').trim().toLowerCase();

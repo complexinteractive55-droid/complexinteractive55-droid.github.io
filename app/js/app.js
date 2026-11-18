@@ -10,7 +10,7 @@ import { enIngles, preferenciaIdioma, idiomaDispositivo, elegirIdioma, activarTr
 // ---------------------------------------------------------------- Cargo en vez del rol genérico (1-nov-2026)
 // Quien lidera un área con cargo (ej. Gerencia → «Gerente») ve su cargo en lugar de «Profesor»/«Docente». Solo es lo que se
 // muestra: los permisos siguen siendo los de su rol y sus áreas. Se pide una vez por colegio y persona.
-const ROLES_PERSONAL = ['profesor', 'director_seccion', 'enfermeria'];
+const ROLES_PERSONAL = ['profesor', 'director_seccion', 'enfermeria', 'personal'];
 let cargo = { clave: null, texto: null };
 function etiquetaRol() {
   return (ROLES_PERSONAL.includes(E.rol) && cargo.clave === E.colegio?.id + '|' + E.yo?.id && cargo.texto) || nombreRol(E.rol, miTitulo());
@@ -411,6 +411,11 @@ function menuBase() {
     { t: 'Comunidad', ic: '👥', items: [['calendario', 'Calendario'], ['manual', 'Manual de convivencia'], ['seguimientos', 'Seguimientos'], ['compromisos', 'Compromisos'], ['salidas', 'Permisos de salida'], ['archivos', 'Archivos globales']] },
     { t: 'Académico', ic: '🎓', items: [['planeaciones', 'Planeaciones'], ['horario', 'Horarios'], ['album', 'Álbum por curso'], ['reportes', 'Reportes'], ['docentes', 'Docentes']] },
     perfilG()];
+  // Personal (Servicios Generales, Transporte, Alimentación escolar…; Fabio, 18-nov-2026: rol «básico»): su Bandeja, la Cartelera,
+  // las Circulares que le lleguen, el Calendario y el Manual. Nada de estudiantes, notas, observador ni familias.
+  if (E.rol === 'personal') return [tablero, conSer(COMUNICACION),
+    { t: 'Comunidad', ic: '👥', items: [['calendario', 'Calendario'], ['manual', 'Manual de convivencia']] },
+    perfilG()];
   // acudiente
   if (viendoHijo()) return [tablero,
     { t: 'Perfil', ic: '👤', items: [['info-personal', 'Información personal'], [`estudiante/${est}?tab=ficha`, 'Ficha médica'], ['edocs', 'E-docs']] },
@@ -632,7 +637,7 @@ function precargarInicio() {
   const INICIO = {
     admin: ['admin', 'tablero', 'usuarios', 'tesoreria', 'mensajeria'],
     profesor: ['profesor', 'circulares', 'tablero', 'tesoreria', 'mensajeria'],
-    enfermeria: ['enfermeria', 'mensajeria'], director_seccion: ['enfermeria', 'mensajeria'],
+    enfermeria: ['enfermeria', 'mensajeria'], director_seccion: ['enfermeria', 'mensajeria'], personal: ['tablero', 'mensajeria'],
   };
   const lista = INICIO[E.rol] || ['familia', 'seguimientos', 'circulares', 'mensajeria', 'compromisos', 'enfermeria', 'tablero', 'tesoreria', 'comunidad'];
   for (const n of lista) import(`./pantallas/${n}.js`).catch(() => {});
@@ -643,8 +648,23 @@ async function inicio(m = main()) {
   if (E.rol === 'profesor') return (await pant.profe()).inicio(m);
   if (E.rol === 'enfermeria') return (await pant.enfermeria()).inicioEnfermeria(m);
   if (E.rol === 'director_seccion') return (await pant.enfermeria()).inicioSeccion(m);
+  if (E.rol === 'personal') return inicioPersonal(m);
   if (viendoHijo()) return (await pant.familia()).estudiante(m, { est: E.persona, inicio: 1 });
   return (await pant.familia()).inicio(m);
+}
+
+// Tablero del rol «Personal» (18-nov-2026): accesos a lo suyo y la columna del día (agenda y eventos del colegio)
+async function inicioPersonal(m) {
+  const { cabecera } = await import('./pantallas/comun.js');
+  const [{ montarColumnaDia }, { columnaCaja }] = await Promise.all([import('./pantallas/tablero.js'), import('./dia_columna.js')]);
+  m.innerHTML = cabecera('Tablero') + `
+    <div class="tablero-con-dia"><div class="cifras">
+      <a class="cifra" href="#/bandeja"><b>✉</b><span>Bandeja de entrada</span></a>
+      <a class="cifra" href="#/cartelera"><b>📌</b><span>Cartelera</span></a>
+      <a class="cifra" href="#/circulares"><b>📣</b><span>Circulares</span></a>
+      <a class="cifra" href="#/calendario"><b>📅</b><span>Calendario</span></a>
+    </div>${columnaCaja()}</div>`;
+  montarColumnaDia(m.querySelector('[data-dia-col]'), await base());
 }
 
 // ---------------------------------------------------------------- Entrar
@@ -808,7 +828,7 @@ async function entrarDemo() {
   await cargarSemillaDemo();
   const db = crearDbDemo();
   const usuarios = db.usuariosDemo();
-  const grupos = ['admin', 'director_seccion', 'profesor', 'enfermeria', 'acudiente', 'estudiante'].map((r) => [r, usuarios.filter((u) => u.roles[0] === r)]).filter(([, l]) => l.length);
+  const grupos = ['admin', 'director_seccion', 'profesor', 'enfermeria', 'personal', 'acudiente', 'estudiante'].map((r) => [r, usuarios.filter((u) => u.roles[0] === r)]).filter(([, l]) => l.length);
   const id = await ventana({
     titulo: 'Modo demo: ¿quién eres?',
     html: `<p class="ayuda">Es un colegio inventado para probar nodo. Lo que cambies se guarda solo en este equipo.</p>

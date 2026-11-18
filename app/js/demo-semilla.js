@@ -314,6 +314,13 @@ export function crearSemillaDemo() {
   const enfermera = persona('Rosa', 'Medina Díaz', 'enfermeria');
   const dirSeccion = persona('Hernán', 'Torres Lugo', 'director_seccion');
   t.miembros.find((x) => x.perfil_id === dirSeccion.id).seccion_grados = [grados[0].id];
+  // Rol «Personal» y cargos (18-nov-2026; al final: no corren los ids de lo anterior). Los cargos solo los ve el administrador.
+  const conductor = persona('Jairo', 'Pérez Castro', 'personal');
+  t.cargos_personal = [
+    { colegio_id: c, perfil_id: rectora.id, cargo: 'rectoria', asignado_por: rectora.id, asignado_en: cuando(-5, 9) },
+    { colegio_id: c, perfil_id: dirSeccion.id, cargo: 'direccion_seccion', asignado_por: rectora.id, asignado_en: cuando(-5, 9) },
+    { colegio_id: c, perfil_id: conductor.id, cargo: 'transporte', asignado_por: rectora.id, asignado_en: cuando(-5, 9) },
+  ];
   t.permisos_salida = [{ id: 'sal-01', colegio_id: c, estudiante_id: santiago.id, fecha: dia(0), hora: '11:30', motivo: 'Cita médica', recoge: 'Ricardo Gil (papá)', recoge_documento: null, observacion: 'Control odontológico.', estado: 'autorizado', autorizado_por: enfermera.id, salio_en: null, creado_en: cuando(0, 9) }];
   return t;
 }

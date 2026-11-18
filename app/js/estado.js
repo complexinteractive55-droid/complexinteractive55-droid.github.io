@@ -50,7 +50,7 @@ export async function refrescarColegios() {
   return cambio;
 }
 
-const ORDEN_ROLES = ['admin', 'director_seccion', 'profesor', 'enfermeria', 'acudiente', 'estudiante'];
+const ORDEN_ROLES = ['admin', 'director_seccion', 'profesor', 'enfermeria', 'personal', 'acudiente', 'estudiante'];
 
 export async function elegirColegio(id) {
   E.colegio = E.colegios.find((c) => c.id === id) || null;
