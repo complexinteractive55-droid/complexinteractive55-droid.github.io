@@ -294,6 +294,8 @@ const RPC_DIRECTA = new Set(['pqrs_mensajes', 'pqrs_marcar_leido', 'mensajes_sin
   // el cargo de PQRS que se muestra en el encabezado (solo lee). Antes contaba como escritura y, al abrir la app, descartaba lo que
   // se estaba pidiendo a la vez (cursos, materias, periodos…), que así nunca quedaba guardado para abrir sin internet (15-nov-2026)
   'pqrs_mi_cargo',
+  // las listas de PQRS y «quién soy en PQRS» solo leen; el contador del menú las pide al navegar (17-nov-2026): no deben marcar lo demás
+  'pqrs_listar', 'pqrs_yo',
   // SER · Psicología (15-nov-2026): conversación privada, siempre lo vigente; sus escrituras no cambian nada de la copia del equipo
   'ser_estado', 'ser_abrir', 'ser_mensajes', 'ser_enviar', 'ser_marcar_leido', 'ser_bandeja', 'ser_responsable_guardar', 'ser_responsable_ver']);
 // Escrituras que también cambian otras tablas (triggers del servidor o lógica de la app)

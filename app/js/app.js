@@ -364,7 +364,7 @@ window.addEventListener('offline', avisoSinRed);
 // ---------------------------------------------------------------- Armazón (REA Phidias §1.2)
 // Menú lateral izquierdo agrupado (Tablero · Comunicación · Comunidad · Academia · Perfil),
 // con buscador "Filtrar menú" y, para acudientes, pestañas de persona (yo + cada hijo).
-const COMUNICACION = { t: 'Comunicación', ic: '💬', items: [['bandeja', 'Bandeja de entrada', 'noLeidos'], ['redactar', 'Redactar mensaje'], ['enviados', 'Enviados'], ['cartelera', 'Cartelera'], ['circulares', 'Circulares'], ['pqrs', 'PQRS']] };
+const COMUNICACION = { t: 'Comunicación', ic: '💬', items: [['bandeja', 'Bandeja de entrada', 'noLeidos'], ['redactar', 'Redactar mensaje'], ['enviados', 'Enviados'], ['cartelera', 'Cartelera'], ['circulares', 'Circulares'], ['pqrs', 'PQRS', 'pqrs']] };
 // Circulares institucionales de quien el administrador designó (Gerencia, directores de sección…; 2-nov-2026): hasta el 3-nov
 // tenían una entrada aparte en su menú. Desde el 3-nov-2026 noche (Fabio: sin recorridos paralelos) «Circulares» muestra
 // «Nueva circular» y sus borradores a quien puede prepararlas, así que el menú es el mismo para todos.
@@ -412,7 +412,7 @@ function menuBase() {
   // acudiente
   if (viendoHijo()) return [tablero,
     { t: 'Perfil', ic: '👤', items: [['info-personal', 'Información personal'], [`estudiante/${est}?tab=ficha`, 'Ficha médica'], ['edocs', 'E-docs']] },
-    conSer({ t: 'Comunicación', ic: '💬', items: [['bandeja-hijo', 'Bandeja de entrada del estudiante'], ['circulares', 'Circulares'], ['pqrs', 'PQRS']] }), // sus PQRS, también desde la pestaña del hijo (4-nov-2026)
+    conSer({ t: 'Comunicación', ic: '💬', items: [['bandeja-hijo', 'Bandeja de entrada del estudiante'], ['circulares', 'Circulares'], ['pqrs', 'PQRS', 'pqrs']] }), // sus PQRS, también desde la pestaña del hijo (4-nov-2026)
     { t: 'Comunidad', ic: '👥', items: [['calendario', 'Calendario'], [`estudiante/${est}?tab=observador`, 'Seguimientos'], [`estudiante/${est}?tab=compromisos`, 'Compromisos'], ['salidas', 'Permisos de salida'], ['procesos', 'Procesos en línea'], ['archivos', 'Archivos globales']] },
     { t: 'Academia', ic: '🎓', items: [['aula', 'Aula'], ['planeacion', 'Planeación'], [`estudiante/${est}?tab=notas`, 'Historial'], ['horario', 'Horario'], [`estudiante/${est}?tab=asistencia`, 'Asistencia']] },
     { t: 'Matrícula', ic: '🎒', items: [['obligaciones', 'Obligaciones']] },
@@ -482,6 +482,11 @@ function pintarArmazon(patron) {
     });
     document.addEventListener('keydown', (e) => { if (e.key === 'Escape') abrirMenu(false); });
     window.addEventListener('complex:mensajes', pintarContadores);
+    // PQRS (17-nov-2026): al ver un caso se descuenta ya; y como a Gerencia y al Administrador los avisos de PQRS no les llegan a la
+    // Bandeja (canal «modulo»), mientras la app está a la vista se revisa cada minuto y al volver a ella
+    window.addEventListener('complex:pqrs', () => contadorPQRS(true));
+    setInterval(() => { if (document.visibilityState === 'visible' && $('#menu')) contadorPQRS(true); }, 60000);
+    document.addEventListener('visibilitychange', () => { if (document.visibilityState === 'visible' && $('#menu')) contadorPQRS(true); });
     window.addEventListener('complex:foto', () => ponerFotos($('#app')));
   }
   aplicarMarca();
@@ -545,11 +550,35 @@ async function ponerFotos(raiz) {
   }
 }
 
-async function pintarContadores() {
+async function pintarContadores(e) {
   contadorSER(); // SER · Psicología: en paralelo (no frena el de la Bandeja)
+  contadorPQRS(!!e); // PQRS: también en paralelo; al navegar se reusa lo de hace menos de 15 s, con un aviso nuevo se pide ya
   const n = await (await pant.mensajeria()).contarNoLeidos();
   document.querySelectorAll('[data-contador="noLeidos"]').forEach((el) => { el.textContent = n; el.hidden = !n; });
-  $('#btn-menu')?.classList.toggle('con-aviso', n > 0);
+  sinLeerBandeja = n;
+  avisoMenu();
+}
+let sinLeerBandeja = 0;
+const avisoMenu = () => $('#btn-menu')?.classList.toggle('con-aviso', sinLeerBandeja > 0 || pqrsCuenta > 0);
+
+// PQRS en el menú (Fabio, 17-nov-2026: «a Gerencia siempre una PQRS debe aparecerle en su ícono de las PQRS, algo así como les aparece
+// a los profes en mensajes»; a la pregunta de a quién: «Todos»). El número = las PQRS que le tocan y aún no ha revisado más las que
+// tienen mensajes nuevos que no ha visto (lo mismo que marcan sus listas); baja al verlas.
+let pqrsCuenta = 0, pqrsEn = 0, pqrsPara = '';
+async function contadorPQRS(forzar) {
+  if (!E.colegio || !E.yo) return;
+  const clave = E.colegio.id + '|' + E.yo.id;
+  if (clave !== pqrsPara) { pqrsPara = clave; pqrsCuenta = 0; pqrsEn = 0; } // otro colegio u otra persona: nada del anterior
+  if (!forzar && Date.now() - pqrsEn < 15000) return pintarPQRS();
+  pqrsEn = Date.now();
+  const n = await (await pant.pqrs()).contarPendientes().catch(() => null);
+  if (n == null || clave !== pqrsPara) return; // sin red: queda lo último que se supo
+  pqrsCuenta = n;
+  pintarPQRS();
+}
+function pintarPQRS() {
+  document.querySelectorAll('[data-contador="pqrs"]').forEach((el) => { el.textContent = pqrsCuenta; el.hidden = !pqrsCuenta; });
+  avisoMenu();
 }
 
 // SER · Psicología: mensajes sin leer en el menú; si la persona designada cambió (la designaron o se la quitaron), se repinta el

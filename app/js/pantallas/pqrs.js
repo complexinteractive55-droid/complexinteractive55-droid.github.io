@@ -147,6 +147,20 @@ async function miPerfil() {
   return v;
 }
 
+// ---------------------------------------------------------------- Contador del menú (17-nov-2026)
+// Cuántas PQRS tienen algo para mí: en mis bandejas (Supervisión, Gerencia, mis áreas) las «Sin revisar» y las que tienen mensajes
+// nuevos; en «Mis PQRS», las que tienen respuestas que no he visto. Cada caso cuenta una vez. Las mismas reglas que pintan las listas.
+export const pendiente = (x, vista) => vista === 'mias' ? x.nuevos > 0
+  : (vista === 'area' ? !x.visto_por_mi_area : !x.visto_por_mi) || (x.visto_por_mi && x.nuevos > 0);
+export async function contarPendientes() {
+  const yo = await miPerfil();
+  const vistas = ['mias', ...(yo.admin ? ['supervision'] : yo.gerencia ? ['gerencia'] : []), ...(yo.areas.some((a) => a.clave !== 'gerencia') ? ['area'] : [])];
+  const listas = await Promise.all(vistas.map((v) => rpc('pqrs_listar', { p_colegio: E.colegio.id, p_vista: v })));
+  const ids = new Set();
+  listas.forEach((casos, i) => casos.forEach((x) => { if (pendiente(x, vistas[i])) ids.add(x.id); }));
+  return ids.size;
+}
+
 // ---------------------------------------------------------------- Inicio del módulo (pestañas según quién soy)
 export async function inicio(m, p = {}) {
   estilos();
@@ -320,7 +334,7 @@ function tarjeta(x, vista) {
   const personal = vista !== 'mias';
   const badges = [
     personal && (vista === 'area' ? !x.visto_por_mi_area : !x.visto_por_mi) ? '<span class="pq-badge">Sin revisar</span>' : '',
-    x.visto_por_mi && x.nuevos > 0 ? `<span class="pq-badge info">${x.nuevos === 1 ? '1 mensaje nuevo' : x.nuevos + ' mensajes nuevos'}</span>` : '', // de otros, aún sin ver (3-nov-2026)
+    (x.visto_por_mi || vista === 'mias') && x.nuevos > 0 ? `<span class="pq-badge info">${x.nuevos === 1 ? '1 mensaje nuevo' : x.nuevos + ' mensajes nuevos'}</span>` : '', // de otros, aún sin ver (3-nov-2026)
     x.aporte_pendiente ? '<span class="pq-badge info">Información nueva del solicitante</span>' : '',
     x.revisar ? '<span class="pq-badge suave">Revisar clasificación</span>' : '',
     personal && x.areas.some((a) => a.sin_responsables) ? '<span class="pq-badge suave">Área sin responsables</span>' : '',
@@ -453,6 +467,7 @@ export async function detalle(m, p) {
       try {
         const r = await rpc('pqrs_marcar_leido', { p_id: d.id, p_hasta: hasta });
         st.leido = Math.max(st.leido ?? -1, r?.leido_seq ?? hasta);
+        window.dispatchEvent(new Event('complex:pqrs')); // el número de PQRS del menú baja ya (17-nov-2026)
         if (!marcadoAqui) { marcadoAqui = true; if (personal) refrescarGestion(); } // «Visto por» ya incluye a quien lo está viendo
       } catch { /* sin red o servidor anterior: se vuelve a intentar al ver otro mensaje */ }
     }, 700);
