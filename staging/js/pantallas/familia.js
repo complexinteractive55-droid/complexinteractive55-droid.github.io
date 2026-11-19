@@ -10,6 +10,7 @@ import { htmlCompromisos, conectarCompromisos } from './compromisos.js';
 import { novedadesFamilia, obligacionesFamilia, montarColumnaDia } from './tablero.js';
 import { columnaCaja } from '../dia_columna.js';
 import { htmlFicha, conectarFicha, htmlAusencias, conectarAusencias } from './comunidad.js';
+import { estadoManual, selectorHTML, conectarSelector, citaHTML } from './manual.js';
 import { notaPeriodo, notaConIndicadores, notaIndicador, definitiva, notaFinal, mostrarNota, desempeno, resumenAsistencia, verNotaEscala } from '../calculos.js';
 
 // Junta todo lo académico de un estudiante en el año activo
@@ -239,6 +240,7 @@ async function htmlObservador(estId) {
       <article class="obs obs-${f.tipo}">
         <header><span>${TIPOS[f.tipo][0]} <b>${TIPOS[f.tipo][1]}</b> <small class="chip">${CATEGORIAS[f.categoria] || '📌'} ${esc(f.categoria || 'Observador')}</small></span><small>${fecha(f.fecha)}</small></header>
         <p>${esc(f.descripcion)}</p>
+        ${citaHTML(f.manual_cita)}
         <footer><small>Por ${esc(nombre(E.perfiles.get(f.autor_id)))}${!f.visible_acudiente ? ' · 🔒 solo para el colegio' : ''}</small>
         ${f.autor_id === E.yo.id || E.rol === 'admin' ? `<button class="btn-link" data-editar-obs="${f.id}">Editar</button>` : ''}</footer>
       </article>`).join('')}</div>` : vacio('No hay registros de seguimiento.')}`;
@@ -253,10 +255,26 @@ function conectarObservador(m, estId, recargar) {
     { name: 'descripcion', label: 'Descripción', tipo: 'textarea' },
     { name: 'visible_acudiente', label: 'Visible para el estudiante y su acudiente', tipo: 'checkbox', def: true },
   ];
+  // Llamado de atención con sustento en el Manual de Convivencia (Fabio, 18-nov-2026): elegir la falta es OBLIGATORIO si el colegio
+  // tiene manual vigente; la cita (texto literal) la arma y congela el servidor (trigger observacion_sustento).
   const guardar = async (fila) => {
+    const [st, previos] = await Promise.all([
+      estadoManual().catch(() => null),
+      E.db.select('observaciones', { eq: { estudiante_id: estId } }).then((l) => l.filter((o) => o.tipo === 'negativa' && o.id !== fila?.id)).catch(() => []),
+    ]);
+    const conManual = !!st?.manual;
+    const yaCitada = !!fila?.manual_cita;
+    let sel = null;
     const r = await ventana({
       titulo: fila ? 'Editar anotación' : 'Nueva anotación',
-      html: camposHTML(campos, fila || {}),
+      html: camposHTML(campos, fila || {}) + (yaCitada ? `<div class="cita-guardada" data-cita-guardada><p class="ayuda">Sustento guardado (no cambia al editar el texto):</p>${citaHTML(fila.manual_cita)}</div>` : '') + (conManual && !yaCitada ? selectorHTML(st) : ''),
+      alAbrir: (caja) => {
+        if (!conManual || yaCitada) return;
+        sel = conectarSelector(caja, st, previos);
+        const tipo = caja.querySelector('[name=tipo]');
+        const ver = () => sel.mostrar(tipo.value === 'negativa');
+        tipo.addEventListener('change', ver); ver();
+      },
       botones: [
         ...(fila && E.rol === 'admin' ? [{ texto: 'Eliminar', clase: 'btn-peligro', antes: async () => {
           if (!(await confirmar('¿Eliminar la anotación?', 'No se puede deshacer.', 'Eliminar'))) return false;
@@ -265,15 +283,26 @@ function conectarObservador(m, estId, recargar) {
         { texto: 'Cancelar' },
         { texto: 'Guardar', antes: async (c) => {
           const d = leerForm(c);
+          delete d.falta_manual; delete d.avisar_familia; // son del bloque del manual, no columnas
           if (!d.descripcion) throw new Error('Escribe la descripción.');
           d.fecha ||= hoy();
-          if (fila) await E.db.update('observaciones', d, { id: fila.id });
-          else await E.db.insert('observaciones', [{ colegio_id: E.colegio.id, estudiante_id: estId, autor_id: E.yo.id, ...d }]);
+          const falta = d.tipo === 'negativa' && sel ? sel.elegida() : null;
+          // obligatoria en un llamado nuevo (o al volver «llamado» una anotación); un llamado viejo sin cita se puede seguir editando
+          if (d.tipo === 'negativa' && conManual && !yaCitada && !falta && !(fila && fila.tipo === 'negativa'))
+            throw new Error('Elige la falta del Manual de Convivencia que sustenta el llamado de atención.');
+          if (falta) d.manual_falta_id = falta.id;
+          if (!fila && falta) d.avisar_familia = sel.avisarFamilia();
+          let fila2;
+          if (fila) [fila2] = await E.db.update('observaciones', d, { id: fila.id });
+          else [fila2] = await E.db.insert('observaciones', [{ colegio_id: E.colegio.id, estudiante_id: estId, autor_id: E.yo.id, ...d }]);
+          const av = fila2?.manual_aviso;
+          if (av?.sin_director) return { texto: 'Guardado. Ojo: el grado del estudiante no tiene Director de Sección asignado; avísale a Administración.', tipo: 'error' };
+          if (av && (av.directores || av.familia)) return { texto: `Guardado con su sustento. Se avisó a ${[av.directores ? 'la Dirección de Sección' : '', av.familia ? 'la familia' + (av.copia_direccion ? ' (con copia a la Dirección de Sección)' : '') : ''].filter(Boolean).join(' y ')}.` };
           return true;
         } },
       ],
     });
-    if (r) { aviso('Observador actualizado'); recargar(); }
+    if (r) { aviso(r.texto || 'Observador actualizado', r.tipo); recargar(); }
   };
   m.querySelector('[data-nueva-obs]')?.addEventListener('click', () => guardar(null));
   m.querySelectorAll('[data-editar-obs]').forEach((bt) => (bt.onclick = async () => {

@@ -98,11 +98,15 @@ export default {
   'Aún no hay tipos de mensaje.': 'No message types yet.', 'Esa materia no existe.': 'That subject does not exist.', 'Tareas por entregar': 'Homework due', 'Tareas abiertas': 'Open homework',
   'Aún no hay notas en este periodo.': 'No grades in this term yet.', 'En línea': 'Online',
   // armazón y menús
-  'Tablero': 'Dashboard', 'Perfil': 'Profile', 'Comunidad': 'Community', 'Calendario': 'Calendar', 'Personas': 'People', 'Seguimientos': 'Follow-ups', 'Compromisos': 'Commitments',
+  'Tablero': 'Dashboard', 'Perfil': 'Profile', 'Comunidad': 'Community', 'Calendario': 'Calendar', 'Manual de convivencia': 'Code of conduct', 'Manual de Convivencia': 'Code of conduct', 'Personas': 'People', 'Seguimientos': 'Follow-ups', 'Compromisos': 'Commitments',
   'Archivos': 'Files', 'Horarios': 'Schedules', 'Planeaciones': 'Lesson plans', 'Reportes': 'Reports', 'Cartera': 'Receivables', 'Facturar': 'Billing', 'Pagos': 'Payments', 'Conceptos': 'Fees',
   'Docencia': 'Teaching', 'Clases': 'Classes', 'Academia': 'Academics', 'Aula': 'Classroom', 'Horario': 'Schedule', 'Asistencia': 'Attendance', 'Historial': 'History', 'Prerreportes': 'Pre-reports',
   'Docentes': 'Teachers', 'Enviados': 'Sent', 'Cartelera': 'Notice board', 'Circulares': 'Circulars', 'Ayuda': 'Help', 'E-docs': 'E-docs', 'Pasarelas': 'Links', 'Obligaciones': 'Obligations',
   'Consolidado': 'Summary', 'Procesos': 'Processes', 'Notas': 'Grades', 'Filtrar menú': 'Filter menu', 'Mi cuenta': 'My account', 'Ajustes': 'Settings', 'Idioma': 'Language',
+  // Rol «Personal» y cargos (18-nov-2026)
+  'Personal': 'Staff', 'Cargos': 'Positions', 'Cargo': 'Position', 'Dirección de sección': 'Section management', 'Dirección curricular': 'Curriculum management', 'Psicología': 'Psychology', 'Servicios Generales': 'General services', 'Transporte': 'Transportation', 'Tecnología y sistemas': 'Technology and IT', 'Alimentación escolar': 'School meals', 'Nadie asignado.': 'Nobody assigned.',
+  'Solo lo ven Administrador, Rectoría y Gerencia. El cargo no da ni quita permisos; se asigna en la ficha de cada persona (toca su nombre → Cargo).': 'Only Administrator, the Principal and Management can see this. A position does not grant or remove permissions; assign it in the profile of each person (tap their name → Position).',
+  'Solo lo ven Administrador, Rectoría y Gerencia. El cargo no da ni quita permisos: lo que puede hacer depende de sus roles.': 'Only Administrator, the Principal and Management can see this. A position does not grant or remove permissions: what they can do depends on their roles.',
   'Administrador': 'Administrator', 'Profesor': 'Teacher', 'Acudiente': 'Guardian', 'Estudiante': 'Student', 'Director(a) de sección': 'Section head',
   'Guardar': 'Save', 'Cancelar': 'Cancel', 'Eliminar': 'Delete', 'Editar': 'Edit', 'Cerrar': 'Close', 'Aceptar': 'OK', 'Volver': 'Back', 'Buscar': 'Search', 'Listo': 'Done',
   'Entrar': 'Sign in', 'Correo': 'Email', 'Nombres': 'First names', 'Apellidos': 'Last names', 'Celular': 'Mobile', 'Fecha': 'Date', 'Hora': 'Time', 'Tipo': 'Type', 'Estado': 'Status',

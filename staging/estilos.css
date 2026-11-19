@@ -555,3 +555,28 @@ html, body { overscroll-behavior-y: none; }
 .sin-red { display: flex; flex-wrap: wrap; align-items: baseline; gap: 4px 6px; margin: 0 0 12px; padding: 8px 12px; border-radius: 10px; font-size: 14px; line-height: 1.35;
   background: color-mix(in srgb, var(--alerta, #b7791f) 14%, transparent); border: 1px solid color-mix(in srgb, var(--alerta, #b7791f) 45%, transparent); color: var(--texto); }
 .sin-red span:last-child { color: var(--texto-2); }
+
+/* Manual de Convivencia (18-nov-2026): cita de la falta en el llamado de atención y pantalla del manual */
+.cita-manual { margin: 6px 0; border-left: 3px solid var(--primario, #2563eb); padding: 4px 10px; background: var(--superficie-2); border-radius: 0 8px 8px 0; }
+.cita-manual summary { cursor: pointer; font-size: 14px; }
+.cita-manual summary small { color: var(--texto-2); font-weight: 400; }
+.cita-manual blockquote, .falta-manual blockquote, .cita-elegida blockquote { margin: 6px 0 2px; font-size: 14px; color: var(--texto-2); white-space: pre-line; }
+.sustento-manual .lista-faltas { max-height: 38vh; overflow-y: auto; overscroll-behavior: contain; border: 1px solid var(--borde); border-radius: 10px; margin: 8px 0; }
+.falta-opcion { cursor: pointer; align-items: flex-start; }
+.falta-opcion input { margin-top: 4px; flex: none; }
+.falta-opcion.elegida { background: color-mix(in srgb, var(--primario, #2563eb) 10%, transparent); }
+.cita-elegida { border: 1px solid var(--borde); border-radius: 10px; padding: 8px 12px; margin-top: 6px; }
+.cita-elegida details summary, .grupo-faltas summary, .capitulo-manual summary, .falta-manual summary { cursor: pointer; padding: 6px 0; }
+.aviso-manual { font-size: 14px; background: color-mix(in srgb, var(--alerta) 14%, transparent); border-radius: 8px; padding: 6px 10px; }
+.texto-manual { white-space: pre-line; line-height: 1.5; font-size: 15px; }
+.grupo-faltas, .capitulo-manual { border-top: 1px solid var(--borde); }
+.grupo-faltas summary small, .capitulo-manual summary small { color: var(--texto-2); }
+.falta-manual { padding: 0 8px; border-bottom: 1px solid var(--borde); }
+/* Calendario › Semana: al deslizar el dedo, la semana se corre un poco hacia donde va mientras carga la otra (18-nov-2026) */
+.cal-semana { transition: transform .18s ease-out, opacity .18s ease-out; }
+.cal-semana.sem-sale-izq { transform: translateX(-24px); opacity: .5; }
+.cal-semana.sem-sale-der { transform: translateX(24px); opacity: .5; }
+@media (prefers-reduced-motion: reduce) { .cal-semana { transition: none; } }
+
+/* Cargo del personal en Personas (18-nov-2026): se distingue del rol; solo lo ve el administrador */
+.chip.chip-cargo { background: var(--primario-suave); color: var(--primario); }

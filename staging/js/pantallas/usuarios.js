@@ -55,7 +55,7 @@ export async function agregarPersona(rolInicial, alListo) {
 
 // ---------------------------------------------------------------- Importar desde Excel (CSV)
 const COLUMNAS = ['rol', 'nombres', 'apellidos', 'tipo_documento', 'documento', 'correo', 'telefono', 'curso', 'acudiente_de'];
-const ROL_DE = { estudiante: 'estudiante', alumno: 'estudiante', alumna: 'estudiante', profesor: 'profesor', docente: 'profesor', profesora: 'profesor', acudiente: 'acudiente', padre: 'acudiente', madre: 'acudiente', familiar: 'acudiente', admin: 'admin', administrador: 'admin', rector: 'rectoria', rectora: 'rectoria', rectoria: 'rectoria', gerente: 'gerencia', gerencia: 'gerencia' };
+const ROL_DE = { estudiante: 'estudiante', alumno: 'estudiante', alumna: 'estudiante', profesor: 'profesor', docente: 'profesor', profesora: 'profesor', acudiente: 'acudiente', padre: 'acudiente', madre: 'acudiente', familiar: 'acudiente', admin: 'admin', administrador: 'admin', rector: 'rectoria', rectora: 'rectoria', rectoria: 'rectoria', gerente: 'gerencia', gerencia: 'gerencia', personal: 'personal', funcionario: 'personal', funcionaria: 'personal' };
 const norm = (s) => String(s || '').trim().toLowerCase().normalize('NFD').replace(/[̀-ͯ]/g, '');
 
 function leerCSV(texto) {

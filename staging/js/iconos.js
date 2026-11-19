@@ -32,6 +32,7 @@ const T = {
   reloj: '<circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 2"/>',
   album: '<rect x="3" y="4" width="18" height="16" rx="2"/><circle cx="9" cy="10" r="2"/><path d="m21 16-5-5-9 9"/>',
   libro: '<path d="M2 5h6a4 4 0 0 1 4 4v11a3 3 0 0 0-3-3H2z"/><path d="M22 5h-6a4 4 0 0 0-4 4v11a3 3 0 0 1 3-3h7z"/>',
+  balanza: '<path d="M12 3v17M8 20h8M5 7h14"/><path d="M5 7l-3 6a3 3 0 0 0 6 0zM19 7l-3 6a3 3 0 0 0 6 0z"/>', // Manual de Convivencia (18-nov-2026)
   grafica: '<path d="M3 21h18M6 17v-5M11 17V6M16 17v-8"/>',
   puerta: '<path d="M5 21V4a1 1 0 0 1 1-1h12a1 1 0 0 1 1 1v17M3 21h18M14.5 12h.01"/>',
   billetera: '<path d="M3 7a2 2 0 0 1 2-2h13v4"/><path d="M3 7v11a2 2 0 0 0 2 2h15V9H5a2 2 0 0 1-2-2z"/><path d="M16.5 14.5h.01"/>',
@@ -92,7 +93,7 @@ export const ICONO_GRUPO = { Tablero: 'tablero', Perfil: 'persona', 'Comunicaci√
 export const ICONO_RUTA = {
   inicio: 'tablero', pasarelas: 'enlace', 'info-personal': 'ficha', edocs: 'documento', perfil: 'cuenta', 'ajustes-colegio': 'ajustes', ayuda: 'ayuda',
   bandeja: 'bandeja', 'bandeja-hijo': 'bandeja', redactar: 'redactar', enviados: 'enviar', cartelera: 'megafono', circulares: 'circular', pqrs: 'pqrs', salas: 'salas', ser: 'corazon', 'ser/:id': 'corazon',
-  calendario: 'calendario', personas: 'comunidad', seguimientos: 'seguimiento', compromisos: 'compromiso', ausencias: 'ausencia', procesos: 'procesos', archivos: 'carpeta',
+  calendario: 'calendario', manual: 'balanza', personas: 'comunidad', seguimientos: 'seguimiento', compromisos: 'compromiso', ausencias: 'ausencia', procesos: 'procesos', archivos: 'carpeta',
   estructura: 'edificio', horario: 'reloj', album: 'album', planeaciones: 'libro', planeacion: 'libro', reportes: 'grafica', 'espacios-solicitudes': 'puerta', espacios: 'puerta',
   'tes-cartera': 'billetera', 'tes-facturar': 'factura', 'tes-pagos': 'tarjeta', 'tes-conceptos': 'etiqueta', tesoreria: 'consolidado', 'estado-cuenta': 'consolidado',
   salidas: 'salir', direccion: 'bandera', clases: 'cuaderno', aula: 'pantalla', docentes: 'docente', obligaciones: 'obligacion',

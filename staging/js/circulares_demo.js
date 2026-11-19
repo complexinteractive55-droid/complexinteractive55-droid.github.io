@@ -5,6 +5,8 @@
 // 5-nov-2026 (20261105100000_circular_series_varias_numero_envio): varias series por área y período, la serie elegida en la circular
 // y el número oficial al confirmar el envío (circular_asignar_numero); el selector pide circular_series_disponibles.
 // 5-nov-2026 (20261105120000_circular_enviar_designados): también envía quien fue designado en un área (solo SU circular de SU área).
+// 19-nov-2026 (20261119120000_circular_codigo_calidad): código de Calidad del colegio = PROCESO[-SUBPROCESO]-AÑO ESCOLAR-NNN desde la
+// Tabla No. 2 (circular_procesos), sin sufijo; cada año escolar, serie nueva.
 export function crearCircularesDemo({ tabla, usuario, guardar, ahora, err, esAdmin, consecutivoCircular, numeroDeSerie, vigentesDe, hoyLocal, formatoCirc, emisorCirc, puedePreparar, existeArchivo }) {
   const soloAdmin = (c) => { if (!usuario() || !esAdmin(c)) err('Solo el administrador del colegio configura y emite las circulares.'); };
   // Ajustes por área (20261105110000): Administración, todo; quien fue designado en un área, solo las series de SU área
@@ -52,13 +54,18 @@ export function crearCircularesDemo({ tabla, usuario, guardar, ahora, err, esAdm
       // una serie que ya existe se juzga por su área, no por la que diga la petición
       const c = a.p_colegio, area = a.p_id ? (tabla('circular_series').find((x) => x.id === a.p_id && x.colegio_id === c)?.area_id || null) : a.p_area || null;
       if (!configuraArea(c, area)) err('Solo el administrador del colegio, o quien fue designado en esa área, configura sus series.');
-      const suf = a.p_sufijo || null, ultimo = Number(a.p_ultimo_usado);
+      // '' = sin sufijo (Calidad: M2-BBL-2026-2027-001); null = «-» + período, como siempre
+      const suf = a.p_sufijo ?? null, ultimo = Number(a.p_ultimo_usado);
+      const previa = a.p_id ? tabla('circular_series').find((x) => x.id === a.p_id && x.colegio_id === c) : null;
+      if (previa?.proceso_id && !a._calidad && [previa.prefijo, previa.sufijo ?? '~', previa.periodo, previa.ancho].join('|') !== [a.p_prefijo, suf ?? '~', a.p_periodo, Number(a.p_ancho)].join('|'))
+        err('Esta serie sigue el código de Calidad (Tabla No. 2): su código se cambia eligiendo el proceso y el año escolar.');
       if (area && !tabla('circular_areas').some((x) => x.id === area && x.colegio_id === c)) err('Esa área no es de este colegio.');
       if (!String(a.p_prefijo || '').trim() || a.p_prefijo.length > 30) err('Escribe el código de la serie (hasta 30 caracteres), p. ej. «Memo E2-» o «CT Q-».');
       if (!/^[0-9]{4}(-[0-9]{4})?$/.test(a.p_periodo || '')) err('El período va como 2026 o 2026-2027.');
       if (!(a.p_ancho >= 1 && a.p_ancho <= 6)) err('El ancho del número va de 1 a 6 cifras.');
       if (!Number.isInteger(ultimo) || ultimo < 0) err('Indica el último número oficialmente usado (0 si la serie empieza).');
       if (a.p_vigente_desde && a.p_vigente_hasta && a.p_vigente_hasta < a.p_vigente_desde) err('La vigencia termina antes de empezar.');
+      if (suf === '' && !area) err('Una serie sin sufijo debe ser de un área (elige el área que emite).');
       // Duplicado real: el mismo código (sin mayúsculas ni espacios de los extremos) en el mismo período del colegio
       const norm = (t) => String(t || '').trim().toLowerCase();
       const otra = tabla('circular_series').find((x) => x.colegio_id === c && norm(x.prefijo) === norm(a.p_prefijo) && x.periodo === a.p_periodo && x.id !== a.p_id);
@@ -86,6 +93,55 @@ export function crearCircularesDemo({ tabla, usuario, guardar, ahora, err, esAdm
         historia(c, 'serie', s.id, 'cambiada', antes, s);
       }
       return { ...s, siguiente: sig };
+    },
+    // Tabla No. 2 (como public.circular_proceso_guardar): solo Administración; no se borra nada (se desactiva)
+    circular_proceso_guardar(a) {
+      soloAdmin(a.p_colegio);
+      const c = a.p_colegio, cod = String(a.p_codigo || '').trim().toUpperCase(), padre = a.p_padre || null;
+      if (!/^[A-Z0-9]{1,6}$/.test(cod)) err('El código va en mayúsculas, sin espacios ni guiones, hasta 6 letras o números (p. ej. M2 o BBL).');
+      if (String(a.p_nombre || '').trim().length < 2) err('Escribe el nombre del proceso (p. ej. Gestión Pedagógica).');
+      const procs = tabla('circular_procesos');
+      if (padre) {
+        if (!procs.some((x) => x.id === padre && x.colegio_id === c && !x.padre_id)) err('Un subproceso va dentro de un proceso de este colegio (no dentro de otro subproceso).');
+        if (a.p_id && padre === a.p_id) err('Un proceso no puede ir dentro de sí mismo.');
+        if (a.p_id && procs.some((x) => x.padre_id === a.p_id)) err('Este proceso tiene subprocesos: no puede volverse subproceso.');
+      }
+      if (procs.some((x) => x.colegio_id === c && (x.padre_id || null) === padre && x.codigo === cod && x.id !== a.p_id)) err(`Ya existe el código ${cod}${padre ? ' en ese proceso' : ' entre los procesos'}.`);
+      const datos = { padre_id: padre, codigo: cod, nombre: String(a.p_nombre).trim(), orden: Number(a.p_orden) || 0, activo: a.p_activo !== false };
+      if (!a.p_id) {
+        const x = { id: crypto.randomUUID(), colegio_id: c, ...datos, creado_en: ahora() };
+        procs.push(x); historia(c, 'proceso', x.id, 'creado', null, x);
+        return { ...x };
+      }
+      const x = procs.find((y) => y.id === a.p_id && y.colegio_id === c);
+      if (!x) err('Ese proceso no es de este colegio.');
+      const antes = { ...x };
+      Object.assign(x, datos); historia(c, 'proceso', x.id, 'cambiado', antes, x);
+      return { ...x };
+    },
+    // Serie de Calidad (como public.circular_serie_calidad_guardar): área + proceso + año escolar → PROCESO[-SUB]-AÑO-, 3 cifras, sin sufijo
+    circular_serie_calidad_guardar(a) {
+      const c = a.p_colegio;
+      let area = a.p_area || null;
+      if (a.p_id) {
+        const s = tabla('circular_series').find((x) => x.id === a.p_id && x.colegio_id === c && x.proceso_id);
+        if (!s) err('Esa serie de Calidad no es de este colegio.');
+        area = s.area_id || null;
+      }
+      if (!area) err('Elige el área que emite (la serie de Calidad siempre es de un área).');
+      const p = tabla('circular_procesos').find((x) => x.id === a.p_proceso && x.colegio_id === c && x.activo !== false);
+      if (!p) err('Elige un proceso o subproceso activo de la Tabla No. 2 de este colegio.');
+      const m = /^([0-9]{4})-([0-9]{4})$/.exec(a.p_periodo || '');
+      if (!m || Number(m[2]) !== Number(m[1]) + 1) err('El año escolar va como 2026-2027 (dos años seguidos).');
+      const padre = p.padre_id ? tabla('circular_procesos').find((x) => x.id === p.padre_id) : null;
+      const cod = (padre ? padre.codigo + '-' : '') + p.codigo + '-' + a.p_periodo + '-';
+      const s0 = a.p_id ? tabla('circular_series').find((x) => x.id === a.p_id) : null;
+      if (s0 && s0.ultimo > 0 && (s0.prefijo !== cod || s0.periodo !== a.p_periodo)) err('Una serie con números asignados no cambia de formato: crea una serie nueva.');
+      const r = F.circular_serie_guardar({ p_colegio: c, p_id: a.p_id || null, p_area: area, p_prefijo: cod, p_periodo: a.p_periodo, p_ancho: 3, p_sufijo: '', p_ultimo_usado: a.p_ultimo_usado,
+        p_vigente_desde: a.p_vigente_desde, p_vigente_hasta: a.p_vigente_hasta, p_nota: a.p_nota, p_reemplazar: false, _calidad: true });
+      const s = tabla('circular_series').find((x) => x.id === r.id);
+      s.proceso_id = p.id;
+      return { ...r, proceso_id: p.id };
     },
     circular_serie_validar(a) {
       if (!usuario() || !(esAdmin(a.p_colegio) || areaDesignada(a.p_colegio))) err('Solo el administrador del colegio configura y emite las circulares.');
@@ -116,9 +172,18 @@ export function crearCircularesDemo({ tabla, usuario, guardar, ahora, err, esAdm
       return {
         asignar_numero: tabla('circular_ajustes').find((x) => x.colegio_id === c)?.asignar_numero || 'guardar', solo_area: soloArea,
         areas: tabla('circular_areas').filter((x) => x.colegio_id === c && (admin || x.id === soloArea)).sort((x, y) => x.nombre.localeCompare(y.nombre)).map((x) => ({ ...x })),
+        // La Tabla No. 2: cada proceso y luego sus subprocesos (padre_codigo dice de cuál)
+        procesos: (() => {
+          const ps = tabla('circular_procesos').filter((p) => p.colegio_id === c), padreDe = (p) => ps.find((x) => x.id === p.padre_id);
+          const clave = (p) => { const pa = padreDe(p); return [pa ? pa.orden : p.orden, pa ? pa.codigo : p.codigo, pa ? 1 : 0, p.orden, p.codigo]; };
+          const cmp = (x, y) => { const a1 = clave(x), b1 = clave(y); for (let i = 0; i < a1.length; i++) { if (a1[i] < b1[i]) return -1; if (a1[i] > b1[i]) return 1; } return 0; };
+          return ps.slice().sort(cmp).map((p) => ({ ...p, padre_codigo: padreDe(p)?.codigo || null, codigo_completo: (padreDe(p) ? padreDe(p).codigo + '-' : '') + p.codigo }));
+        })(),
         series: tabla('circular_series').filter((s) => s.colegio_id === c && mia(s)).sort((x, y) => (y.vigente - x.vigente) || String(y.creado_en).localeCompare(String(x.creado_en))).map((s) => {
           const ult = tabla('circular_borradores').filter((b) => b.serie_id === s.id).sort((x, y) => y.numero - x.numero)[0];
+          const pr = s.proceso_id ? tabla('circular_procesos').find((x) => x.id === s.proceso_id) : null, prPadre = pr?.padre_id ? tabla('circular_procesos').find((x) => x.id === pr.padre_id) : null;
           return { ...s, area: tabla('circular_areas').find((x) => x.id === s.area_id)?.nombre || null,
+            proceso: pr ? { id: pr.id, codigo: (prPadre ? prPadre.codigo + '-' : '') + pr.codigo, nombre: pr.nombre } : null,
             ultimo_texto: s.ultimo > 0 ? texto({ ...s, area_id: null }, s.ultimo) : null, ultimo_texto_area: s.ultimo > 0 ? texto(s, s.ultimo) : null,
             siguiente: texto(s, s.ultimo + 1), agotada: !!s.area_id && String(s.ultimo + 1).length > s.ancho, validada_por_nombre: nombreDe(s.validada_por),
             ultimo_documento: ult ? { id: ult.id, consecutivo: ult.consecutivo, titulo: ult.datos?.titulo || null, estado: ult.estado || 'borrador', version: ult.version, actualizado_en: ult.actualizado_en } : null,

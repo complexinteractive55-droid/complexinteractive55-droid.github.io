@@ -1,11 +1,18 @@
 // Pantallas del administrador del colegio.
 import { E, base, recargarBase, perfiles, pref, logoHTML, aplicarMarca } from '../estado.js';
-import { esc, aviso, ventana, leerForm, confirmar, ROL, ROL_CREAR, TITULO, nombreRol, rolYTitulo, nombre, nombreLista, iniciales, vacio, fecha } from '../ui.js';
+import { esc, aviso, ventana, leerForm, confirmar, ROL, ROL_CREAR, TITULO, CARGO, nombreRol, rolYTitulo, nombre, nombreLista, iniciales, vacio, fecha } from '../ui.js';
 import { editar, cabecera, pestanas, buscar, conectarBuscador, camposHTML } from './comun.js';
 import { pendientesAdmin, montarColumnaDia } from './tablero.js';
 import { agregarPersona, importar, restablecer } from './usuarios.js';
 
 const personasColegio = () => E.db.rpc('personas_colegio', { p_colegio: E.colegio.id });
+// Cargos del personal (18-nov-2026): solo los lee el administrador (Administrador, Rectoría, Gerencia; RLS de cargos_personal).
+// Si la tabla aún no existe, ninguno. Mapa perfil → [cargo] en el orden de CARGO.
+const cargosColegio = () => E.db.select('cargos_personal', { eq: { colegio_id: E.colegio.id } }).then((l) => {
+  const mapa = new Map();
+  for (const k of Object.keys(CARGO)) for (const c of l) if (c.cargo === k) mapa.set(c.perfil_id, [...(mapa.get(c.perfil_id) || []), k]);
+  return mapa;
+}).catch(() => new Map());
 // Eliminaciones vigentes del colegio (solo el administrador las ve; si la tabla aún no existe, ninguna)
 // Rectoría / Gerencia: nombre visible de cada administrador (miembros.titulo; Fabio, 14-nov-2026). Si la columna aún no existe, ninguno.
 const titulosColegio = () => E.db.select('miembros', { eq: { colegio_id: E.colegio.id, rol: 'admin' } }).then((l) => new Map(l.filter((m) => m.titulo).map((m) => [m.perfil_id, m.titulo]))).catch(() => new Map());
@@ -263,11 +270,11 @@ export async function curso(m, p) {
 }
 
 // ---------------------------------------------------------------- Personas
-const TABS_P = [['todos', 'Todos'], ['profesor', 'Profesores'], ['estudiante', 'Estudiantes'], ['acudiente', 'Acudientes'], ['admin', 'Admin'], ['eliminados', 'Eliminados']];
+const TABS_P = [['todos', 'Todos'], ['profesor', 'Profesores'], ['estudiante', 'Estudiantes'], ['acudiente', 'Acudientes'], ['personal', 'Personal'], ['admin', 'Admin'], ['cargos', 'Cargos'], ['eliminados', 'Eliminados']];
 
 export async function personas(m, p) {
   const tab = TABS_P.some((t) => t[0] === p.tab) ? p.tab : 'todos';
-  const [gente, elims, titulos] = await Promise.all([personasColegio(), eliminadosColegio(), titulosColegio()]);
+  const [gente, elims, titulos, cargos] = await Promise.all([personasColegio(), eliminadosColegio(), titulosColegio(), cargosColegio()]);
   const eliminados = new Set(elims.map((e) => e.perfil_id));
   const porPersona = new Map();
   for (const g of gente) {
@@ -280,30 +287,34 @@ export async function personas(m, p) {
   if (tab === 'eliminados') lista = lista.filter((x) => eliminados.has(x.perfil_id));
   else {
     lista = lista.filter((x) => !eliminados.has(x.perfil_id));
-    if (tab !== 'todos') lista = lista.filter((x) => x.roles.some((r) => r.rol === tab));
+    if (tab === 'cargos') lista = lista.filter((x) => cargos.has(x.perfil_id));
+    else if (tab !== 'todos') lista = lista.filter((x) => x.roles.some((r) => r.rol === tab));
   }
   lista.sort((x, y) => nombreLista(x).localeCompare(nombreLista(y)));
 
+  const fila = (x) => `
+        <button class="fila fila-boton ${x.roles.every((r) => !r.activo) ? 'inactivo' : ''}" data-persona="${x.perfil_id}" data-buscar="${esc(nombreLista(x) + ' ' + (x.correo || ''))}">
+          <span class="avatar">${esc(iniciales(x))}</span>
+          <span><b>${esc(nombreLista(x))}</b><small>${esc(x.correo || '')}</small></span>
+          <span class="chips">${eliminados.has(x.perfil_id) ? '<span class="chip chip-eliminado" data-eliminado>🚫 Eliminado</span>' : x.roles.map((r) => `<span class="chip ${r.activo ? '' : 'tachado'}">${esc(nombreRol(r.rol, titulos.get(x.perfil_id)))}</span>`).join('') + (cargos.get(x.perfil_id) || []).map((k) => `<span class="chip chip-cargo" data-chip-cargo>${esc(CARGO[k])}</span>`).join('')}</span>
+        </button>`;
   m.innerHTML = cabecera('Personas', { acciones: '<button class="btn btn-primario" data-agregar>＋ Crear usuario</button><button class="btn" data-importar>⬆ Importar (Excel)</button><button class="btn" data-existente>Ya tiene cuenta</button>' }) +
     pestanas(TABS_P, tab, '#/personas?tab=') + `
     <div class="contenido">
       ${buscar('Buscar por nombre o correo…')}
-      ${lista.length ? `<div class="lista">${lista.map((x) => `
-        <button class="fila fila-boton ${x.roles.every((r) => !r.activo) ? 'inactivo' : ''}" data-persona="${x.perfil_id}" data-buscar="${esc(nombreLista(x) + ' ' + (x.correo || ''))}">
-          <span class="avatar">${esc(iniciales(x))}</span>
-          <span><b>${esc(nombreLista(x))}</b><small>${esc(x.correo || '')}</small></span>
-          <span class="chips">${eliminados.has(x.perfil_id) ? '<span class="chip chip-eliminado" data-eliminado>🚫 Eliminado</span>' : x.roles.map((r) => `<span class="chip ${r.activo ? '' : 'tachado'}">${esc(nombreRol(r.rol, titulos.get(x.perfil_id)))}</span>`).join('')}</span>
-        </button>`).join('')}</div>` : vacio(tab === 'eliminados' ? 'No hay usuarios eliminados.' : 'No hay personas aquí todavía.')}
+      ${tab === 'cargos' ? `<p class="ayuda" data-cargos-ayuda>Solo lo ven Administrador, Rectoría y Gerencia. El cargo no da ni quita permisos; se asigna en la ficha de cada persona (toca su nombre → Cargo).</p>
+        ${Object.entries(CARGO).map(([k, t]) => { const de = lista.filter((x) => cargos.get(x.perfil_id)?.includes(k)); return `<h3 class="sub" data-cargo-grupo="${k}">${esc(t)} <small>(${de.length})</small></h3>${de.length ? `<div class="lista">${de.map(fila).join('')}</div>` : '<p class="ayuda">Nadie asignado.</p>'}`; }).join('')}`
+      : lista.length ? `<div class="lista">${lista.map(fila).join('')}</div>` : vacio(tab === 'eliminados' ? 'No hay usuarios eliminados.' : 'No hay personas aquí todavía.')}
     </div>`;
   conectarBuscador(m);
-  m.querySelector('[data-agregar]').onclick = () => agregarPersona(!['todos', 'eliminados'].includes(tab) ? tab : 'estudiante', () => personas(m, p));
+  m.querySelector('[data-agregar]').onclick = () => agregarPersona(!['todos', 'eliminados', 'cargos'].includes(tab) ? tab : 'estudiante', () => personas(m, p));
   m.querySelector('[data-importar]').onclick = () => importar(() => personas(m, p));
   m.querySelector('[data-existente]').onclick = async () => {
     const demo = E.db.modo === 'demo';
     const r = await ventana({
       titulo: 'Agregar a alguien que ya tiene cuenta',
       html: camposHTML([
-        { name: 'rol', label: 'Rol', tipo: 'select', opciones: Object.entries(ROL_CREAR), def: !['todos', 'eliminados'].includes(tab) ? tab : 'acudiente' },
+        { name: 'rol', label: 'Rol', tipo: 'select', opciones: Object.entries(ROL_CREAR), def: !['todos', 'eliminados', 'cargos'].includes(tab) ? tab : 'acudiente' },
         { name: 'correo', label: 'Correo con el que se registró', tipo: 'email' },
         ...(demo ? [{ name: 'nombres', label: 'Nombres' }, { name: 'apellidos', label: 'Apellidos' }] : []),
       ]) + '<p class="ayuda">Para personas que crearon su propia cuenta en nodo ("Crear cuenta" al entrar).</p>',
@@ -344,6 +355,7 @@ async function fichaPersona(x, alCambiar) {
   if (elim?.eliminado_por) await perfiles([elim.eliminado_por]);
   const esAdminActivo = x.roles.some((r) => r.rol === 'admin' && r.activo);
   const tituloDe = (await titulosColegio()).get(id) || '';
+  const susCargos = new Set((await cargosColegio()).get(id) || []);
   const puedeEliminar = !elim && id !== E.yo.id && !esAdminActivo;
 
   await ventana({
@@ -358,6 +370,9 @@ async function fichaPersona(x, alCambiar) {
       <div class="lista">${todosRoles.map((r) => `<label class="fila check"><input type="checkbox" data-rol="${r}" ${tiene(r)?.activo ? 'checked' : ''} ${(r === 'admin' && id === E.yo.id) || elim ? 'disabled' : ''}><span><b>${ROL[r]}</b></span></label>`).join('')}</div>
       ${esAdminActivo && !elim ? `<label class="fila" data-fila-titulo><span class="crece"><b>Se muestra como</b><small>Rectoría y Gerencia tienen los mismos permisos que el Administrador; solo cambia el nombre.</small></span>
         <select data-titulo>${[['', ROL.admin], ...Object.entries(TITULO)].map(([k, t]) => `<option value="${k}" ${tituloDe === k ? 'selected' : ''}>${t}</option>`).join('')}</select></label>` : ''}
+      ${elim ? '' : `<h3 class="sub">Cargo</h3>
+        <div class="lista" data-cargos>${Object.entries(CARGO).map(([k, t]) => `<label class="fila check"><input type="checkbox" data-cargo="${k}" ${susCargos.has(k) ? 'checked' : ''}><span><b>${esc(t)}</b></span></label>`).join('')}</div>
+        <p class="ayuda">Solo lo ven Administrador, Rectoría y Gerencia. El cargo no da ni quita permisos: lo que puede hacer depende de sus roles.</p>`}
       ${tiene('profesor')?.activo ? `<p><a class="btn btn-chico" href="#/docente/${id}" data-cerrar>🧑‍🏫 Ficha del docente: clases, horario y planeaciones</a></p>` : ''}
       ${tiene('director_seccion')?.activo ? `<h3 class="sub">Sección (grados que dirige)</h3>
         <div class="lista">${b.grados.map((g) => `<label class="fila check"><input type="checkbox" data-grado-sec="${g.id}"><span><b>${esc(g.nombre)}</b></span></label>`).join('')}</div>
@@ -376,6 +391,16 @@ async function fichaPersona(x, alCambiar) {
       : esAdminActivo && id !== E.yo.id && !elim ? '<p class="ayuda">Para eliminar a un administrador, primero quítale el rol de Administrador.</p>' : ''}`,
     alAbrir: (caja, cerrar) => {
       caja.querySelector('[data-clave]')?.addEventListener('click', () => restablecer(x));
+      // Cargos (18-nov-2026): se guardan al marcar; quedan registrados con quién los asignó
+      caja.querySelectorAll('[data-cargo]').forEach((chk) => (chk.onchange = async () => {
+        const cargo = chk.dataset.cargo;
+        try {
+          if (chk.checked) await E.db.insert('cargos_personal', [{ colegio_id: E.colegio.id, perfil_id: id, cargo, asignado_por: E.yo.id }]);
+          else await E.db.remove('cargos_personal', { colegio_id: E.colegio.id, perfil_id: id, cargo });
+          aviso(chk.checked ? `Cargo asignado: ${CARGO[cargo]}` : `Cargo quitado: ${CARGO[cargo]}`);
+          alCambiar();
+        } catch (e) { chk.checked = !chk.checked; aviso(e.message, 'error'); }
+      }));
       caja.querySelector('[data-titulo]')?.addEventListener('change', async (ev) => {
         const sel = ev.target, titulo = sel.value || null;
         try {

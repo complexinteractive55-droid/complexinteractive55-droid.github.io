@@ -147,6 +147,20 @@ async function miPerfil() {
   return v;
 }
 
+// ---------------------------------------------------------------- Contador del menú (17-nov-2026)
+// Cuántas PQRS tienen algo para mí: en mis bandejas (Supervisión, Gerencia, mis áreas) las «Sin revisar» y las que tienen mensajes
+// nuevos; en «Mis PQRS», las que tienen respuestas que no he visto. Cada caso cuenta una vez. Las mismas reglas que pintan las listas.
+export const pendiente = (x, vista) => vista === 'mias' ? x.nuevos > 0
+  : (vista === 'area' ? !x.visto_por_mi_area : !x.visto_por_mi) || (x.visto_por_mi && x.nuevos > 0);
+export async function contarPendientes() {
+  const yo = await miPerfil();
+  const vistas = ['mias', ...(yo.admin ? ['supervision'] : yo.gerencia ? ['gerencia'] : []), ...(yo.areas.some((a) => a.clave !== 'gerencia') ? ['area'] : [])];
+  const listas = await Promise.all(vistas.map((v) => rpc('pqrs_listar', { p_colegio: E.colegio.id, p_vista: v })));
+  const ids = new Set();
+  listas.forEach((casos, i) => casos.forEach((x) => { if (pendiente(x, vistas[i])) ids.add(x.id); }));
+  return ids.size;
+}
+
 // ---------------------------------------------------------------- Inicio del módulo (pestañas según quién soy)
 export async function inicio(m, p = {}) {
   estilos();
@@ -273,8 +287,10 @@ async function listado(c, vista, yo) {
   const sinResp = (x) => x.estado !== 'cerrada' && (vista === 'area' ? x.areas.some((a) => a.mia && a.estado !== 'respondida') : x.respuestas === 0);
   const areasEnLista = [...new Map(casos.flatMap((x) => x.areas).map((a) => [a.id, a.nombre])).entries()];
   const contar = (fn) => casos.filter(fn).length;
+  // «Sin revisar» = yo no la he abierto; «Sin responder» = nadie (o mi área) le ha respondido al solicitante: sigue ahí aunque ya la
+  // haya visto (Fabio, 18-nov-2026: «cuando se ha visto la pqrs … en sin responder se supone debe seguir allí porque nadie ha dado respuesta»)
   const RESUMEN = personal ? [
-    ['sin_revisar', 'Sin revisar', sinRevisar], ['pendiente_clasificacion', 'Por clasificar', (x) => x.estado === 'pendiente_clasificacion'],
+    ['sin_revisar', 'Sin revisar', sinRevisar], ['sin_responder', 'Sin responder', sinResp], ['pendiente_clasificacion', 'Por clasificar', (x) => x.estado === 'pendiente_clasificacion'],
     ['en_atencion', 'En atención', (x) => x.estado === 'en_atencion'], ['respuesta_parcial', 'Respuesta parcial', (x) => x.estado === 'respuesta_parcial'],
     ['respondida', 'Respondidas', (x) => x.estado === 'respondida'], ['cerrada', 'Cerradas', (x) => x.estado === 'cerrada'],
   ].filter(([k, , fn]) => k !== 'pendiente_clasificacion' || vista === 'supervision' || contar(fn)) : [];
@@ -282,7 +298,7 @@ async function listado(c, vista, yo) {
     ${personal ? `<div class="pq-resumen" role="group" aria-label="Resumen">${RESUMEN.map(([k, t, fn]) => `<button type="button" class="btn btn-chico" data-resumen="${k}" aria-pressed="${f.estado === k}">${esc(t)}: <b>${contar(fn)}</b></button>`).join('')}</div>
     <div class="form pq-filtros">
       <label>Área<select data-f="area"><option value="">Todas</option>${areasEnLista.map(([id, n]) => `<option value="${esc(id)}" ${f.area === id ? 'selected' : ''}>${esc(n)}</option>`).join('')}</select></label>
-      <label>Estado<select data-f="estado"><option value="">Todos</option><option value="sin_revisar" ${f.estado === 'sin_revisar' ? 'selected' : ''}>Sin revisar</option>${Object.entries(ESTADO_GENERAL).map(([k, t]) => `<option value="${k}" ${f.estado === k ? 'selected' : ''}>${esc(t)}</option>`).join('')}</select></label>
+      <label>Estado<select data-f="estado"><option value="">Todos</option><option value="sin_revisar" ${f.estado === 'sin_revisar' ? 'selected' : ''}>Sin revisar</option><option value="sin_responder" ${f.estado === 'sin_responder' ? 'selected' : ''}>Sin responder</option>${Object.entries(ESTADO_GENERAL).map(([k, t]) => `<option value="${k}" ${f.estado === k ? 'selected' : ''}>${esc(t)}</option>`).join('')}</select></label>
       <label>Desde<input type="date" data-f="desde" value="${esc(f.desde)}"></label>
       <label>Hasta<input type="date" data-f="hasta" value="${esc(f.hasta)}"></label>
       <label class="check"><input type="checkbox" data-f="sin" ${f.sin ? 'checked' : ''}> ${vista === 'area' ? 'Sin respuesta de mi área' : 'Sin ninguna respuesta'}</label>
@@ -292,7 +308,7 @@ async function listado(c, vista, yo) {
   const pintar = () => {
     const dia = (iso) => new Intl.DateTimeFormat('en-CA', { timeZone: 'America/Bogota', year: 'numeric', month: '2-digit', day: '2-digit' }).format(new Date(iso));
     const vis = casos.filter((x) => (!f.area || x.areas.some((a) => a.id === f.area))
-      && (!f.estado || (f.estado === 'sin_revisar' ? sinRevisar(x) : x.estado === f.estado))
+      && (!f.estado || (f.estado === 'sin_revisar' ? sinRevisar(x) : f.estado === 'sin_responder' ? sinResp(x) : x.estado === f.estado))
       && (!f.desde || dia(x.creado_en) >= f.desde) && (!f.hasta || dia(x.creado_en) <= f.hasta) && (!f.sin || sinResp(x)));
     c.querySelector('[data-cuantos]').textContent = personal ? `${vis.length} de ${casos.length} casos` : `${casos.length} PQRS`;
     c.querySelectorAll('[data-resumen]').forEach((b) => b.setAttribute('aria-pressed', String(f.estado === b.dataset.resumen)));
@@ -320,7 +336,7 @@ function tarjeta(x, vista) {
   const personal = vista !== 'mias';
   const badges = [
     personal && (vista === 'area' ? !x.visto_por_mi_area : !x.visto_por_mi) ? '<span class="pq-badge">Sin revisar</span>' : '',
-    x.visto_por_mi && x.nuevos > 0 ? `<span class="pq-badge info">${x.nuevos === 1 ? '1 mensaje nuevo' : x.nuevos + ' mensajes nuevos'}</span>` : '', // de otros, aún sin ver (3-nov-2026)
+    (x.visto_por_mi || vista === 'mias') && x.nuevos > 0 ? `<span class="pq-badge info">${x.nuevos === 1 ? '1 mensaje nuevo' : x.nuevos + ' mensajes nuevos'}</span>` : '', // de otros, aún sin ver (3-nov-2026)
     x.aporte_pendiente ? '<span class="pq-badge info">Información nueva del solicitante</span>' : '',
     x.revisar ? '<span class="pq-badge suave">Revisar clasificación</span>' : '',
     personal && x.areas.some((a) => a.sin_responsables) ? '<span class="pq-badge suave">Área sin responsables</span>' : '',
@@ -453,6 +469,7 @@ export async function detalle(m, p) {
       try {
         const r = await rpc('pqrs_marcar_leido', { p_id: d.id, p_hasta: hasta });
         st.leido = Math.max(st.leido ?? -1, r?.leido_seq ?? hasta);
+        window.dispatchEvent(new Event('complex:pqrs')); // el número de PQRS del menú baja ya (17-nov-2026)
         if (!marcadoAqui) { marcadoAqui = true; if (personal) refrescarGestion(); } // «Visto por» ya incluye a quien lo está viendo
       } catch { /* sin red o servidor anterior: se vuelve a intentar al ver otro mensaje */ }
     }, 700);

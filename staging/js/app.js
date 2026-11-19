@@ -10,7 +10,7 @@ import { enIngles, preferenciaIdioma, idiomaDispositivo, elegirIdioma, activarTr
 // ---------------------------------------------------------------- Cargo en vez del rol genérico (1-nov-2026)
 // Quien lidera un área con cargo (ej. Gerencia → «Gerente») ve su cargo en lugar de «Profesor»/«Docente». Solo es lo que se
 // muestra: los permisos siguen siendo los de su rol y sus áreas. Se pide una vez por colegio y persona.
-const ROLES_PERSONAL = ['profesor', 'director_seccion', 'enfermeria'];
+const ROLES_PERSONAL = ['profesor', 'director_seccion', 'enfermeria', 'personal'];
 let cargo = { clave: null, texto: null };
 function etiquetaRol() {
   return (ROLES_PERSONAL.includes(E.rol) && cargo.clave === E.colegio?.id + '|' + E.yo?.id && cargo.texto) || nombreRol(E.rol, miTitulo());
@@ -74,6 +74,7 @@ const pant = {
   album: () => import('./pantallas/album.js'),
   salas: () => import('./pantallas/salas.js'),
   ser: () => import('./pantallas/ser.js'),
+  manual: () => import('./pantallas/manual.js'),
   planeaciones: () => import('./pantallas/planeaciones.js'),
   mensajeria: () => import('./pantallas/mensajeria.js'),
   aula: () => import('./pantallas/aula.js'),
@@ -229,6 +230,7 @@ const RUTAS = [
   ['album/:curso', async (p, m) => (await pant.album()).album(m, p)],
   ['salas', async (_, m) => (await pant.salas()).salas(m)],
   ['sala/:id', async (p, m) => (await pant.salas()).sala(m, p)],
+  ['manual', async (_, m) => (await pant.manual()).manual(m)], // Manual de Convivencia (18-nov-2026): toda la comunidad
   ['ser', async (_, m) => (await pant.ser()).ser(m)], // SER · conversación privada con Psicología (15-nov-2026)
   ['ser/:id', async (p, m) => (await pant.ser()).conversacion(m, p)],
   ['aviso/:id', async (p, m) => (await pant.salas()).avisoDetalle(m, p)],
@@ -364,7 +366,7 @@ window.addEventListener('offline', avisoSinRed);
 // ---------------------------------------------------------------- Armazón (REA Phidias §1.2)
 // Menú lateral izquierdo agrupado (Tablero · Comunicación · Comunidad · Academia · Perfil),
 // con buscador "Filtrar menú" y, para acudientes, pestañas de persona (yo + cada hijo).
-const COMUNICACION = { t: 'Comunicación', ic: '💬', items: [['bandeja', 'Bandeja de entrada', 'noLeidos'], ['redactar', 'Redactar mensaje'], ['enviados', 'Enviados'], ['cartelera', 'Cartelera'], ['circulares', 'Circulares'], ['pqrs', 'PQRS']] };
+const COMUNICACION = { t: 'Comunicación', ic: '💬', items: [['bandeja', 'Bandeja de entrada', 'noLeidos'], ['redactar', 'Redactar mensaje'], ['enviados', 'Enviados'], ['cartelera', 'Cartelera'], ['circulares', 'Circulares'], ['pqrs', 'PQRS', 'pqrs']] };
 // Circulares institucionales de quien el administrador designó (Gerencia, directores de sección…; 2-nov-2026): hasta el 3-nov
 // tenían una entrada aparte en su menú. Desde el 3-nov-2026 noche (Fabio: sin recorridos paralelos) «Circulares» muestra
 // «Nueva circular» y sus borradores a quien puede prepararlas, así que el menú es el mismo para todos.
@@ -386,38 +388,43 @@ function menuBase() {
   // SER (Fabio, 16-nov-2026: «lo deben tener todos los perfiles»): todos, al final de Comunicación; quien lo responde ve ahí su bandeja
   function conSer(g) { return { ...g, items: [...g.items, ['ser', 'SER', 'ser']] }; }
   if (E.rol === 'admin') return [tablero, conSalas(COMUNICACION),
-    { t: 'Comunidad', ic: '👥', items: [['calendario', 'Calendario'], ['personas', 'Personas'], ['seguimientos', 'Seguimientos'], ['compromisos', 'Compromisos'], ['ausencias', 'Ausencias reportadas'], ['procesos', 'Procesos en línea'], ['archivos', 'Archivos']] },
+    { t: 'Comunidad', ic: '👥', items: [['calendario', 'Calendario'], ['manual', 'Manual de convivencia'], ['personas', 'Personas'], ['seguimientos', 'Seguimientos'], ['compromisos', 'Compromisos'], ['ausencias', 'Ausencias reportadas'], ['procesos', 'Procesos en línea'], ['archivos', 'Archivos']] },
     { t: 'Académico', ic: '🎓', items: [['estructura', 'Estructura del colegio'], ['horario', 'Horarios'], ['album', 'Álbum por curso'], ['planeaciones', 'Planeaciones'], ['reportes', 'Reportes'], ['espacios-solicitudes', 'Solicitudes de espacios']] },
     { t: 'Tesorería', ic: '💰', items: [['tesoreria?tab=cartera', 'Cartera'], ['tesoreria?tab=facturar', 'Facturar'], ['tesoreria?tab=pagos', 'Pagos'], ['tesoreria?tab=conceptos', 'Conceptos']] },
     perfilG([['ajustes-colegio', 'Ajustes del colegio']])];
   if (E.rol === 'profesor') return [tablero, conSalas(comunicacion()),
-    { t: 'Comunidad', ic: '👥', items: [['calendario', 'Calendario'], ['seguimientos', 'Seguimientos'], ['compromisos', 'Compromisos'], ['salidas', 'Permisos de salida'], ['procesos', 'Procesos en línea'], ['archivos', 'Archivos globales']] },
+    { t: 'Comunidad', ic: '👥', items: [['calendario', 'Calendario'], ['manual', 'Manual de convivencia'], ['seguimientos', 'Seguimientos'], ['compromisos', 'Compromisos'], ['salidas', 'Permisos de salida'], ['procesos', 'Procesos en línea'], ['archivos', 'Archivos globales']] },
     { t: 'Docencia', ic: '🧑‍🏫', items: [['direccion', 'Dirección de grupo'], ['clases', 'Clases'], ['album', 'Álbum por curso'], ['reportes', 'Reportes']] },
     { t: 'Academia', ic: '🎓', items: [['aula', 'Aula'], ['horario', 'Mi horario'], ['planeaciones', 'Planeaciones'], ['espacios', 'Solicitud de espacios']] },
     perfilG()];
   // Todos en la comunidad presentan PQRS, también los estudiantes (Fabio, 4-nov-2026; antes, desde el 2-nov, la presentaba solo su
   // acudiente). No tienen el módulo de Circulares: la circular les llega a la Bandeja de entrada como PDF (Fabio, 3-nov-2026)
   if (E.rol === 'estudiante') return [tablero, conSer({ ...COMUNICACION, items: COMUNICACION.items.filter(([r]) => r !== 'circulares') }),
-    { t: 'Comunidad', ic: '👥', items: [['calendario', 'Calendario'], [`estudiante/${E.yo.id}?tab=observador`, 'Seguimientos'], [`estudiante/${E.yo.id}?tab=compromisos`, 'Compromisos'], ['procesos', 'Procesos en línea'], ['archivos', 'Archivos']] },
+    { t: 'Comunidad', ic: '👥', items: [['calendario', 'Calendario'], ['manual', 'Manual de convivencia'], [`estudiante/${E.yo.id}?tab=observador`, 'Seguimientos'], [`estudiante/${E.yo.id}?tab=compromisos`, 'Compromisos'], ['procesos', 'Procesos en línea'], ['archivos', 'Archivos']] },
     { t: 'Academia', ic: '🎓', items: [['aula', 'Aula'], ['planeacion', 'Planeación'], ['horario', 'Horario'], ...hist] },
     perfilG()];
   if (E.rol === 'enfermeria') return [tablero, conSalas(comunicacion()),
     { t: 'Enfermería', ic: '🩺', items: [['salidas', 'Permisos de salida'], ['seguimientos', 'Prerreportes'], ['album', 'Álbum por curso'], ['docentes', 'Docentes']] },
-    { t: 'Comunidad', ic: '👥', items: [['calendario', 'Calendario'], ['archivos', 'Archivos globales']] },
+    { t: 'Comunidad', ic: '👥', items: [['calendario', 'Calendario'], ['manual', 'Manual de convivencia'], ['archivos', 'Archivos globales']] },
     perfilG()];
   if (E.rol === 'director_seccion') return [tablero, conSalas(comunicacion()),
-    { t: 'Comunidad', ic: '👥', items: [['calendario', 'Calendario'], ['seguimientos', 'Seguimientos'], ['compromisos', 'Compromisos'], ['salidas', 'Permisos de salida'], ['archivos', 'Archivos globales']] },
+    { t: 'Comunidad', ic: '👥', items: [['calendario', 'Calendario'], ['manual', 'Manual de convivencia'], ['seguimientos', 'Seguimientos'], ['compromisos', 'Compromisos'], ['salidas', 'Permisos de salida'], ['archivos', 'Archivos globales']] },
     { t: 'Académico', ic: '🎓', items: [['planeaciones', 'Planeaciones'], ['horario', 'Horarios'], ['album', 'Álbum por curso'], ['reportes', 'Reportes'], ['docentes', 'Docentes']] },
+    perfilG()];
+  // Personal (Servicios Generales, Transporte, Alimentación escolar…; Fabio, 18-nov-2026: rol «básico»): su Bandeja, la Cartelera,
+  // las Circulares que le lleguen, el Calendario y el Manual. Nada de estudiantes, notas, observador ni familias.
+  if (E.rol === 'personal') return [tablero, conSer(COMUNICACION),
+    { t: 'Comunidad', ic: '👥', items: [['calendario', 'Calendario'], ['manual', 'Manual de convivencia']] },
     perfilG()];
   // acudiente
   if (viendoHijo()) return [tablero,
     { t: 'Perfil', ic: '👤', items: [['info-personal', 'Información personal'], [`estudiante/${est}?tab=ficha`, 'Ficha médica'], ['edocs', 'E-docs']] },
-    conSer({ t: 'Comunicación', ic: '💬', items: [['bandeja-hijo', 'Bandeja de entrada del estudiante'], ['circulares', 'Circulares'], ['pqrs', 'PQRS']] }), // sus PQRS, también desde la pestaña del hijo (4-nov-2026)
-    { t: 'Comunidad', ic: '👥', items: [['calendario', 'Calendario'], [`estudiante/${est}?tab=observador`, 'Seguimientos'], [`estudiante/${est}?tab=compromisos`, 'Compromisos'], ['salidas', 'Permisos de salida'], ['procesos', 'Procesos en línea'], ['archivos', 'Archivos globales']] },
+    conSer({ t: 'Comunicación', ic: '💬', items: [['bandeja-hijo', 'Bandeja de entrada del estudiante'], ['circulares', 'Circulares'], ['pqrs', 'PQRS', 'pqrs']] }), // sus PQRS, también desde la pestaña del hijo (4-nov-2026)
+    { t: 'Comunidad', ic: '👥', items: [['calendario', 'Calendario'], ['manual', 'Manual de convivencia'], [`estudiante/${est}?tab=observador`, 'Seguimientos'], [`estudiante/${est}?tab=compromisos`, 'Compromisos'], ['salidas', 'Permisos de salida'], ['procesos', 'Procesos en línea'], ['archivos', 'Archivos globales']] },
     { t: 'Academia', ic: '🎓', items: [['aula', 'Aula'], ['planeacion', 'Planeación'], [`estudiante/${est}?tab=notas`, 'Historial'], ['horario', 'Horario'], [`estudiante/${est}?tab=asistencia`, 'Asistencia']] },
     { t: 'Matrícula', ic: '🎒', items: [['obligaciones', 'Obligaciones']] },
     { t: 'Tesorería', ic: '💰', items: [[`estado-cuenta/${est}`, 'Consolidado']] }];
-  return [tablero, perfilG(), conSer(COMUNICACION), { t: 'Comunidad', ic: '👥', items: [['calendario', 'Calendario'], ['procesos', 'Procesos'], ['archivos', 'Archivos globales']] }, { t: 'Matrícula', ic: '🎒', items: [['obligaciones', 'Obligaciones']] }, { t: 'Tesorería', ic: '💰', items: [['tesoreria', 'Consolidado']] }];
+  return [tablero, perfilG(), conSer(COMUNICACION), { t: 'Comunidad', ic: '👥', items: [['calendario', 'Calendario'], ['manual', 'Manual de convivencia'], ['procesos', 'Procesos'], ['archivos', 'Archivos globales']] }, { t: 'Matrícula', ic: '🎒', items: [['obligaciones', 'Obligaciones']] }, { t: 'Tesorería', ic: '💰', items: [['tesoreria', 'Consolidado']] }];
 }
 const SECCION = { 'curso/:id': 'estructura', 'notas/:asig': 'clases', 'asistencia/:asig': 'clases', 'circular/:id': 'circulares', 'circulares-institucionales': 'circulares', 'circulares/ajustes': 'circulares', 'circular-institucional/:id': 'circulares', 'mensaje/:id': 'bandeja', 'pqrs/:id': 'pqrs', 'aula/:asig': 'aula', 'tarea/:id': 'aula', 'examen/:id': 'aula', 'estado-cuenta/:est': 'tesoreria', 'proceso/:id': 'procesos', 'proceso/:id/respuestas': 'procesos', 'seguimiento/:id': 'seguimientos', 'docente/:id': 'docentes', 'grupo/:asig': 'clases', 'consolidado/:asig': 'clases', 'observaciones-boletin/:asig': 'clases', 'remediales/:asig': 'clases' };
 
@@ -482,6 +489,11 @@ function pintarArmazon(patron) {
     });
     document.addEventListener('keydown', (e) => { if (e.key === 'Escape') abrirMenu(false); });
     window.addEventListener('complex:mensajes', pintarContadores);
+    // PQRS (17-nov-2026): al ver un caso se descuenta ya; y como a Gerencia y al Administrador los avisos de PQRS no les llegan a la
+    // Bandeja (canal «modulo»), mientras la app está a la vista se revisa cada minuto y al volver a ella
+    window.addEventListener('complex:pqrs', () => contadorPQRS(true));
+    setInterval(() => { if (document.visibilityState === 'visible' && $('#menu')) contadorPQRS(true); }, 60000);
+    document.addEventListener('visibilitychange', () => { if (document.visibilityState === 'visible' && $('#menu')) contadorPQRS(true); });
     window.addEventListener('complex:foto', () => ponerFotos($('#app')));
   }
   aplicarMarca();
@@ -545,11 +557,35 @@ async function ponerFotos(raiz) {
   }
 }
 
-async function pintarContadores() {
+async function pintarContadores(e) {
   contadorSER(); // SER · Psicología: en paralelo (no frena el de la Bandeja)
+  contadorPQRS(!!e); // PQRS: también en paralelo; al navegar se reusa lo de hace menos de 15 s, con un aviso nuevo se pide ya
   const n = await (await pant.mensajeria()).contarNoLeidos();
   document.querySelectorAll('[data-contador="noLeidos"]').forEach((el) => { el.textContent = n; el.hidden = !n; });
-  $('#btn-menu')?.classList.toggle('con-aviso', n > 0);
+  sinLeerBandeja = n;
+  avisoMenu();
+}
+let sinLeerBandeja = 0;
+const avisoMenu = () => $('#btn-menu')?.classList.toggle('con-aviso', sinLeerBandeja > 0 || pqrsCuenta > 0);
+
+// PQRS en el menú (Fabio, 17-nov-2026: «a Gerencia siempre una PQRS debe aparecerle en su ícono de las PQRS, algo así como les aparece
+// a los profes en mensajes»; a la pregunta de a quién: «Todos»). El número = las PQRS que le tocan y aún no ha revisado más las que
+// tienen mensajes nuevos que no ha visto (lo mismo que marcan sus listas); baja al verlas.
+let pqrsCuenta = 0, pqrsEn = 0, pqrsPara = '';
+async function contadorPQRS(forzar) {
+  if (!E.colegio || !E.yo) return;
+  const clave = E.colegio.id + '|' + E.yo.id;
+  if (clave !== pqrsPara) { pqrsPara = clave; pqrsCuenta = 0; pqrsEn = 0; } // otro colegio u otra persona: nada del anterior
+  if (!forzar && Date.now() - pqrsEn < 15000) return pintarPQRS();
+  pqrsEn = Date.now();
+  const n = await (await pant.pqrs()).contarPendientes().catch(() => null);
+  if (n == null || clave !== pqrsPara) return; // sin red: queda lo último que se supo
+  pqrsCuenta = n;
+  pintarPQRS();
+}
+function pintarPQRS() {
+  document.querySelectorAll('[data-contador="pqrs"]').forEach((el) => { el.textContent = pqrsCuenta; el.hidden = !pqrsCuenta; });
+  avisoMenu();
 }
 
 // SER · Psicología: mensajes sin leer en el menú; si la persona designada cambió (la designaron o se la quitaron), se repinta el
@@ -601,7 +637,7 @@ function precargarInicio() {
   const INICIO = {
     admin: ['admin', 'tablero', 'usuarios', 'tesoreria', 'mensajeria'],
     profesor: ['profesor', 'circulares', 'tablero', 'tesoreria', 'mensajeria'],
-    enfermeria: ['enfermeria', 'mensajeria'], director_seccion: ['enfermeria', 'mensajeria'],
+    enfermeria: ['enfermeria', 'mensajeria'], director_seccion: ['enfermeria', 'mensajeria'], personal: ['tablero', 'mensajeria'],
   };
   const lista = INICIO[E.rol] || ['familia', 'seguimientos', 'circulares', 'mensajeria', 'compromisos', 'enfermeria', 'tablero', 'tesoreria', 'comunidad'];
   for (const n of lista) import(`./pantallas/${n}.js`).catch(() => {});
@@ -612,8 +648,23 @@ async function inicio(m = main()) {
   if (E.rol === 'profesor') return (await pant.profe()).inicio(m);
   if (E.rol === 'enfermeria') return (await pant.enfermeria()).inicioEnfermeria(m);
   if (E.rol === 'director_seccion') return (await pant.enfermeria()).inicioSeccion(m);
+  if (E.rol === 'personal') return inicioPersonal(m);
   if (viendoHijo()) return (await pant.familia()).estudiante(m, { est: E.persona, inicio: 1 });
   return (await pant.familia()).inicio(m);
+}
+
+// Tablero del rol «Personal» (18-nov-2026): accesos a lo suyo y la columna del día (agenda y eventos del colegio)
+async function inicioPersonal(m) {
+  const { cabecera } = await import('./pantallas/comun.js');
+  const [{ montarColumnaDia }, { columnaCaja }] = await Promise.all([import('./pantallas/tablero.js'), import('./dia_columna.js')]);
+  m.innerHTML = cabecera('Tablero') + `
+    <div class="tablero-con-dia"><div class="cifras">
+      <a class="cifra" href="#/bandeja"><b>✉</b><span>Bandeja de entrada</span></a>
+      <a class="cifra" href="#/cartelera"><b>📌</b><span>Cartelera</span></a>
+      <a class="cifra" href="#/circulares"><b>📣</b><span>Circulares</span></a>
+      <a class="cifra" href="#/calendario"><b>📅</b><span>Calendario</span></a>
+    </div>${columnaCaja()}</div>`;
+  montarColumnaDia(m.querySelector('[data-dia-col]'), await base());
 }
 
 // ---------------------------------------------------------------- Entrar
@@ -777,7 +828,7 @@ async function entrarDemo() {
   await cargarSemillaDemo();
   const db = crearDbDemo();
   const usuarios = db.usuariosDemo();
-  const grupos = ['admin', 'director_seccion', 'profesor', 'enfermeria', 'acudiente', 'estudiante'].map((r) => [r, usuarios.filter((u) => u.roles[0] === r)]).filter(([, l]) => l.length);
+  const grupos = ['admin', 'director_seccion', 'profesor', 'enfermeria', 'personal', 'acudiente', 'estudiante'].map((r) => [r, usuarios.filter((u) => u.roles[0] === r)]).filter(([, l]) => l.length);
   const id = await ventana({
     titulo: 'Modo demo: ¿quién eres?',
     html: `<p class="ayuda">Es un colegio inventado para probar nodo. Lo que cambies se guarda solo en este equipo.</p>

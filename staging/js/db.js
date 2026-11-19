@@ -284,7 +284,7 @@ export async function crearDbSupabase() {
 //  - en modo real se guarda en el equipo (IndexedDB, no localStorage: así no le quita espacio a Relax,
 //    que vive en el mismo dominio) para abrir la app al instante; se borra al cerrar sesión.
 const VIDA = 30000;
-const RPC_LECTURA = new Set(['mis_contactos', 'personas_colegio', 'mi_intento']);
+const RPC_LECTURA = new Set(['mis_contactos', 'personas_colegio', 'mi_intento', 'manual_estado', 'manual_articulo', 'manual_buscar']);
 // Lecturas que van siempre al servidor y no marcan lo demás «por revisar» (el hilo de una PQRS se consulta cada poco); también el
 // cursor de lectura de la PQRS (solo cambia «hasta dónde vi yo», nada que esté en la copia del equipo)
 const RPC_DIRECTA = new Set(['pqrs_mensajes', 'pqrs_marcar_leido', 'mensajes_sin_leer', 'hora_servidor', 'album_cursos', 'album_curso',
@@ -294,6 +294,8 @@ const RPC_DIRECTA = new Set(['pqrs_mensajes', 'pqrs_marcar_leido', 'mensajes_sin
   // el cargo de PQRS que se muestra en el encabezado (solo lee). Antes contaba como escritura y, al abrir la app, descartaba lo que
   // se estaba pidiendo a la vez (cursos, materias, periodos…), que así nunca quedaba guardado para abrir sin internet (15-nov-2026)
   'pqrs_mi_cargo',
+  // las listas de PQRS y «quién soy en PQRS» solo leen; el contador del menú las pide al navegar (17-nov-2026): no deben marcar lo demás
+  'pqrs_listar', 'pqrs_yo',
   // SER · Psicología (15-nov-2026): conversación privada, siempre lo vigente; sus escrituras no cambian nada de la copia del equipo
   'ser_estado', 'ser_abrir', 'ser_mensajes', 'ser_enviar', 'ser_marcar_leido', 'ser_bandeja', 'ser_responsable_guardar', 'ser_responsable_ver']);
 // Escrituras que también cambian otras tablas (triggers del servidor o lógica de la app)
@@ -305,6 +307,8 @@ const AFECTA = {
   agregar_miembro: ['miembros', 'perfiles'], crear_colegio: ['colegios', 'miembros'],
   calendario_importar: ['calendario_fuentes', 'calendario_dias'], calendario_anotar: ['calendario_anotaciones'],
   circular_serie_guardar: ['circular_series'], circular_serie_validar: ['circular_series'], circular_area_guardar: ['circular_areas'], circular_ajustes_guardar: ['circular_ajustes'],
+  // Código de Calidad (19-nov-2026, 20261119120000): la Tabla No. 2 y las series armadas desde ella
+  circular_proceso_guardar: ['circular_procesos', 'circular_config_historial'], circular_serie_calidad_guardar: ['circular_series', 'circular_config_historial'],
   circular_emitir: ['circular_borradores', 'circular_series'], circular_asignar_numero: ['circular_borradores', 'circular_series'], circular_anular: ['circular_borradores', 'circular_numeros_anulados'],
   circular_firma_guardar: ['circular_firmas'], circular_firma_borrar: ['circular_firmas'], circular_emisor_guardar: ['circular_emisores', 'circular_config_historial'],
   circular_area_formato_guardar: ['circular_area_formatos', 'circular_config_historial'],
@@ -448,6 +452,7 @@ const leerArchivos = () => { try { return JSON.parse(localStorage.getItem(CLAVE_
 
 const LLAVES = {
   miembros: ['colegio_id', 'perfil_id', 'rol'],
+  cargos_personal: ['colegio_id', 'perfil_id', 'cargo'],
   acudientes: ['colegio_id', 'acudiente_id', 'estudiante_id'],
   calificaciones: ['actividad_id', 'estudiante_id'],
   circular_lecturas: ['circular_id', 'perfil_id'],
@@ -519,6 +524,8 @@ export function crearDbDemo() {
   const cuentaBloqueada = (perfil) => tabla('usuarios_eliminados').some((e) => e.perfil_id === perfil && !e.restaurado_en && e.cuenta_bloqueada);
   let pqrsDemo = null; // PQRS (pqrs_demo.js, mismas reglas que la base): se carga la primera vez que se usa
   let salasDemo = null; // salas de sección y avisos (salas_demo.js, mismas reglas que la base)
+  let manualDemo = null; // Manual de Convivencia (manual_demo.js, mismas reglas que 20261118100000)
+  const manDemo = async () => (manualDemo ||= (await import('./manual_demo.js')).crearManualDemo({ tabla, usuario, guardar, ahora, err }));
   let serDemo = null; // SER · conversación privada con Psicología (ser_demo.js, mismas reglas que la base)
   let calendarioDemo = null;
   let enviosDemo = null;
@@ -881,7 +888,7 @@ export function crearDbDemo() {
     const out = [];
     const add = (id, grupo, detalle = '') => id && id !== yo && out.push({ perfil_id: id, grupo, detalle });
     if (roles.size) M.filter((m) => m.rol === 'admin').forEach((m) => add(m.perfil_id, 'Administración', 'Administrador'));
-    if (roles.has('admin')) M.filter((m) => m.rol !== 'admin').forEach((m) => add(m.perfil_id, { profesor: 'Profesores', acudiente: 'Acudientes', estudiante: 'Estudiantes', enfermeria: 'Enfermería', director_seccion: 'Directores de sección' }[m.rol]));
+    if (roles.has('admin')) M.filter((m) => m.rol !== 'admin').forEach((m) => add(m.perfil_id, { profesor: 'Profesores', acudiente: 'Acudientes', estudiante: 'Estudiantes', enfermeria: 'Enfermería', director_seccion: 'Directores de sección', personal: 'Personal' }[m.rol]));
     // como mis_contactos en la base: todos escriben a enfermería y a los directores de sección
     if (roles.size) M.filter((m) => m.rol === 'enfermeria' || m.rol === 'director_seccion').forEach((m) => add(m.perfil_id, m.rol === 'enfermeria' ? 'Enfermería' : 'Directores de sección'));
     if (roles.has('enfermeria') || roles.has('director_seccion')) {
@@ -980,7 +987,9 @@ export function crearDbDemo() {
       if (n === 'circular_firmas') filas = filas.filter((f) => f.perfil_id === usuario()); // la firma solo la ve su dueño
       if (n === 'circular_emisores') filas = filas.filter((f) => esAdmin(f.colegio_id) || f.perfil_id === usuario());
       if (n === 'usuarios_eliminados') filas = filas.filter((f) => esAdmin(f.colegio_id)); // como la RLS: solo el administrador
+      if (n === 'cargos_personal') filas = filas.filter((f) => esAdmin(f.colegio_id)); // como la RLS: solo Administrador, Rectoría y Gerencia
       if (n === 'circular_series') filas = filas.filter((f) => esAdmin(f.colegio_id)); // como la RLS (serie_circular_ver): solo Administración
+      if (n === 'circular_procesos') filas = filas.filter((f) => puedePreparar(f.colegio_id)); // como la RLS (circular_proceso_ver): quien prepara circulares
       filas = ordenar(copia(filas), q.order);
       return q.limit ? filas.slice(0, q.limit) : filas;
     },
@@ -990,11 +999,13 @@ export function crearDbDemo() {
       for (const f of [].concat(filas)) {
         const r = completar(n, f);
         if (n === 'eventos_personales' && r.perfil_id !== usuario()) err('Solo puedes crear tus propias reuniones.');
+        if (n === 'cargos_personal' && !esAdmin(r.colegio_id)) err('Solo Administrador, Rectoría y Gerencia asignan cargos.'); // como la RLS
         if (n.startsWith('calendario_')) err('El calendario institucional solo se importa con la vista previa (administrador).');
         const k = LLAVES[n];
         if (k && tabla(n).some((x) => k.every((c) => x[c] === r[c]))) err('Ese dato ya existe.');
         // como la llave primaria de la base: un id que ya existe no entra dos veces (un reintento tras una respuesta perdida, 3-nov-2026)
         if (f.id && tabla(n).some((x) => x.id === f.id)) err('Ese dato ya existe.');
+        if (n === 'observaciones') (await manDemo()).sustento(r, null); // como el trigger observacion_sustento
         if (n === 'circular_borradores') {
           if (r.solicitud_id && tabla(n).some((x) => x.colegio_id === r.colegio_id && x.solicitud_id === r.solicitud_id)) err('Ese dato ya existe.');
           numerarBorrador(r);
@@ -1023,6 +1034,13 @@ export function crearDbDemo() {
     async update(n, cambios, eq) {
       await lento();
       const out = [];
+      if (n === 'observaciones') { // como el trigger observacion_sustento: valida antes de cambiar nada
+        const md = await manDemo();
+        const nuevas = new Map(tabla(n).filter((f) => coincide(f, { eq })).map((f) => { const r = { ...f, ...cambios }; md.sustento(r, f); return [f, r]; }));
+        tabla(n).forEach((f, i) => { if (nuevas.has(f)) { tabla(n)[i] = completar(n, nuevas.get(f)); out.push(copia(tabla(n)[i])); } });
+        guardar();
+        return out;
+      }
       tabla(n).forEach((f, i) => {
         // Como el trigger circular_borrador_fijo: la versión sube sola y lo de origen no cambia
         if (coincide(f, { eq }) && (n !== 'circular_borradores' || borradorMio(f))) { tabla(n)[i] = completar(n, n === 'circular_borradores' ? actualizarBorrador(f, cambios) : { ...f, ...cambios }); if ('nota' in cambios || 'pendiente_revision' in cambios) aPlanilla(n, tabla(n)[i]);
@@ -1033,7 +1051,7 @@ export function crearDbDemo() {
     },
     async remove(n, eq) {
       await lento();
-      const toca = (f) => coincide(f, { eq }) && (n !== 'circular_borradores' || borradorMio(f)); // como la RLS: un borrador ajeno no se borra
+      const toca = (f) => coincide(f, { eq }) && (n !== 'circular_borradores' || borradorMio(f)) && (n !== 'cargos_personal' || esAdmin(f.colegio_id)); // como la RLS: un borrador ajeno no se borra
       if (n === 'circular_borradores' && tabla(n).some((f) => toca(f) && (f.estado || 'borrador') !== 'borrador')) err('Una circular emitida o anulada no se elimina: queda en el historial con su número.');
       if (n === 'circular_borradores') for (const b of tabla(n).filter((f) => toca(f) && f.numero)) {
         tabla('circular_numeros_anulados').push({ serie_id: b.serie_id, numero: b.numero, colegio_id: b.colegio_id, consecutivo: b.consecutivo, borrador_id: b.id, solicitud_id: b.solicitud_id, titulo: b.datos?.titulo || null, anulado_por: usuario(), anulado_en: ahora() });
@@ -1083,6 +1101,7 @@ export function crearDbDemo() {
         const vigente = (id) => { const m = tabla('mensajes').find((x) => x.id === id); return !!m && (!m.expira_en || m.expira_en > ahora()); };
         return tabla('mensaje_destinatarios').filter((d) => d.colegio_id === a.p_colegio && d.perfil_id === yo && !d.leido_en && !d.eliminado && !d.archivado && vigente(d.mensaje_id)).length;
       }
+      if (nombre.startsWith('manual_')) return (await manDemo()).rpc(nombre, a);
       if (nombre.startsWith('ser_')) {
         serDemo ||= (await import('./ser_demo.js')).crearSerDemo({ tabla, usuario, guardar, ahora, err });
         return serDemo(nombre, a);
@@ -1281,7 +1300,7 @@ export function crearDbDemo() {
         try {
           // Rectoría / Gerencia = administrador con ese nombre (miembros.titulo), como la Edge Function (14-nov-2026)
           const titulo = ['rectoria', 'gerencia'].includes(p.rol) ? p.rol : null, rolBase = titulo ? 'admin' : p.rol;
-          if (!['admin', 'profesor', 'acudiente', 'estudiante', 'enfermeria', 'director_seccion'].includes(rolBase)) err('Rol no válido');
+          if (!['admin', 'profesor', 'acudiente', 'estudiante', 'enfermeria', 'director_seccion', 'personal'].includes(rolBase)) err('Rol no válido');
           if (!p.nombres) err('Falta el nombre');
           const doc = String(p.documento || '').replace(/[^\dA-Za-z]/g, '');
           const correo = String(p.correo || '').trim().toLowerCase();
