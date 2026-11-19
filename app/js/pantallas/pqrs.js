@@ -287,8 +287,10 @@ async function listado(c, vista, yo) {
   const sinResp = (x) => x.estado !== 'cerrada' && (vista === 'area' ? x.areas.some((a) => a.mia && a.estado !== 'respondida') : x.respuestas === 0);
   const areasEnLista = [...new Map(casos.flatMap((x) => x.areas).map((a) => [a.id, a.nombre])).entries()];
   const contar = (fn) => casos.filter(fn).length;
+  // «Sin revisar» = yo no la he abierto; «Sin responder» = nadie (o mi área) le ha respondido al solicitante: sigue ahí aunque ya la
+  // haya visto (Fabio, 18-nov-2026: «cuando se ha visto la pqrs … en sin responder se supone debe seguir allí porque nadie ha dado respuesta»)
   const RESUMEN = personal ? [
-    ['sin_revisar', 'Sin revisar', sinRevisar], ['pendiente_clasificacion', 'Por clasificar', (x) => x.estado === 'pendiente_clasificacion'],
+    ['sin_revisar', 'Sin revisar', sinRevisar], ['sin_responder', 'Sin responder', sinResp], ['pendiente_clasificacion', 'Por clasificar', (x) => x.estado === 'pendiente_clasificacion'],
     ['en_atencion', 'En atención', (x) => x.estado === 'en_atencion'], ['respuesta_parcial', 'Respuesta parcial', (x) => x.estado === 'respuesta_parcial'],
     ['respondida', 'Respondidas', (x) => x.estado === 'respondida'], ['cerrada', 'Cerradas', (x) => x.estado === 'cerrada'],
   ].filter(([k, , fn]) => k !== 'pendiente_clasificacion' || vista === 'supervision' || contar(fn)) : [];
@@ -296,7 +298,7 @@ async function listado(c, vista, yo) {
     ${personal ? `<div class="pq-resumen" role="group" aria-label="Resumen">${RESUMEN.map(([k, t, fn]) => `<button type="button" class="btn btn-chico" data-resumen="${k}" aria-pressed="${f.estado === k}">${esc(t)}: <b>${contar(fn)}</b></button>`).join('')}</div>
     <div class="form pq-filtros">
       <label>Área<select data-f="area"><option value="">Todas</option>${areasEnLista.map(([id, n]) => `<option value="${esc(id)}" ${f.area === id ? 'selected' : ''}>${esc(n)}</option>`).join('')}</select></label>
-      <label>Estado<select data-f="estado"><option value="">Todos</option><option value="sin_revisar" ${f.estado === 'sin_revisar' ? 'selected' : ''}>Sin revisar</option>${Object.entries(ESTADO_GENERAL).map(([k, t]) => `<option value="${k}" ${f.estado === k ? 'selected' : ''}>${esc(t)}</option>`).join('')}</select></label>
+      <label>Estado<select data-f="estado"><option value="">Todos</option><option value="sin_revisar" ${f.estado === 'sin_revisar' ? 'selected' : ''}>Sin revisar</option><option value="sin_responder" ${f.estado === 'sin_responder' ? 'selected' : ''}>Sin responder</option>${Object.entries(ESTADO_GENERAL).map(([k, t]) => `<option value="${k}" ${f.estado === k ? 'selected' : ''}>${esc(t)}</option>`).join('')}</select></label>
       <label>Desde<input type="date" data-f="desde" value="${esc(f.desde)}"></label>
       <label>Hasta<input type="date" data-f="hasta" value="${esc(f.hasta)}"></label>
       <label class="check"><input type="checkbox" data-f="sin" ${f.sin ? 'checked' : ''}> ${vista === 'area' ? 'Sin respuesta de mi área' : 'Sin ninguna respuesta'}</label>
@@ -306,7 +308,7 @@ async function listado(c, vista, yo) {
   const pintar = () => {
     const dia = (iso) => new Intl.DateTimeFormat('en-CA', { timeZone: 'America/Bogota', year: 'numeric', month: '2-digit', day: '2-digit' }).format(new Date(iso));
     const vis = casos.filter((x) => (!f.area || x.areas.some((a) => a.id === f.area))
-      && (!f.estado || (f.estado === 'sin_revisar' ? sinRevisar(x) : x.estado === f.estado))
+      && (!f.estado || (f.estado === 'sin_revisar' ? sinRevisar(x) : f.estado === 'sin_responder' ? sinResp(x) : x.estado === f.estado))
       && (!f.desde || dia(x.creado_en) >= f.desde) && (!f.hasta || dia(x.creado_en) <= f.hasta) && (!f.sin || sinResp(x)));
     c.querySelector('[data-cuantos]').textContent = personal ? `${vis.length} de ${casos.length} casos` : `${casos.length} PQRS`;
     c.querySelectorAll('[data-resumen]').forEach((b) => b.setAttribute('aria-pressed', String(f.estado === b.dataset.resumen)));
