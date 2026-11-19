@@ -307,6 +307,8 @@ const AFECTA = {
   agregar_miembro: ['miembros', 'perfiles'], crear_colegio: ['colegios', 'miembros'],
   calendario_importar: ['calendario_fuentes', 'calendario_dias'], calendario_anotar: ['calendario_anotaciones'],
   circular_serie_guardar: ['circular_series'], circular_serie_validar: ['circular_series'], circular_area_guardar: ['circular_areas'], circular_ajustes_guardar: ['circular_ajustes'],
+  // Código de Calidad (19-nov-2026, 20261119120000): la Tabla No. 2 y las series armadas desde ella
+  circular_proceso_guardar: ['circular_procesos', 'circular_config_historial'], circular_serie_calidad_guardar: ['circular_series', 'circular_config_historial'],
   circular_emitir: ['circular_borradores', 'circular_series'], circular_asignar_numero: ['circular_borradores', 'circular_series'], circular_anular: ['circular_borradores', 'circular_numeros_anulados'],
   circular_firma_guardar: ['circular_firmas'], circular_firma_borrar: ['circular_firmas'], circular_emisor_guardar: ['circular_emisores', 'circular_config_historial'],
   circular_area_formato_guardar: ['circular_area_formatos', 'circular_config_historial'],
@@ -987,6 +989,7 @@ export function crearDbDemo() {
       if (n === 'usuarios_eliminados') filas = filas.filter((f) => esAdmin(f.colegio_id)); // como la RLS: solo el administrador
       if (n === 'cargos_personal') filas = filas.filter((f) => esAdmin(f.colegio_id)); // como la RLS: solo Administrador, Rectoría y Gerencia
       if (n === 'circular_series') filas = filas.filter((f) => esAdmin(f.colegio_id)); // como la RLS (serie_circular_ver): solo Administración
+      if (n === 'circular_procesos') filas = filas.filter((f) => puedePreparar(f.colegio_id)); // como la RLS (circular_proceso_ver): quien prepara circulares
       filas = ordenar(copia(filas), q.order);
       return q.limit ? filas.slice(0, q.limit) : filas;
     },

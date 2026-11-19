@@ -102,6 +102,9 @@ const PATRONES = [
   [/^La circular cambió mientras la enviabas \(versión (\d+) → (\d+)\): ábrela otra vez y revisa antes de enviar\.$/, 'The circular changed while you were sending it (version $1 → $2): open it again and review before sending.'],
   [/^(.+) ya existe en el colegio: revisa el último número usado\.$/, '$1 already exists in the school: check the last number used.'],
   [/^Serie guardada · siguiente: (.+)$/, 'Series saved · next: $1'],
+  // Código de Calidad (19-nov-2026)
+  [/^Consecutivo: (\S+)$/, 'Sequence number: $1'], [/^Ya existe el código (\S+) entre los procesos\.$/, 'Code $1 already exists among the processes.'],
+  [/^Ya existe el código (\S+) en ese proceso\.$/, 'Code $1 already exists in that process.'],
   [/^Series de (.+)$/, 'Series of $1'],
   [/^Circular (.+) enviada: llegó a (\d+) bandeja\(s\) de entrada\.$/, 'Circular $1 sent: it reached $2 inbox(es).'],
   [/^(✅ Emitida y enviada|⛔ Anulada)(?: el (.+?))?\.? Su contenido y su número ya no cambian(, y no se vuelve a enviar)?\.$/,

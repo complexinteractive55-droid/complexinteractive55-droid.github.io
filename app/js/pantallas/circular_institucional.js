@@ -232,17 +232,28 @@ async function numeracion_(caja, { soloArea = null } = {}) {
   try { n = await E.db.rpc('circular_numeracion', { p_colegio: E.colegio.id }); }
   catch (e) { caja.innerHTML = `<p class="ayuda">${/does not exist|no existe|function/i.test(e.message) ? 'La numeración por área aún no está instalada en la base de este colegio (migración pendiente).' : esc(e.message)}</p>`; return; }
   const otra = () => numeracion_(caja);
+  // Código de Calidad (correo de Calidad del colegio, 19-nov-2026; migración 20261119120000): PROCESO[-SUBPROCESO]-AÑO ESCOLAR-NNN
+  // con la Tabla No. 2. Si la base aún no tiene la migración, «procesos» no llega y la pantalla queda como antes.
+  const conCalidad = Array.isArray(n.procesos);
+  const procesos = n.procesos || [];
   const serieHTML = (s) => `<div class="fila" data-serie="${esc(s.id)}"><span class="crece">
       <b>${esc(nombreSerie(s))}</b> ${s.vigente ? '' : '<small>(ya no vigente)</small>'}
+      ${s.proceso ? `<small data-serie-proceso>Código de Calidad: <b>${esc(s.proceso.codigo)}</b> <span translate="no">${esc(s.proceso.nombre)}</span></small>` : ''}
       <small>Último usado: <b>${esc(s.area_id ? s.ultimo_texto_area || 'ninguno' : s.ultimo_texto || 'ninguno')}</b> · Siguiente: <b data-siguiente>${esc(s.siguiente || 'la serie se agotó: crea una nueva')}</b></small>
       <small>${s.provisional ? '⚠ Provisional: sirve para borradores; para emitir hay que validarla' : `✅ Validada por ${esc(s.validada_por_nombre || '—')} el ${esc(fechaHora(s.validada_en))}`}${s.vigente_desde || s.vigente_hasta ? ` · vigencia ${esc(s.vigente_desde || '…')} a ${esc(s.vigente_hasta || '…')}` : ''}${s.anulados ? ` · ${s.anulados} número(s) anulado(s)` : ''}</small>
       ${s.ultimo_documento ? `<small>Último documento: ${esc(s.ultimo_documento.consecutivo || '')} · «${esc(s.ultimo_documento.titulo || '(sin asunto)')}» · ${esc(s.ultimo_documento.estado)} · versión ${s.ultimo_documento.version}</small>` : ''}
       ${s.nota ? `<small>Nota: ${esc(s.nota)}</small>` : ''}</span>
-    ${s.vigente ? `<span class="acciones-grupo"><button class="btn btn-chico" data-editar-serie="${esc(s.id)}">Editar</button>${s.provisional ? `<button class="btn btn-chico" data-validar="${esc(s.id)}">Validar</button>` : ''}</span>` : ''}</div>`;
+    ${s.vigente ? `<span class="acciones-grupo"><button class="btn btn-chico" data-editar-serie="${esc(s.id)}">Editar</button>${s.provisional ? `<button class="btn btn-chico" data-validar="${esc(s.id)}">Validar</button>` : ''}${s.proceso ? `<button class="btn btn-chico" data-anio-siguiente="${esc(s.id)}">Año siguiente</button>` : ''}</span>` : ''}</div>`;
+  // Tabla No. 2: cada proceso y debajo sus subprocesos (la base los manda ya en ese orden)
+  const tablaHTML = () => `<h3>Tabla No. 2 · Procesos de Calidad</h3>
+    <p class="ayuda">Cada comunicado lleva la letra del proceso (y la del subproceso cuando lo emite un subproceso bajo su liderazgo), el año escolar y el consecutivo dentro de ese año y proceso (cada año se reinicia). Cambiar un código aquí no cambia las series ni los números que ya existen.</p>
+    <div class="lista" data-procesos>${procesos.map((p) => `<div class="fila" data-proceso="${esc(p.id)}"><span class="crece"><span data-proceso-linea>${p.padre_id ? '&nbsp;&nbsp;&nbsp;↳ ' : ''}<b>${esc(p.codigo_completo)}</b> · <span translate="no">${esc(p.nombre)}</span>${p.activo ? '' : ' <small>(inactivo)</small>'}</span></span>
+      ${soloArea ? '' : `<button class="btn btn-chico" data-editar-proceso="${esc(p.id)}">Editar</button>`}</div>`).join('') || '<p class="ayuda">Aún no hay procesos: agrégalos como vienen en la Tabla No. 2 de Calidad.</p>'}</div>
+    ${soloArea ? '' : '<div class="acciones-grupo"><button class="btn btn-chico" data-proceso-nuevo>＋ Proceso</button><button class="btn btn-chico" data-subproceso-nuevo>＋ Subproceso</button></div>'}`;
   caja.innerHTML = `
-    <p class="ayuda">Formato: <b>código</b> + número con ceros (ancho) + <b>sufijo</b>. Ej.: «Memo E2-» + 008 + «-2026-2027». Solo sube el número; el código y el sufijo no cambian dentro de la serie.
-      Una misma área puede tener <b>varias series</b> en el mismo período (p. ej. «CT MEMO-», «CT Q-», «CT K-»), cada una con su propio contador; lo que no se repite es el mismo código en el mismo período.
-      No se reinicia sola al cambiar de año: abrir otra serie es una decisión explícita. <b>Los formatos oficiales de cada área están pendientes de confirmar con Gerencia.</b></p>
+    ${conCalidad ? `<p class="ayuda" data-ayuda-calidad><b>Serie de Calidad</b>: el código sale de la Tabla No. 2 (proceso o subproceso + año escolar) y el número va al final, con 3 cifras y sin sufijo. Ej.: <b>M2-BBL-2026-2027-001</b>. Cada año escolar es una serie nueva que empieza en 001 (botón «Año siguiente»); la del año anterior conserva sus números.</p>` : ''}
+    <p class="ayuda"><b>${conCalidad ? 'Serie libre' : 'Formato'}</b>: <b>código</b> + número con ceros (ancho) + <b>sufijo</b>. Ej.: «Memo E2-» + 008 + «-2026-2027». Solo sube el número; el código y el sufijo no cambian dentro de la serie. Una misma área puede tener <b>varias series</b> en el mismo período, cada una con su propio contador; lo que no se repite es el mismo código en el mismo período.</p>
+    <p class="ayuda">Toda serie nueva nace provisional: para emitir hay que validarla. <b>Qué proceso usa cada área y el último número usado se confirman con los registros del colegio</b> (la app no los inventa).</p>
     ${soloArea ? `<p class="ayuda" data-ajuste-solo>${n.asignar_numero === 'emitir' ? 'El número queda definitivo al enviar la circular (lo decide Administración).' : 'El número queda definitivo al guardar el borrador por primera vez (lo decide Administración).'}</p>` : `
     <fieldset class="form" data-ajuste><legend><b>¿Cuándo queda definitivo el número?</b> (decisión pendiente)</legend>
       <label class="check"><input type="radio" name="asignar" value="guardar" ${n.asignar_numero === 'guardar' ? 'checked' : ''}> Al guardar el borrador por primera vez (como hoy)</label>
@@ -251,9 +262,10 @@ async function numeracion_(caja, { soloArea = null } = {}) {
     <h3>Áreas</h3>
     <div class="acciones-grupo">${n.areas.map((a) => `<button class="btn btn-chico" data-area="${esc(a.id)}">${esc(a.nombre)}${a.activo ? '' : ' (inactiva)'}</button>`).join('') || '<span class="ayuda">Aún no hay áreas.</span>'}
       <button class="btn btn-chico" data-area-nueva>＋ Área</button></div>`}
+    ${conCalidad ? tablaHTML() : ''}
     <h3>Series</h3>
     <div class="lista">${n.series.map(serieHTML).join('') || '<p class="ayuda">Aún no hay series.</p>'}</div>
-    <div class="acciones"><button class="btn" data-serie-nueva>＋ Serie</button></div>
+    <div class="acciones">${conCalidad ? '<button class="btn btn-primario" data-serie-calidad>＋ Serie de Calidad</button>' : ''}<button class="btn" data-serie-nueva>＋ ${conCalidad ? 'Serie libre' : 'Serie'}</button></div>
     ${n.historial.length ? `<details><summary>Historial de cambios (${n.historial.length})</summary><ul class="lista-simple">${n.historial.slice(0, 20).map((h) => `<li>${esc(fechaHora(h.creado_en))} · ${esc(h.actor || '—')} · ${esc(h.objeto)} ${esc(h.accion)}${h.despues?.prefijo ? ` · ${esc(h.despues.prefijo)}` : h.despues?.nombre ? ` · ${esc(h.despues.nombre)}` : h.despues?.asignar_numero ? ` · al ${esc(h.despues.asignar_numero)}` : ''}</li>`).join('')}</ul></details>` : ''}`;
   caja.querySelector('[data-ajuste]')?.addEventListener('change', async (e) => {
     try { await E.db.rpc('circular_ajustes_guardar', { p_colegio: E.colegio.id, p_asignar_numero: e.target.value }); aviso('Ajuste guardado'); otra(); }
@@ -297,14 +309,90 @@ async function numeracion_(caja, { soloArea = null } = {}) {
           p_sufijo: d.sufijo || null, p_ultimo_usado: Number(d.ultimo), p_vigente_desde: d.desde || null, p_vigente_hasta: d.hasta || null, p_nota: d.nota || null, p_reemplazar: !!d.reemplazar }); } }] });
     if (r) { aviso(`Serie guardada · siguiente: ${r.siguiente}`); otra(); }
   };
+  // ---- Código de Calidad: la Tabla No. 2 (solo Administración) y las series que se arman con ella
+  const proceso = async (p, { sub = false } = {}) => {
+    const esSub = p ? !!p.padre_id : sub;
+    const padres = procesos.filter((x) => !x.padre_id && x.id !== p?.id);
+    if (esSub && !padres.length) { aviso('Primero agrega el proceso (p. ej. M2) y luego sus subprocesos.', 'error'); return; }
+    const r = await ventana({ titulo: p ? (esSub ? 'Subproceso' : 'Proceso') : (esSub ? 'Nuevo subproceso' : 'Nuevo proceso'), html: `<div class="form" data-form-proceso>
+      ${esSub ? `<label>Proceso que lo lidera<select name="padre">${padres.map((x) => `<option value="${esc(x.id)}" ${p?.padre_id === x.id ? 'selected' : ''}>${esc(x.codigo)} · ${esc(x.nombre)}</option>`).join('')}</select></label>` : ''}
+      <label>Código (como en la Tabla No. 2)<input name="codigo" maxlength="6" autocapitalize="characters" value="${esc(p?.codigo || '')}" placeholder="${esSub ? 'Ej.: BBL' : 'Ej.: M2'}"></label>
+      <label>Nombre<input name="nombre" maxlength="120" value="${esc(p?.nombre || '')}" placeholder="${esSub ? 'Ej.: Biblioteca' : 'Ej.: Gestión Pedagógica'}"></label>
+      <label>Orden en la tabla<input name="orden" type="number" min="0" value="${esc(p?.orden ?? (procesos.length + 1) * 10)}"></label>
+      ${p ? `<label class="check"><input type="checkbox" name="activo" ${p.activo ? 'checked' : ''}> Activo (si no, no se ofrece para series nuevas)</label>` : ''}
+      <p class="ayuda" data-ejemplo-proceso></p></div>`,
+      alAbrir: (c) => {
+        const ver = () => { const d = leerForm(c), pa = padres.find((x) => x.id === d.padre), cod = String(d.codigo || '').trim().toUpperCase();
+          c.querySelector('[data-ejemplo-proceso]').textContent = cod ? `Consecutivo: ${esSub && pa ? pa.codigo + '-' : ''}${cod}-${anioEscolar()}-001` : ''; };
+        c.addEventListener('input', ver); c.addEventListener('change', ver); ver();
+      },
+      botones: [{ texto: 'Cancelar' }, { texto: 'Guardar', antes: async (c) => { const d = leerForm(c);
+        if (!/^[A-Za-z0-9]{1,6}$/.test(String(d.codigo || '').trim())) throw new Error('El código va sin espacios ni guiones, hasta 6 letras o números (p. ej. M2 o BBL).');
+        return E.db.rpc('circular_proceso_guardar', { p_colegio: E.colegio.id, p_id: p?.id || null, p_padre: esSub ? d.padre || null : null, p_codigo: String(d.codigo).trim(),
+          p_nombre: d.nombre, p_orden: Number(d.orden) || 0, p_activo: p ? !!d.activo : true }); } }] });
+    if (r) { aviso('Tabla No. 2 guardada'); otra(); }
+  };
+  // Año escolar que corre (calendario B: empieza a mitad de año): nov-2026 → 2026-2027; mar-2027 → 2026-2027
+  const anioEscolar = () => { const [a, m] = hoyBogota().split('-').map(Number); const i = m >= 7 ? a : a - 1; return `${i}-${i + 1}`; };
+  const siguienteAnio = (per) => { const i = Number(String(per).split('-')[0]) + 1; return `${i}-${i + 1}`; };
+  const codigoCalidad = (pr, per) => (pr ? `${pr.codigo_completo}-${per}-` : '');
+  const serieCalidad = async (s) => {
+    const activos = procesos.filter((x) => x.activo || x.id === s?.proceso_id);
+    if (!activos.length) { aviso('Primero agrega los procesos de la Tabla No. 2.', 'error'); return; }
+    const areas = n.areas.filter((a) => a.activo);
+    if (!s && !soloArea && !areas.length) { aviso('Primero crea el área que emite (p. ej. Biblioteca o Rectoría).', 'error'); return; }
+    const r = await ventana({ titulo: s ? 'Editar serie de Calidad' : 'Nueva serie de Calidad', html: `<div class="form" data-form-calidad>
+      ${s || soloArea ? `<p><b>${esc(s?.area || soloArea?.nombre || '')}</b></p>` : `<label>Área que emite<select name="area">${areas.map((a) => `<option value="${esc(a.id)}">${esc(a.nombre)}</option>`).join('')}</select></label>`}
+      <label>Proceso o subproceso (Tabla No. 2)<select name="proceso">${activos.map((x) => `<option value="${esc(x.id)}" ${s?.proceso_id === x.id ? 'selected' : ''}>${x.padre_id ? '↳ ' : ''}${esc(x.codigo_completo)} · ${esc(x.nombre)}</option>`).join('')}</select></label>
+      <label>Año escolar<input name="periodo" maxlength="9" inputmode="numeric" pattern="[0-9]{4}-[0-9]{4}" value="${esc(s?.periodo || anioEscolar())}" placeholder="2026-2027"></label>
+      <label><b>Último número OFICIALMENTE usado</b> (0 si empieza; el siguiente será +1)<input name="ultimo" type="number" min="0" value="${esc(s?.ultimo ?? 0)}"></label>
+      <p class="ayuda" data-ejemplo-calidad></p>
+      <label>Vigente desde (opcional)<input name="desde" type="date" value="${esc(s?.vigente_desde || '')}"></label>
+      <label>Vigente hasta (opcional)<input name="hasta" type="date" value="${esc(s?.vigente_hasta || '')}"></label>
+      <label>Nota (opcional)<input name="nota" maxlength="500" value="${esc(s?.nota || '')}"></label>
+      <p class="ayuda">Nace provisional: para emitir hay que validarla.</p>${s?.ultimo > 0 ? '<p class="ayuda">Ya tiene números: su proceso y su año no cambian.</p>' : ''}</div>`,
+      alAbrir: (c) => {
+        const ver = () => {
+          const d = leerForm(c), pr = procesos.find((x) => x.id === d.proceso), per = String(d.periodo || '').trim(), u = Number(d.ultimo) || 0;
+          const cod = codigoCalidad(pr, per);
+          c.querySelector('[data-ejemplo-calidad]').textContent = /^[0-9]{4}-[0-9]{4}$/.test(per)
+            ? `Último: ${u ? cod + String(u).padStart(3, '0') : '(ninguno)'} → siguiente: ${cod}${String(u + 1).padStart(3, '0')}` : 'El año escolar va como 2026-2027.';
+        };
+        c.addEventListener('input', ver); c.addEventListener('change', ver); ver();
+      },
+      botones: [{ texto: 'Cancelar' }, { texto: 'Guardar', antes: async (c) => { const d = leerForm(c);
+        const per = String(d.periodo || '').trim(), m = /^([0-9]{4})-([0-9]{4})$/.exec(per);
+        if (!m || Number(m[2]) !== Number(m[1]) + 1) throw new Error('El año escolar va como 2026-2027 (dos años seguidos).');
+        return E.db.rpc('circular_serie_calidad_guardar', { p_colegio: E.colegio.id, p_id: s?.id || null, p_area: s ? s.area_id : soloArea?.id || d.area || null, p_proceso: d.proceso,
+          p_periodo: per, p_ultimo_usado: Number(d.ultimo) || 0, p_vigente_desde: d.desde || null, p_vigente_hasta: d.hasta || null, p_nota: d.nota || null }); } }] });
+    if (r) { aviso(`Serie de Calidad guardada · siguiente: ${r.siguiente}`); otra(); }
+  };
+  // «Cada año se reinicia»: la misma área y proceso, el año escolar siguiente, desde 001 (la del año anterior no se toca)
+  const anioSiguiente = async (s) => {
+    const per = siguienteAnio(s.periodo), pr = procesos.find((x) => x.id === s.proceso_id);
+    const ya = n.series.find((x) => x.proceso_id === s.proceso_id && x.periodo === per);
+    if (ya) { aviso('Ese proceso ya tiene su serie del año escolar siguiente.', 'error'); return; }
+    const r = await ventana({ titulo: 'Abrir el año escolar siguiente', html: `<p translate="no"><b>${esc(s.area || '')}</b> · ${esc(s.proceso?.codigo || '')} ${esc(s.proceso?.nombre || '')}</p>
+      <p>La serie del año escolar siguiente empieza en <b data-codigo-nuevo>${esc(codigoCalidad(pr, per))}001</b>.</p>
+      <p>La serie anterior conserva sus números (sigue en la lista).</p>
+      <p class="ayuda">Nace provisional: para emitir hay que validarla.</p>`,
+      botones: [{ texto: 'Cancelar' }, { texto: 'Abrir el año', antes: () => E.db.rpc('circular_serie_calidad_guardar', { p_colegio: E.colegio.id, p_id: null, p_area: s.area_id, p_proceso: s.proceso_id,
+        p_periodo: per, p_ultimo_usado: 0, p_vigente_desde: null, p_vigente_hasta: null, p_nota: null }) }] });
+    if (r) { aviso(`Año escolar siguiente abierto · siguiente: ${r.siguiente}`); otra(); }
+  };
   // onclick (no addEventListener): el panel se vuelve a pintar en la misma caja y debe quedar UN solo manejador, con los datos nuevos
   caja.onclick = async (e) => {
     const b = e.target.closest('button');
     if (!b) return;
     if (b.hasAttribute('data-area-nueva')) return area(null);
     if (b.dataset.area) return area(n.areas.find((a) => a.id === b.dataset.area));
+    if (b.hasAttribute('data-proceso-nuevo')) return proceso(null);
+    if (b.hasAttribute('data-subproceso-nuevo')) return proceso(null, { sub: true });
+    if (b.dataset.editarProceso) return proceso(procesos.find((x) => x.id === b.dataset.editarProceso));
+    if (b.hasAttribute('data-serie-calidad')) return serieCalidad(null);
+    if (b.dataset.anioSiguiente) return anioSiguiente(n.series.find((x) => x.id === b.dataset.anioSiguiente));
     if (b.hasAttribute('data-serie-nueva')) return serie(null);
-    if (b.dataset.editarSerie) return serie(n.series.find((x) => x.id === b.dataset.editarSerie));
+    if (b.dataset.editarSerie) { const s = n.series.find((x) => x.id === b.dataset.editarSerie); return s?.proceso_id ? serieCalidad(s) : serie(s); }
     if (b.dataset.validar) {
       const s = n.series.find((x) => x.id === b.dataset.validar);
       const r = await ventana({ titulo: 'Validar serie', html: `<p>Confirma que <b>${esc(s.area || 'el colegio')}</b> usa el formato <b>${esc(s.siguiente || '')}</b> y que el último número oficialmente usado es el correcto, comparándolo con los registros del colegio.</p>
